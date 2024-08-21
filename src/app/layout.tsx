@@ -5,7 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 
 export const metadata: Metadata = {
   title: "Fantassist",
-  description: "Fantassist - Fantasy Map Builder",
+  description: "Fantasy World Builder",
 };
 
 export default function RootLayout({
