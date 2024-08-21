@@ -1,7 +1,7 @@
 <h1 align="center">
   <a href="https://app.fantassist.io">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="docs/icon-full-light.png"/>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/icon-full-dark.png"/>
       <img src="docs/icon-full-light.png" alt="Fantassist" height="300px"/>
     </picture>
   </a>
