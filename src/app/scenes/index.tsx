@@ -1,39 +1,25 @@
-import {v4} from 'uuid';
-import {useCallback, useEffect, useState} from 'react';
-import {TarWriter} from '@gera2ld/tarjs';
+import { v4 } from "uuid";
+import { useCallback, useEffect, useState } from "react";
+import { TarWriter } from "@gera2ld/tarjs";
 
-import globalStorage from '@/storage';
-import {createNewLayer, unflattenLayer} from './layer';
-import {deleteAsset, fileStorage} from './asset';
-import * as Types from '@/protos/scene';
-import {oldStorage} from './oldStorage';
+import globalStorage from "@/storage";
+import { createNewLayer, unflattenLayer } from "./layer";
+import { deleteAsset, fileStorage } from "./asset";
+import * as Types from "@/protos/scene";
 
-export const newStorage = globalStorage<Uint8Array>('scene_2');
+const storage = globalStorage<Types.Scene, Uint8Array>(
+  "scene_2",
+  (s) => Types.Scene.encode(s).finish(),
+  Types.Scene.decode
+);
 export function sceneDatabase() {
   return {
-    ...newStorage,
-    createItem: async (key: string, item: Types.Scene) => {
-      await newStorage.createItem(key, Types.Scene.encode(item).finish());
-    },
-    useAllValues: () => {
-      const oldValues = oldStorage.useAllValues();
-      const newValues = newStorage.useAllValues();
-
-      if (oldValues === undefined || newValues === undefined) {
-        return undefined;
-      }
-
-      return new Map(
-        Array.from(newValues.entries()).map(([sceneId, buf]) => [
-          sceneId,
-          Types.Scene.decode(buf),
-        ])
-      );
-    },
+    ...storage,
+    // Only update value if the version is newer
     useOneValue: (
       key: string | null
     ): [Types.Scene | null | undefined, (newData: Types.Scene) => void] => {
-      const [newValue, setNewValue] = newStorage.useOneValue(key);
+      const [newValue, setNewValue] = storage.useOneValue(key);
       const [localValue, setLocalValue] = useState<Types.Scene>();
 
       useEffect(() => {
@@ -42,30 +28,29 @@ export function sceneDatabase() {
 
       useEffect(() => {
         if (!newValue) return;
-        const decodedNewValue = Types.Scene.decode(newValue);
 
         // Initial load
         if (!localValue) {
-          setLocalValue(decodedNewValue);
+          setLocalValue(newValue);
           return;
         }
 
         // Storage updates
         if (
-          decodedNewValue &&
-          (decodedNewValue.id !== localValue.id ||
-            decodedNewValue.version > localValue.version)
+          newValue &&
+          (newValue.id !== localValue.id ||
+            newValue.version > localValue.version)
         ) {
-          setLocalValue(decodedNewValue);
+          setLocalValue(newValue);
           return;
         }
 
         // Local updates
         if (
-          decodedNewValue.id === localValue.id &&
-          decodedNewValue.version < localValue.version
+          newValue.id === localValue.id &&
+          newValue.version < localValue.version
         ) {
-          setNewValue(Types.Scene.encode(localValue).finish());
+          setNewValue(localValue);
           return;
         }
       }, [localValue, newValue, setNewValue]);
@@ -73,10 +58,10 @@ export function sceneDatabase() {
       const updateScene = useCallback((scene: Types.Scene) => {
         scene.version++;
         console.log(
-          'Updating scene ' + scene.name + ' to v' + scene.version,
+          "Updating scene " + scene.name + " to v" + scene.version,
           scene
         );
-        setLocalValue({...scene}); // TODO: this deref should be unnecessary
+        setLocalValue({ ...scene }); // TODO: this deref should be unnecessary
       }, []);
 
       if (newValue === undefined) {
@@ -90,7 +75,7 @@ export function sceneDatabase() {
       return [localValue, updateScene];
     },
     deleteItem: async (key: string) => {
-      const sceneRaw = await newStorage.storage.getItem(key);
+      const sceneRaw = await storage.storage.getItem(key);
       if (!sceneRaw) return;
       const scene = Types.Scene.decode(sceneRaw);
       for (const layer of scene.layers) {
@@ -103,22 +88,21 @@ export function sceneDatabase() {
         }
       }
 
-      await newStorage.deleteItem(key);
-      await oldStorage.deleteItem(key);
+      await storage.deleteItem(key);
     },
   };
 }
 
 export function createNewScene(): Types.Scene {
   const defaultLayer = createNewLayer(Types.Layer_LayerType.ASSETS);
-  defaultLayer.name = 'Layer 1';
-
+  defaultLayer.name = "Layer 1";
+console.log({v4: v4()})
   return {
     id: v4(),
-    name: 'Untitled',
+    name: "Untitled",
     version: 0,
     table: {
-      offset: {x: 0, y: 0},
+      offset: { x: 0, y: 0 },
       rotation: 0,
       scale: 1,
       displayGrid: true,
@@ -150,16 +134,16 @@ async function sceneToSceneExport(scene: Types.Scene): Promise<Uint8Array> {
     });
   }
 
-  return Types.SceneExport.encode({scene, files}).finish();
+  return Types.SceneExport.encode({ scene, files }).finish();
 }
 
 export async function exportScene(scene: Types.Scene) {
   const exp = await sceneToSceneExport(scene);
 
-  const blob = new Blob([exp], {type: 'application/octet-stream'});
+  const blob = new Blob([exp], { type: "application/octet-stream" });
   const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.download = scene.name + '.scene';
+  const link = document.createElement("a");
+  link.download = scene.name + ".scene";
   link.href = objectUrl;
   link.click();
 }
@@ -167,34 +151,34 @@ export async function exportScene(scene: Types.Scene) {
 // Export all scenes as individual .scene files in a single tarball
 export async function exportAllScenes() {
   const tar = new TarWriter();
-  const sceneIds = await newStorage.storage.keys();
+  const sceneIds = await storage.storage.keys();
   for (const sceneId of sceneIds) {
-    const sceneRaw = await newStorage.storage.getItem(sceneId)
+    const sceneRaw = await storage.storage.getItem(sceneId);
     if (!sceneRaw) continue;
     const scene = Types.Scene.decode(sceneRaw);
     const exp = await sceneToSceneExport(scene);
-    tar.addFile(scene.name + '.scene', exp);
+    tar.addFile(scene.name + ".scene", exp);
   }
 
   const blob = await tar.write();
   const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.download = 'scenes.tar';
+  const link = document.createElement("a");
+  link.download = "scenes.tar";
   link.href = objectUrl;
   link.click();
 }
 
 export async function importScene() {
-  const fileDialogInput = document.createElement('input');
-  fileDialogInput.type = 'file';
-  fileDialogInput.accept = '.scene';
+  const fileDialogInput = document.createElement("input");
+  fileDialogInput.type = "file";
+  fileDialogInput.accept = ".scene";
 
   fileDialogInput.click();
   const file = await new Promise<File>((res, rej) => {
-    fileDialogInput.onchange = e => {
+    fileDialogInput.onchange = (e) => {
       const files = (e!.target as HTMLInputElement).files;
       if (!files || files.length === 0) {
-        return rej(new Error('Cancelled'));
+        return rej(new Error("Cancelled"));
       }
       res(files.item(0)!);
     };
@@ -207,7 +191,7 @@ export async function importScene() {
         res(fr.result as ArrayBuffer);
       }
     };
-    fr.onerror = e => {
+    fr.onerror = (e) => {
       rej(e);
     };
     fr.readAsArrayBuffer(file);
@@ -219,9 +203,9 @@ export async function importScene() {
 
   const existingScenes = (
     await Promise.all(
-      (await newStorage.storage.keys()).map(k => newStorage.storage.getItem(k))
+      (await storage.storage.keys()).map((k) => storage.storage.getItem(k))
     )
-  ).map(b => Types.Scene.decode(b!));
+  ).map((b) => Types.Scene.decode(b!));
 
   let nameCollisions = 1;
   const originalName = scene.name;
@@ -249,34 +233,6 @@ export async function importScene() {
     await fileStorage.setItem(newAssetId, new File([file.payload], newAssetId));
   }
 
-  await newStorage.storage.setItem(
-    scene.id,
-    Types.Scene.encode(scene).finish()
-  );
+  await storage.storage.setItem(scene.id, Types.Scene.encode(scene).finish());
   return scene;
 }
-
-// window.garbageCollect = async function () {
-//   const sceneIds = await newStorage.storage.keys();
-
-//   const foundAssets = new Set<string>();
-//   for (const sceneId of sceneIds) {
-//     const encodedScene = await newStorage.storage.getItem(sceneId);
-//     const scene = Types.Scene.decode(encodedScene);
-
-//     for (const layer of scene.layers) {
-//       if (!layer.assetLayer) continue;
-//       for (const asset of Object.values(layer.assetLayer.assets)) {
-//         foundAssets.add(asset.id);
-//       }
-//     }
-//   }
-
-//   const allAssets = new Set(await fileStorage.keys());
-//   console.warn('Removing ' + (allAssets.size - foundAssets.size) + ' assets');
-//   for (const asset of Array.from(allAssets.keys())) {
-//     if (foundAssets.has(asset)) continue;
-
-//     await fileStorage.removeItem(asset);
-//   }
-// };

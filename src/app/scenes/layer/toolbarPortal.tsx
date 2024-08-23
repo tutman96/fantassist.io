@@ -3,9 +3,7 @@ import React, {
   useContext,
   createContext,
   useEffect,
-  useState,
 } from "react";
-import { createPortal } from "react-dom";
 
 import Toolbar from "./toolbar";
 import { ThemeProvider } from "@mui/system";

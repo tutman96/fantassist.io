@@ -17,6 +17,7 @@ import LayerList from './layerList';
 import TableViewOverlay, {TABLEVIEW_LAYER_ID} from '../layer/tableView';
 import {useTableDimensions} from '@/app/settings';
 import * as Types from '@/protos/scene';
+import { SceneProvider } from './sceneProvider';
 
 export function calculateViewportCenter(
   layerRef: React.MutableRefObject<Konva.Layer | undefined>
@@ -160,7 +161,7 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
     : 1;
 
   return (
-    <>
+    <SceneProvider scene={scene}>
       <Box
         ref={containerRef as any}
         sx={{
@@ -214,7 +215,7 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
         moveActiveLayer={moveActiveLayer}
         deleteActiveLayer={deleteActiveLayer}
       />
-    </>
+    </SceneProvider>
   );
 };
 export default Canvas;

@@ -25,8 +25,9 @@ const Scenes: React.FunctionComponent = () => {
     } else {
       const newScene = createNewScene();
       newScene.name = 'Scene 1';
-      createItem(newScene.id, newScene);
-      router.push(`/scenes/${newScene.id}`);
+      createItem(newScene.id, newScene).then(() => {
+        router.push(`/scenes/${newScene.id}`);
+      });
     }
   }, [displayedScene, allScenes, router]);
 

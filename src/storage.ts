@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 import * as uuid from "uuid";
 import * as localForage from "localforage";
@@ -10,7 +10,7 @@ class RTStorage<T> {
   private _localStorage?: Storage;
   private _observable: Subject<{
     key: string;
-    value: T | undefined;
+    value: T | null;
   }>;
   private _name: string;
   private _id: string;
@@ -54,25 +54,20 @@ class RTStorage<T> {
 
   async setItem<V extends T>(key: string, value: V) {
     await this.waitForReady();
-    await this._storage.setItem(key, { value, setter: this.id });
+    await this._storage.setItem(key, value);
     this._observable.next({ key, value });
     this._updateStorageChangeKey(key);
   }
 
   async getItem<V extends T>(key: string) {
     await this.waitForReady();
-    const originalData = await this._storage.getItem<{value: V}>(key);
-    try {
-      return originalData?.value;
-    } catch (error) {
-      return undefined;
-    }
+    return await this._storage.getItem<V>(key);
   }
 
   async removeItem(key: string) {
     await this.waitForReady();
     await this._storage.removeItem(key);
-    this._observable.next({ key, value: undefined });
+    this._observable.next({ key, value: null });
     this._updateStorageChangeKey(key);
   }
 
@@ -113,15 +108,13 @@ class RTStorage<T> {
 
   subscribe<V extends T>(
     key: string,
-    func: (value: V | undefined) => void
+    func: (value: V | null) => void
   ): { unsubscribe: () => void };
   subscribe<V extends T>(
-    func: (value: { key: string; value: V | undefined }) => void
+    func: (value: { key: string; value: V | null }) => void
   ): { unsubscribe: () => void };
   subscribe<V extends T>(
-    keyOrFunc:
-      | ((value: { key: string; value: T | undefined }) => void)
-      | string,
+    keyOrFunc: ((value: { key: string; value: T | null }) => void) | string,
     func?: (value: V | undefined) => void
   ) {
     if (typeof keyOrFunc === "function") {
@@ -141,40 +134,44 @@ class RTStorage<T> {
   }
 }
 
-export default function globalStorage<T>(name: string) {
-  const storage = new RTStorage({ name }) as RTStorage<T>;
+export default function globalStorage<T, B = T>(
+  name: string,
+  encode: (v: T) => B = (v) => v as unknown as B,
+  decode: (v: B) => T = (v) => v as unknown as T
+) {
+  const storage = new RTStorage<B>({ name });
   const useOneValue = <V extends T = T>(key: string | null) => {
     const [data, setState] = useState<V | null | undefined>(undefined);
 
     useEffect(() => {
       if (!key) return;
-      storage.getItem<V>(key).then((lastData) => {
+      storage.getItem(key).then((lastData) => {
         if (lastData) {
-          setState(lastData);
+          setState(decode(lastData) as V);
         } else {
           setState(null);
         }
       });
 
-      const subscription = storage.subscribe<V>(key, (d) => setState(d));
+      const subscription = storage.subscribe(key, (d) =>
+        setState(d ? (decode(d) as V) : null)
+      );
       return () => {
         subscription.unsubscribe();
       };
     }, [key]);
 
-    if (key === null) {
-      return [null, () => Promise.resolve()] as [
-        V | null | undefined,
-        (newData: V) => Promise<void>
-      ];
-    }
+    const setData = useMemo(() => {
+      if (key === null) {
+        return async () => {};
+      }
+      return async (newData: V) => {
+        setState(newData);
+        await storage.setItem(key, encode(newData));
+      };
+    }, [key]);
 
-    const setData = async (newData: V) => {
-      setState(newData);
-      await storage.setItem(key, newData);
-    };
-
-    return [data, setData] as [
+    return [key === null ? null : data, setData] as [
       V | null | undefined,
       (newData: V) => Promise<void>
     ];
@@ -191,7 +188,8 @@ export default function globalStorage<T>(name: string) {
             await Promise.all(
               keys.map(async (k) => {
                 const item = await storage.getItem(k);
-                items.set(k, item!);
+                if (!item) return;
+                items.set(k, decode(item)!);
               })
             );
             setState(items);
@@ -208,8 +206,8 @@ export default function globalStorage<T>(name: string) {
       return data;
     },
     useOneValue,
-    createItem: (key: string, object: T) => {
-      storage.setItem(key, object);
+    createItem: async (key: string, object: T) => {
+      await storage.setItem(key, encode(object));
     },
     deleteItem: async (key: string) => {
       await storage.removeItem(key);
