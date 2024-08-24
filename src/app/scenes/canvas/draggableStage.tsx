@@ -101,7 +101,7 @@ const DraggableStage: React.FunctionComponent<
   }, [stageRef, initialZoom]);
 
   useEffect(() => {
-    if (stageRef.current) {
+    if (stageRef.current?.scaleX() == 1) {
       stageRef.current.scale({x: initialZoom, y: initialZoom});
       stageRef.current.batchDraw();
     }

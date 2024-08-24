@@ -16,47 +16,47 @@ export function sceneDatabase() {
   return {
     ...storage,
     // Only update value if the version is newer
-    useOneValue: (
-      key: string | null
-    ): [Types.Scene | null | undefined, (newData: Types.Scene) => void] => {
-      const [storedValue, setStoredValue] = storage.useOneValue(key);
-      const [localValue, setLocalValue] = useState<Types.Scene>();
+    // useOneValue: (
+    //   key: string | null
+    // ): [Types.Scene | null | undefined, (newData: Types.Scene) => void] => {
+    //   const [storedValue, setStoredValue] = storage.useOneValue(key);
+    //   const [localValue, setLocalValue] = useState<Types.Scene>();
 
-      useEffect(() => {
-        setLocalValue(undefined);
-      }, [key]);
+    //   useEffect(() => {
+    //     setLocalValue(undefined);
+    //   }, [key]);
 
-      useEffect(() => {
-        if (
-          storedValue &&
-          (storedValue.id !== localValue?.id ||
-            storedValue.version > localValue.version)
-        ) {
-          setLocalValue(storedValue);
-          return;
-        }
-      }, [localValue, storedValue, setStoredValue]);
+    //   useEffect(() => {
+    //     if (
+    //       storedValue &&
+    //       (storedValue.id !== localValue?.id ||
+    //         storedValue.version > localValue.version)
+    //     ) {
+    //       setLocalValue(storedValue);
+    //       return;
+    //     }
+    //   }, [localValue, storedValue, setStoredValue]);
 
-      const updateScene = useCallback((scene: Types.Scene) => {
-        scene.version++;
-        console.log(
-          "Updating scene " + scene.name + " to v" + scene.version,
-          scene
-        );
-        setLocalValue(scene);
-        setStoredValue(scene);
-      }, []);
+    //   const updateScene = useCallback((scene: Types.Scene) => {
+    //     scene.version++;
+    //     console.log(
+    //       "Updating scene " + scene.name + " to v" + scene.version,
+    //       scene
+    //     );
+    //     setLocalValue(scene);
+    //     setStoredValue(scene);
+    //   }, []);
 
-      if (storedValue === undefined) {
-        return [undefined, updateScene];
-      }
+    //   if (storedValue === undefined) {
+    //     return [undefined, updateScene];
+    //   }
 
-      if (storedValue === null) {
-        return [null, updateScene];
-      }
+    //   if (storedValue === null) {
+    //     return [null, updateScene];
+    //   }
 
-      return [localValue, updateScene];
-    },
+    //   return [localValue, updateScene];
+    // },
     deleteItem: async (key: string) => {
       const sceneRaw = await storage.storage.getItem(key);
       if (!sceneRaw) return;
@@ -212,7 +212,10 @@ export async function importScene() {
 
   for (const file of exp.files) {
     const newAssetId = assetMap.get(file.id)!;
-    await fileStorage.setItem(newAssetId, new File([file.payload], newAssetId));
+    await fileStorage.setItem(
+      newAssetId,
+      new File([file.payload], newAssetId, { type: file.mediaType })
+    );
   }
 
   await storage.storage.setItem(scene.id, Types.Scene.encode(scene).finish());

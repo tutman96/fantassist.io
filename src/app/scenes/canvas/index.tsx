@@ -1,23 +1,29 @@
-import React, {useState, useEffect, useCallback, useRef} from 'react';
-import Konva from 'konva';
-import useComponentSize from '@rehooks/component-size';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
+import Konva from "konva";
+import useComponentSize from "@rehooks/component-size";
 
-import Box from '@mui/material/Box';
+import Box from "@mui/material/Box";
 
-import DraggableStage from './draggableStage';
+import DraggableStage from "./draggableStage";
 import {
   LayerTypeToComponent,
   ILayer,
   createNewLayer,
   flattenLayer,
   unflattenLayer,
-} from '../layer';
-import {deleteLayer} from '../layer';
-import LayerList from './layerList';
-import TableViewOverlay, {TABLEVIEW_LAYER_ID} from '../layer/tableView';
-import {useTableDimensions} from '@/app/settings';
-import * as Types from '@/protos/scene';
-import { SceneProvider } from './sceneProvider';
+} from "../layer";
+import { deleteLayer } from "../layer";
+import LayerList from "./layerList";
+import TableViewOverlay, { TABLEVIEW_LAYER_ID } from "../layer/tableView";
+import { useTableDimensions } from "@/app/settings";
+import * as Types from "@/protos/scene";
+import { SceneProvider } from "./sceneProvider";
 
 export function calculateViewportCenter(
   layerRef: React.MutableRefObject<Konva.Layer | undefined>
@@ -58,10 +64,12 @@ export function calculateViewportDimensions(
   }
 }
 
-type Props = {scene: Types.Scene; onUpdate: (scene: Types.Scene) => void};
-const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
+type Props = { scene: Types.Scene; onUpdate: (scene: Types.Scene) => void };
+const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
   const layers = scene.layers.map(flattenLayer);
-  const [activeLayerId, setActiveLayerId] = useState<string | null>(layers[0]?.id ?? null);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(
+    layers[0]?.id ?? null
+  );
   const containerRef = useRef<HTMLDivElement>();
   const containerSize = useComponentSize(containerRef);
   const tableDimensions = useTableDimensions();
@@ -69,7 +77,7 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
   const addLayer = useCallback(
     (type: Types.Layer_LayerType) => {
       const layer = createNewLayer(type);
-      layer.name = 'Layer ' + (layers.length + 1);
+      layer.name = "Layer " + (layers.length + 1);
       scene.layers.push(unflattenLayer(layer));
       setActiveLayerId(layer.id);
       onUpdate(scene);
@@ -79,8 +87,8 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
 
   const updateLayer = useCallback(
     (layer: ILayer) => {
-      const index = layers.findIndex(l => l.id === layer.id);
-      scene.layers[index] = unflattenLayer({...layer});
+      const index = layers.findIndex((l) => l.id === layer.id);
+      scene.layers[index] = unflattenLayer(layer);
       scene.layers = Array.from(scene.layers);
       onUpdate(scene);
     },
@@ -91,7 +99,7 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
     (name: string) => {
       const layer = scene.layers
         .map(flattenLayer)
-        .find(l => l.id === activeLayerId);
+        .find((l) => l.id === activeLayerId);
       if (!layer) return;
 
       layer.name = name;
@@ -101,10 +109,10 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
   );
 
   const moveActiveLayer = useCallback(
-    (direction: 'up' | 'down') => {
-      const layerIndex = layers.findIndex(l => l.id === activeLayerId);
+    (direction: "up" | "down") => {
+      const layerIndex = layers.findIndex((l) => l.id === activeLayerId);
       if (layerIndex !== -1) {
-        const swapIndex = direction === 'up' ? layerIndex + 1 : layerIndex - 1;
+        const swapIndex = direction === "up" ? layerIndex + 1 : layerIndex - 1;
         if (swapIndex > scene.layers.length - 1 || swapIndex < 0) {
           return;
         }
@@ -125,13 +133,44 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
   const deleteActiveLayer = useCallback(async () => {
     const layer = scene.layers
       .map(flattenLayer)
-      .find(l => l.id === activeLayerId);
+      .find((l) => l.id === activeLayerId);
     if (layer) {
       const newScene = await deleteLayer(scene, layer);
       onUpdate(newScene);
       setActiveLayerId(null);
     }
   }, [activeLayerId, onUpdate, scene]);
+
+  const sceneMemo = useMemo(() => {
+    console.log('render', scene.version, activeLayerId);
+    return (
+      <>
+        {scene.layers.map(flattenLayer).map((layer) => {
+          const Component = LayerTypeToComponent[layer.type];
+          if (!Component || !layer.visible) return null;
+          return (
+            <Component
+              key={layer.id}
+              layer={layer}
+              isTable={false}
+              onUpdate={updateLayer}
+              active={activeLayerId === layer.id}
+            />
+          );
+        })}
+        <TableViewOverlay
+          options={scene.table!}
+          active={activeLayerId === TABLEVIEW_LAYER_ID}
+          onUpdate={(options) => {
+            scene.table = options;
+            onUpdate(scene);
+          }}
+          showBorder={true}
+          showGrid={true}
+        />
+      </>
+    );
+  }, [scene.version, activeLayerId]);
 
   const initialZoom = tableDimensions
     ? Math.min(
@@ -145,9 +184,9 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
       <Box
         ref={containerRef as any}
         sx={{
-          display: 'flex',
+          display: "flex",
           flexGrow: 2,
-          height: '100%',
+          height: "100%",
         }}
       >
         {containerSize.height !== 0 && tableDimensions ? (
@@ -156,31 +195,7 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
             height={containerSize.height || 1}
             initialZoom={initialZoom}
           >
-            {scene.layers.map(flattenLayer).map(layer => {
-              const Component = LayerTypeToComponent[layer.type];
-              if (!Component || !layer.visible) return null;
-              return (
-                <Component
-                  key={layer.id}
-                  layer={layer}
-                  isTable={false}
-                  onUpdate={updateLayer}
-                  active={activeLayerId === layer.id}
-                />
-              );
-            })}
-            <TableViewOverlay
-              options={scene.table!}
-              active={activeLayerId === TABLEVIEW_LAYER_ID}
-              onUpdate={options => {
-                onUpdate({
-                  ...scene,
-                  table: options,
-                });
-              }}
-              showBorder={true}
-              showGrid={true}
-            />
+            {sceneMemo}
           </DraggableStage>
         ) : null}
       </Box>

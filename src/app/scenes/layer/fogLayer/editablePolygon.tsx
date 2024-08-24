@@ -5,6 +5,9 @@ import Konva from 'konva';
 import {useKeyPress} from '@/utils';
 import theme from '@/theme';
 import * as Types from '@/protos/scene';
+import { darken } from '@mui/material/styles';
+
+const POLYGON_STROKE_COLOR = theme.palette.primary.dark;
 
 const ANCHOR_RADIUS = 7;
 const Anchor: React.FunctionComponent<{
@@ -48,10 +51,10 @@ const Anchor: React.FunctionComponent<{
         e.cancelBubble = true;
       }}
       onDragEnd={() => onMoveEnd()}
-      stroke={theme.palette.primary.dark}
+      stroke={POLYGON_STROKE_COLOR}
       strokeWidth={3}
       strokeScaleEnabled={false}
-      fill={firstAnchor ? theme.palette.primary.dark : undefined}
+      fill={firstAnchor ? POLYGON_STROKE_COLOR : undefined}
     />
   );
 };
@@ -192,7 +195,7 @@ const EditablePolygon: React.FunctionComponent<
         <>
           <Line
             closed={closed}
-            stroke={theme.palette.primary.dark}
+            stroke={darken(POLYGON_STROKE_COLOR, 0.2)}
             strokeWidth={3}
             dash={[4, 4]}
             strokeScaleEnabled={false}

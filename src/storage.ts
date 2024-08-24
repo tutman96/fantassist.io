@@ -114,7 +114,9 @@ class RTStorage<T> {
     func: (value: { key: string; value: V | null }) => void
   ): { unsubscribe: () => void };
   subscribe<V extends T>(
-    keyOrFunc: ((value: { key: string; value: T | null }) => void) | string,
+    keyOrFunc:
+      | ((value: { key: string; value: T | null }) => void)
+      | string,
     func?: (value: V | undefined) => void
   ) {
     if (typeof keyOrFunc === "function") {
@@ -153,9 +155,9 @@ export default function globalStorage<T, B = T>(
         }
       });
 
-      const subscription = storage.subscribe(key, (d) =>
-        setState(d ? (decode(d) as V) : null)
-      );
+      const subscription = storage.subscribe(key, (d) => {
+        setState(d ? (decode(d) as V) : null);
+      });
       return () => {
         subscription.unsubscribe();
       };
@@ -166,7 +168,6 @@ export default function globalStorage<T, B = T>(
         return async () => {};
       }
       return async (newData: V) => {
-        setState(newData);
         await storage.setItem(key, encode(newData));
       };
     }, [key]);

@@ -159,30 +159,32 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
         overflow: "hidden",
       }}
     >
-      <Box
-        sx={{
-          background: "#3f3f3f",
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          right: 0,
-          left: 0,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: -1,
-        }}
-      >
-        <Typography sx={{ marginBottom: theme.spacing(2) }}>
-          Loading scene...
-        </Typography>
-        <CircularProgress
-          color="secondary"
-          variant={scene ? "determinate" : "indeterminate"}
-          value={50}
-        />
-      </Box>
+      {!scene && (
+        <Box
+          sx={{
+            background: "#3f3f3f",
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            right: 0,
+            left: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: -1,
+          }}
+        >
+          <Typography sx={{ marginBottom: theme.spacing(2) }}>
+            Loading scene...
+          </Typography>
+          <CircularProgress
+            color="secondary"
+            variant={scene ? "determinate" : "indeterminate"}
+            value={50}
+          />
+        </Box>
+      )}
 
       {scene && (
         <>
@@ -190,9 +192,6 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
             sx={{
               zIndex: theme.zIndex.appBar,
               ...BACKDROP_STYLE,
-              position: "absolute",
-              top: 0,
-              left: 0,
               width: "100%",
               alignItems: "center",
               justifyContent: "space-between",
@@ -208,7 +207,11 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
           </Toolbar>
 
           <ToolbarPortalProvider>
-            <Canvas scene={scene} onUpdate={updateScene} />
+            <Canvas scene={scene} onUpdate={(s) => {
+              s.version++;
+              console.log('updateScene', s);
+              updateScene(s)
+            }} />
           </ToolbarPortalProvider>
         </>
       )}

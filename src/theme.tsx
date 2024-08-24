@@ -1,6 +1,6 @@
 'use client';
 import {singletonHook} from 'react-singleton-hook';
-import {createTheme, darken} from '@mui/material/styles';
+import {createTheme, darken, lighten} from '@mui/material/styles';
 import {useState} from 'react';
 import {grey} from '@mui/material/colors';
 
@@ -18,6 +18,12 @@ export const theme = createTheme({
     mode: 'dark',
     background: {
       default: darken('#0D1B2A', 0.4),
+      paper: '#0D1B2A',
+    },
+    primary: {
+      main: lighten('#1E90FF', 0.5),
+      dark: '#1E90FF',
+      light: lighten('#1E90FF', 0.7)
     },
     secondary: grey,
     error: {
@@ -33,7 +39,9 @@ export const theme = createTheme({
 export default theme;
 
 export const BACKDROP_STYLE = {
-  backgroundColor: 'rgba(0,0,0,0.7)',
+  backgroundColor: theme.palette.background.default, 
   backdropFilter: 'blur(2px)',
   boxShadow: theme.shadows[10],
 };
+
+export const COSMIC_PURPLE = '#3A0CA3';

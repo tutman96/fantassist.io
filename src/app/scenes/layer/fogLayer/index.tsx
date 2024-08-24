@@ -8,8 +8,6 @@ import React, {
 import { Layer } from "react-konva";
 import Konva from "konva";
 
-import { deepPurple } from "@mui/material/colors";
-
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
 import CloudOffOutlinedIcon from "@mui/icons-material/CloudOffOutlined";
 import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
@@ -29,6 +27,8 @@ import RayCastRevealPolygon, {
 import { calculateViewportCenter } from "../../canvas";
 import EditLightToolbarItem from "./editLightToolbarItem";
 import * as Types from "@/protos/scene";
+import { COSMIC_PURPLE } from "@/theme";
+import { darken, lighten } from "@mui/material/styles";
 
 export const BLUR_RADIUS = 1 / 20;
 
@@ -44,10 +44,15 @@ const FogLayer: React.FunctionComponent<Props> = ({
 
   const [addingPolygon, setAddingPolygon] =
     useState<Types.FogLayer_Polygon | null>(null);
-  const [selectedPolygon, setSelectedPolygon] =
-    useState<Types.FogLayer_Polygon | null>(null);
-  const [selectedLight, setSelectedLight] =
-    useState<Types.FogLayer_LightSource | null>(null);
+  const [_selectedPolygon, setSelectedPolygon] = useState<
+    | {
+        type: Types.FogLayer_Polygon_PolygonType;
+        idx: number;
+      }
+    | Types.FogLayer_Polygon
+    | null
+  >(null);
+  const [selectedLight, setSelectedLight] = useState<number | null>(null);
 
   const collections: {
     [type: number]: Types.FogLayer_Polygon[];
@@ -60,6 +65,15 @@ const FogLayer: React.FunctionComponent<Props> = ({
     }),
     [layer]
   );
+
+  const selectedPolygon = useMemo(() => {
+    if (!_selectedPolygon) return null;
+    if ("type" in _selectedPolygon && "idx" in _selectedPolygon) {
+      return collections[_selectedPolygon.type][_selectedPolygon.idx];
+    } else {
+      return _selectedPolygon;
+    }
+  }, [_selectedPolygon, collections]);
 
   useEffect(() => {
     if (!active) {
@@ -127,7 +141,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
               position: viewportCenter,
             });
             layer.lightSources = [...layer.lightSources, light];
-            setSelectedLight(light);
+            setSelectedLight(layer.lightSources.length - 1);
             onUpdate({ ...layer });
           }}
           keyboardShortcuts={["e"]}
@@ -170,11 +184,9 @@ const FogLayer: React.FunctionComponent<Props> = ({
           }}
         />
         <EditLightToolbarItem
-          light={selectedLight}
+          light={selectedLight ? layer.lightSources[selectedLight] : null}
           onUpdate={(light) => {
-            const index = layer.lightSources.indexOf(selectedLight!);
-            layer.lightSources[index] = light;
-            setSelectedLight(light);
+            layer.lightSources[selectedLight!] = light;
             onUpdate({ ...layer });
           }}
         />
@@ -195,11 +207,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
               onUpdate({ ...layer });
               setSelectedPolygon(null);
             } else if (selectedLight) {
-              const index = layer.lightSources.indexOf(selectedLight);
-              if (index !== -1) {
-                layer.lightSources.splice(index, 1);
-              }
-
+              layer.lightSources.splice(selectedLight, 1);
               onUpdate({ ...layer });
               setSelectedLight(null);
             }
@@ -272,7 +280,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
           case Types.FogLayer_Polygon_PolygonType.FOG_CLEAR:
             return {
               opacity: poly.visibleOnTable ? (active ? 0.3 : 1) : 0.6,
-              fill: deepPurple[200],
+              fill: darken(COSMIC_PURPLE, 0.9),
               globalCompositeOperation: active ? undefined : "destination-out",
               closed: true,
             };
@@ -280,9 +288,10 @@ const FogLayer: React.FunctionComponent<Props> = ({
             return {
               stroke: active
                 ? poly.visibleOnTable
-                  ? deepPurple[700]
-                  : deepPurple[400]
+                  ? lighten(COSMIC_PURPLE, 0.1)
+                  : darken(COSMIC_PURPLE, 0.2)
                 : undefined,
+              opacity: poly.visibleOnTable ? 1 : 0.5,
               strokeWidth: active ? 10 : undefined,
               hitStrokeWidth: 20,
               lineCap: "round",
@@ -299,7 +308,8 @@ const FogLayer: React.FunctionComponent<Props> = ({
   const polyToEditablePolygon = (type: Types.FogLayer_Polygon_PolygonType) => {
     return function WrappedEditablePolygon(
       poly: Types.FogLayer_Polygon,
-      i: number
+      i: number,
+      polygons: Types.FogLayer_Polygon[]
     ) {
       poly.type = type;
       if (isTable && !poly.visibleOnTable) return null;
@@ -315,11 +325,15 @@ const FogLayer: React.FunctionComponent<Props> = ({
           selectable={!addingPolygon}
           selected={selected}
           onSelected={() => {
-            setSelectedPolygon(poly);
+            setSelectedPolygon({
+              type,
+              idx: i,
+            });
             setSelectedLight(null);
           }}
           adding={false}
-          onUpdate={() => {
+          onUpdate={(polygon) => {
+            polygons[i] = { ...polygon };
             onUpdate(layer);
           }}
         />
@@ -352,9 +366,9 @@ const FogLayer: React.FunctionComponent<Props> = ({
             layer.lightSources[i] = light;
             onUpdate(layer);
           }}
-          selected={selectedLight === light}
+          selected={selectedLight === i}
           onSelected={() => {
-            setSelectedLight(light);
+            setSelectedLight(i);
             setSelectedPolygon(null);
           }}
         />
