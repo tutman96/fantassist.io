@@ -60,32 +60,11 @@ export function calculateViewportDimensions(
 
 type Props = {scene: Types.Scene; onUpdate: (scene: Types.Scene) => void};
 const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
-  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const layers = scene.layers.map(flattenLayer);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(layers[0]?.id ?? null);
   const containerRef = useRef<HTMLDivElement>();
   const containerSize = useComponentSize(containerRef);
   const tableDimensions = useTableDimensions();
-  const layers = scene.layers.map(flattenLayer);
-
-  // Default selected layer to the first layer
-  useEffect(() => {
-    if (activeLayerId === TABLEVIEW_LAYER_ID) return;
-
-    if (
-      (activeLayerId === null || !layers.some(l => l.id === activeLayerId)) &&
-      layers.length
-    ) {
-      setActiveLayerId(layers[0].id);
-    }
-  }, [activeLayerId, layers]);
-
-  const onLayerUpdate = useCallback(
-    (updatedLayer: ILayer) => {
-      const i = layers.findIndex(l => l.id === updatedLayer.id);
-      scene.layers[i] = unflattenLayer(updatedLayer);
-      onUpdate(scene);
-    },
-    [scene, layers, onUpdate]
-  );
 
   const addLayer = useCallback(
     (type: Types.Layer_LayerType) => {
@@ -101,7 +80,8 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
   const updateLayer = useCallback(
     (layer: ILayer) => {
       const index = layers.findIndex(l => l.id === layer.id);
-      scene.layers[index] = unflattenLayer(layer);
+      scene.layers[index] = unflattenLayer({...layer});
+      scene.layers = Array.from(scene.layers);
       onUpdate(scene);
     },
     [layers, onUpdate, scene]
@@ -178,13 +158,13 @@ const Canvas: React.FunctionComponent<Props> = ({scene, onUpdate}) => {
           >
             {scene.layers.map(flattenLayer).map(layer => {
               const Component = LayerTypeToComponent[layer.type];
-              if (!Component || layer.visible === false) return null;
+              if (!Component || !layer.visible) return null;
               return (
                 <Component
                   key={layer.id}
                   layer={layer}
                   isTable={false}
-                  onUpdate={onLayerUpdate}
+                  onUpdate={updateLayer}
                   active={activeLayerId === layer.id}
                 />
               );

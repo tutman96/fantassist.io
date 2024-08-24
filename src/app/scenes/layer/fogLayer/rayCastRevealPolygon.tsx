@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect, useMemo} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {Shape, Line} from 'react-konva';
 import Konva from 'konva';
 
@@ -77,8 +77,6 @@ const RayCastRevealPolygon: React.FunctionComponent<Props> = ({
   selected,
   onSelected,
 }) => {
-  const iconRef = useRef<Konva.Shape>();
-
   const [localPosition, setLocalPosition] = useState(light.position!);
 
   const positionX = light.position!.x;
@@ -101,10 +99,6 @@ const RayCastRevealPolygon: React.FunctionComponent<Props> = ({
   const visibilityLinePoints = visibilityPolygon.verticies
     .map(v => [v.x, v.y])
     .flat();
-
-  if (iconRef.current) {
-    iconRef.current.setZIndex(9999);
-  }
 
   let dimlightBrightLightRatio = Math.max(
     0,
@@ -146,10 +140,9 @@ const RayCastRevealPolygon: React.FunctionComponent<Props> = ({
           name={'Icon'}
           x={light.position!.x}
           y={light.position!.y}
-          ref={iconRef as any}
           onMouseDown={e => {
             if (e.evt.button === 0 && selected) {
-              iconRef.current?.startDrag(e);
+              e.target.startDrag(e);
               e.cancelBubble = true;
             }
           }}

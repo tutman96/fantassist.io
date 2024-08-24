@@ -1,23 +1,23 @@
-import LRU from 'lru-cache';
-import {useState, useEffect} from 'react';
-import {v4} from 'uuid';
+import { useState, useEffect, useMemo, useRef } from "react";
+import { v4 } from "uuid";
 
-import {getImageSize, getVideoSize} from './assetSize';
-import {assetFileDatabase} from './storage';
-import * as Types from '@/protos/scene';
-import {useConnection} from '@/external/hooks';
+import { getImageSize, getVideoSize } from "./assetSize";
+import { assetFileDatabase } from "./storage";
+import * as Types from "@/protos/scene";
+import { useConnection, useConnectionState } from "@/external/hooks";
+import { ChannelState } from "@/external/abstractChannel";
 
-export const {storage: fileStorage} = assetFileDatabase();
+export const { storage: fileStorage, useOneValue } = assetFileDatabase();
 
 export function getNewAssets() {
-  const fileDialogInput = document.createElement('input');
-  fileDialogInput.type = 'file';
+  const fileDialogInput = document.createElement("input");
+  fileDialogInput.type = "file";
   fileDialogInput.multiple = true;
-  fileDialogInput.accept = 'image/*,video/*';
+  fileDialogInput.accept = "image/*,video/*";
 
   fileDialogInput.click();
-  return new Promise<Array<Types.AssetLayer_Asset>>(res => {
-    fileDialogInput.onchange = async e => {
+  return new Promise<Array<Types.AssetLayer_Asset>>((res) => {
+    fileDialogInput.onchange = async (e) => {
       const files = (e!.target as HTMLInputElement).files;
       if (!files) {
         return;
@@ -48,15 +48,15 @@ export async function createAsset(file: File) {
     },
   } as Types.AssetLayer_Asset;
 
-  let res: {width: number; height: number};
-  if (file.type.indexOf('image') === 0) {
+  let res: { width: number; height: number };
+  if (file.type.indexOf("image") === 0) {
     res = await getImageSize(file);
     asset.type = Types.AssetLayer_Asset_AssetType.IMAGE;
-  } else if (file.type.indexOf('video') === 0) {
+  } else if (file.type.indexOf("video") === 0) {
     res = await getVideoSize(file);
     asset.type = Types.AssetLayer_Asset_AssetType.VIDEO;
   } else {
-    throw new Error('Unknown file type');
+    throw new Error("Unknown file type");
   }
 
   asset.size = {
@@ -71,76 +71,55 @@ export async function createAsset(file: File) {
 }
 
 export async function deleteAsset(asset: Types.AssetLayer_Asset) {
-  console.log('Deleting asset ' + asset.id);
+  console.log("Deleting asset " + asset.id);
   await fileStorage.removeItem(asset.id);
 }
 
-type CacheEntry = {file: File; element?: HTMLImageElement | HTMLVideoElement};
-const assetCache = new LRU<string, CacheEntry | null>({
-  max: 1024 * 1024 * 500, // 500 MB
-  length: entry => (entry ? entry.file.size : 0),
-  maxAge: 60 * 60 * 1000, // 1 hour
-});
-
-async function getImageElement(file: File) {
-  return new Promise<HTMLImageElement>(res => {
-    const fr = new FileReader();
-    const img = document.createElement('img') as HTMLImageElement;
-    fr.onload = function () {
-      if (fr.result) {
-        img.src = fr.result as string;
-        res(img);
-      }
-    };
-    fr.readAsDataURL(file);
-  });
-}
-
-async function getVideoElement(file: File) {
-  const video = document.createElement('video');
-  video.src = URL.createObjectURL(file);
-  video.loop = true;
-  video.muted = true;
-  video.autoplay = true;
-  video.play();
-  return video;
-}
-
 export function useAssetElement(asset: Types.AssetLayer_Asset) {
-  const [entry, setEntry] = useState<CacheEntry | null | undefined>(
-    assetCache.get(asset.id)
+  const [file, setFile] = useOneValue(asset.id);
+
+  const connection = useConnection();
+  const connectionState = useConnectionState();
+
+  const elementRef = useRef<HTMLImageElement | HTMLVideoElement | null>(
+    document.createElement(
+      asset.type === Types.AssetLayer_Asset_AssetType.IMAGE ? "img" : "video"
+    )
   );
-  const [connection] = useConnection();
 
   useEffect(() => {
-    if (entry === undefined) {
-      fileStorage
-        .getItem(asset.id)
-        .then(async file => {
-          if (!file) {
-            const response = await connection.request({
-              getAssetRequest: {
-                id: asset.id,
-              },
-              displaySceneRequest: undefined,
-            });
-
-            return new File([response.getAssetResponse!.payload], asset.id);
-          } else {
-            return file;
-          }
+    if (
+      file === null &&
+      connection &&
+      connectionState === ChannelState.CONNECTED
+    ) {
+      connection
+        .request({
+          getAssetRequest: {
+            id: asset.id,
+          },
         })
-        .then(async file => {
-          const element = await (asset.type ===
-          Types.AssetLayer_Asset_AssetType.IMAGE
-            ? getImageElement(file)
-            : getVideoElement(file));
-          const entry = {file, element};
-          assetCache.set(asset.id, entry);
-          setEntry(entry);
+        .then((response) => {
+          setFile(new File([response.getAssetResponse!.payload], asset.id));
         });
     }
-  }, [entry, asset.type, asset.id, connection]);
 
-  return entry === null ? null : entry?.element;
+    if (file && elementRef.current) {
+      elementRef.current.src = URL.createObjectURL(file);
+
+      if (asset.type === Types.AssetLayer_Asset_AssetType.VIDEO) {
+        const video = elementRef.current as HTMLVideoElement;
+        video.loop = true;
+        video.muted = true;
+        video.autoplay = true;
+        video.play();
+      }
+
+      return () => {
+        URL.revokeObjectURL(elementRef.current!.src);
+      }
+    }
+  }, [connection, connectionState, file, asset.id, setFile]);
+
+  return elementRef.current;
 }

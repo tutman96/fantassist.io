@@ -73,7 +73,7 @@ function useRequestHandlers() {
 }
 
 function useExternalDisplay() {
-  const [connection] = useConnection();
+  const connection = useConnection();
   const connectionState = useConnectionState();
   const [displayedScene] = useOneSettingValue(Settings.DISPLAYED_SCENE);
   const [tableFreeze] = useOneSettingValue<boolean>(Settings.TABLE_FREEZE);

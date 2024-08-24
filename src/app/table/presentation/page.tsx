@@ -1,3 +1,4 @@
+"use client"
 import React, {useState, useEffect} from 'react';
 
 import * as Types from '@/protos/scene';
@@ -18,7 +19,7 @@ import TableCanvas from '../canvas';
 
 function useDisplayedScene() {
   const [scene, setScene] = useState<Types.Scene | null>(null);
-  const [connection] = useConnection();
+  const connection = useConnection();
   useEffect(() => {
     connection.connect().then(() => console.log('connected'));
     return () => {
@@ -43,7 +44,7 @@ function useDisplayedScene() {
 function useTableConfiguration():
   | ExternalTypes.GetTableConfigurationResponse
   | undefined {
-  const [connection] = useConnection();
+  const connection = useConnection();
   const connectionState = useConnectionState();
   const [, setStoredTableResolution] = useTableResolution();
   const [, setStoredTableSize] = useTableSize();

@@ -1,9 +1,10 @@
-import React, {useEffect} from 'react';
-import {Image} from 'react-konva';
+import React, { useEffect, useRef } from "react";
+import { Image } from "react-konva";
 
-import {useAssetElement} from '../../asset';
-import TransformableAsset from '../../canvas/transformableAsset';
-import * as Types from '@/protos/scene';
+import { useAssetElement } from "../../asset";
+import TransformableAsset from "../../canvas/transformableAsset";
+import * as Types from "@/protos/scene";
+import Konva from "konva";
 
 type Props = {
   asset: Types.AssetLayer_Asset;
@@ -20,6 +21,7 @@ const Asset: React.FunctionComponent<Props> = ({
   playAudio,
 }) => {
   const el = useAssetElement(asset);
+  const imgRef = useRef<Konva.Image>();
 
   useEffect(() => {
     if (asset.type === Types.AssetLayer_Asset_AssetType.VIDEO && el) {
@@ -30,6 +32,17 @@ const Asset: React.FunctionComponent<Props> = ({
     }
     return () => {};
   }, [asset, playAudio, el]);
+
+  useEffect(() => {
+    if (el && imgRef.current) {
+      el.onload = () => {
+        imgRef.current!.getLayer()?.batchDraw();
+      };
+      if (el.width) {
+        imgRef.current!.getLayer()?.batchDraw();
+      }
+    }
+  }, [el, imgRef]);
 
   const xOffset = asset.calibration
     ? asset.calibration.xOffset / asset.calibration.ppiX
@@ -43,17 +56,16 @@ const Asset: React.FunctionComponent<Props> = ({
       isSelected={selected}
       onSelected={onSelected}
       rectTransform={asset.transform!}
-      snapOffset={asset.snapToGrid ? {x: xOffset, y: yOffset} : undefined}
-      onTransform={newRect => {
-        onUpdate({
-          ...asset,
-          transform: newRect,
-        });
+      snapOffset={asset.snapToGrid ? { x: xOffset, y: yOffset } : undefined}
+      onTransform={(newRect) => {
+        asset.transform = newRect;
+        onUpdate(asset);
       }}
     >
       {el && (
         // eslint-disable-next-line jsx-a11y/alt-text
         <Image
+          ref={imgRef as any}
           image={el}
           width={asset.transform!.width}
           height={asset.transform!.height}

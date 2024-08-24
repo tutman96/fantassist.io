@@ -19,7 +19,7 @@ export function sceneDatabase() {
     useOneValue: (
       key: string | null
     ): [Types.Scene | null | undefined, (newData: Types.Scene) => void] => {
-      const [newValue, setNewValue] = storage.useOneValue(key);
+      const [storedValue, setStoredValue] = storage.useOneValue(key);
       const [localValue, setLocalValue] = useState<Types.Scene>();
 
       useEffect(() => {
@@ -27,33 +27,15 @@ export function sceneDatabase() {
       }, [key]);
 
       useEffect(() => {
-        if (!newValue) return;
-
-        // Initial load
-        if (!localValue) {
-          setLocalValue(newValue);
-          return;
-        }
-
-        // Storage updates
         if (
-          newValue &&
-          (newValue.id !== localValue.id ||
-            newValue.version > localValue.version)
+          storedValue &&
+          (storedValue.id !== localValue?.id ||
+            storedValue.version > localValue.version)
         ) {
-          setLocalValue(newValue);
+          setLocalValue(storedValue);
           return;
         }
-
-        // Local updates
-        if (
-          newValue.id === localValue.id &&
-          newValue.version < localValue.version
-        ) {
-          setNewValue(localValue);
-          return;
-        }
-      }, [localValue, newValue, setNewValue]);
+      }, [localValue, storedValue, setStoredValue]);
 
       const updateScene = useCallback((scene: Types.Scene) => {
         scene.version++;
@@ -61,14 +43,15 @@ export function sceneDatabase() {
           "Updating scene " + scene.name + " to v" + scene.version,
           scene
         );
-        setLocalValue({ ...scene }); // TODO: this deref should be unnecessary
+        setLocalValue(scene);
+        setStoredValue(scene);
       }, []);
 
-      if (newValue === undefined) {
+      if (storedValue === undefined) {
         return [undefined, updateScene];
       }
 
-      if (newValue === null) {
+      if (storedValue === null) {
         return [null, updateScene];
       }
 
@@ -96,7 +79,6 @@ export function sceneDatabase() {
 export function createNewScene(): Types.Scene {
   const defaultLayer = createNewLayer(Types.Layer_LayerType.ASSETS);
   defaultLayer.name = "Layer 1";
-console.log({v4: v4()})
   return {
     id: v4(),
     name: "Untitled",

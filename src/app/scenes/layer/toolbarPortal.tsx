@@ -35,14 +35,13 @@ export const ToolbarPortalProvider: React.FunctionComponent<
 
   useEffect(() => {
     if (node.current && !rootRef.current) {
-      console.log("Creating root", node.current);
       rootRef.current = createRoot(node.current);
     }
     const currentRoot = rootRef.current;
 
     return () => {
       if (currentRoot) {
-        setTimeout(() => currentRoot.unmount(), 0);
+        currentRoot.unmount();
         rootRef.current = null;
       }
     };

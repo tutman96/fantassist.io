@@ -1,24 +1,30 @@
-import React, {useState, useRef, useEffect, useCallback, useMemo} from 'react';
-import {Layer} from 'react-konva';
-import Konva from 'konva';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
+import { Layer } from "react-konva";
+import Konva from "konva";
 
-import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
-import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
-import GridGoldenratioOutlinedIcon from '@mui/icons-material/GridGoldenratioOutlined';
-import Grid3x3OutlinedIcon from '@mui/icons-material/Grid3x3Outlined';
+import AddPhotoAlternateOutlinedIcon from "@mui/icons-material/AddPhotoAlternateOutlined";
+import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
+import GridGoldenratioOutlinedIcon from "@mui/icons-material/GridGoldenratioOutlined";
+import Grid3x3OutlinedIcon from "@mui/icons-material/Grid3x3Outlined";
 
-import {ILayerComponentProps} from '..';
-import AssetComponent from './asset';
-import {deleteAsset, getNewAssets} from '../../asset';
-import ToolbarItem, {ToolbarSeparator} from '../toolbarItem';
-import ToolbarPortal from '../toolbarPortal';
-import AssetSizer, {calculateCalibratedTransform} from './assetSizer';
-import {usePlayAudioOnTable} from '../../../settings';
+import { ILayerComponentProps } from "..";
+import AssetComponent from "./asset";
+import { deleteAsset, getNewAssets } from "../../asset";
+import ToolbarItem, { ToolbarSeparator } from "../toolbarItem";
+import ToolbarPortal from "../toolbarPortal";
+import AssetSizer, { calculateCalibratedTransform } from "./assetSizer";
+import { usePlayAudioOnTable } from "../../../settings";
 import {
   calculateViewportCenter,
   calculateViewportDimensions,
-} from '../../canvas';
-import * as Types from '@/protos/scene';
+} from "../../canvas";
+import * as Types from "@/protos/scene";
 
 type Props = ILayerComponentProps<Types.AssetLayer>;
 const AssetLayer: React.FunctionComponent<Props> = ({
@@ -36,7 +42,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
       const asset = layer.assets[selectedAssetId];
       delete layer.assets[selectedAssetId];
       await deleteAsset(asset);
-      layer.assets = {...layer.assets};
+      layer.assets = { ...layer.assets };
       onUpdate(layer);
       setSelectedAssetId(null);
     }
@@ -47,7 +53,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
     if (!layerRef.current) return;
     if (
       !Object.values(layer.assets).some(
-        asset => asset.type === Types.AssetLayer_Asset_AssetType.VIDEO
+        (asset) => asset.type === Types.AssetLayer_Asset_AssetType.VIDEO
       )
     )
       return;
@@ -75,9 +81,9 @@ const AssetLayer: React.FunctionComponent<Props> = ({
         setSelectedAssetId(null);
       }
     }
-    parent.on('click.konva', onParentClick);
+    parent.on("click.konva", onParentClick);
     return () => {
-      parent.off('click.konva', onParentClick);
+      parent.off("click.konva", onParentClick);
     };
   }, [layerRef, selectedAssetId]);
 
@@ -111,21 +117,21 @@ const AssetLayer: React.FunctionComponent<Props> = ({
                 viewportCenter.y - (asset.transform!.height ?? 0) / 2;
               layer.assets[asset.id] = asset;
             }
-            layer.assets = {...layer.assets};
+            layer.assets = { ...layer.assets };
             onUpdate(layer);
           }}
         />
         <ToolbarSeparator />
         <AssetSizer
           asset={selectedAsset}
-          onUpdate={asset => {
+          onUpdate={(asset) => {
             asset.transform = calculateCalibratedTransform(asset);
             layer.assets[asset.id] = asset;
             onUpdate(layer);
           }}
         />
         <ToolbarItem
-          label={selectedAsset?.snapToGrid ? 'Free Move' : 'Snap to Grid'}
+          label={selectedAsset?.snapToGrid ? "Free Move" : "Snap to Grid"}
           disabled={!selectedAsset}
           icon={
             selectedAsset?.snapToGrid ? (
@@ -146,24 +152,23 @@ const AssetLayer: React.FunctionComponent<Props> = ({
           label="Delete Asset"
           disabled={selectedAssetId === null}
           onClick={deleteSelectedAsset}
-          keyboardShortcuts={['Delete', 'Backspace']}
+          keyboardShortcuts={["Delete", "Backspace"]}
         />
       </>
     );
   }, [layer, layerRef, selectedAssetId, onUpdate, deleteSelectedAsset]);
-
   return (
     <>
       {layerActive && <ToolbarPortal>{toolbar}</ToolbarPortal>}
       <Layer ref={layerRef as any} listening={layerActive}>
-        {Object.values(layer.assets).map(asset => {
+        {Object.values(layer.assets).map((asset) => {
           return (
             <AssetComponent
               key={asset.id}
               asset={asset}
               selected={layerActive && selectedAssetId === asset.id}
               onSelected={() => layerActive && setSelectedAssetId(asset.id)}
-              onUpdate={updatedAsset => {
+              onUpdate={(updatedAsset) => {
                 layer.assets[updatedAsset.id] = updatedAsset;
                 onUpdate(layer);
               }}

@@ -1,13 +1,13 @@
-import React, {useEffect, MouseEvent, ReactNode} from 'react';
+import React, { useEffect, MouseEvent, ReactNode } from "react";
 
-import Divider from '@mui/material/Divider';
-import IconButton, {IconButtonProps} from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
-import theme from '@/theme';
+import Divider from "@mui/material/Divider";
+import IconButton, { IconButtonProps } from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
+import theme from "@/theme";
 
 const SHORTCUT_ICON_MAPPING = {
-  Delete: '\u232B',
-} as {[key: string]: string};
+  Delete: "\u232B",
+} as { [key: string]: string };
 
 type Props = Partial<IconButtonProps> & {
   keyboardShortcuts?: string[];
@@ -26,13 +26,13 @@ const ToolbarItem: React.FunctionComponent<Props> = ({
       const onKeyPress = (e: KeyboardEvent) => {
         if (
           keyboardShortcuts!.includes(e.key) &&
-          window.document.activeElement?.tagName !== 'INPUT'
+          window.document.activeElement?.tagName !== "INPUT"
         ) {
           otherProps.onClick!(e);
         }
       };
-      window.addEventListener('keyup', onKeyPress);
-      return () => window.removeEventListener('keyup', onKeyPress);
+      window.addEventListener("keyup", onKeyPress);
+      return () => window.removeEventListener("keyup", onKeyPress);
     }
     return () => {};
   }, [keyboardShortcuts, otherProps.onClick]);
@@ -46,27 +46,29 @@ const ToolbarItem: React.FunctionComponent<Props> = ({
               SHORTCUT_ICON_MAPPING[keyboardShortcuts[0]] ||
               keyboardShortcuts[0]
             })`
-          : '')
+          : "")
       }
     >
-      <IconButton
-        {...otherProps}
-        size="medium"
-        sx={{
-          height: theme.spacing(5),
-          color: theme.palette.grey[200],
-          '&.Mui-disabled': {
-            color: theme.palette.grey[600],
-          },
-        }}
-      >
-        {icon}
-      </IconButton>
+      <span>
+        <IconButton
+          {...otherProps}
+          size="medium"
+          sx={{
+            height: theme.spacing(5),
+            color: theme.palette.grey[200],
+            "&.Mui-disabled": {
+              color: theme.palette.grey[600],
+            },
+          }}
+        >
+          {icon}
+        </IconButton>
+      </span>
     </Tooltip>
   );
 };
 export default ToolbarItem;
 
 export const ToolbarSeparator: React.FunctionComponent = () => {
-  return <Divider sx={{height: theme.spacing(5)}} orientation="vertical" />;
+  return <Divider sx={{ height: theme.spacing(5) }} orientation="vertical" />;
 };
