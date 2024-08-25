@@ -186,35 +186,33 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
         </Box>
       )}
 
-      {scene && (
-        <>
-          <Toolbar
-            sx={{
-              zIndex: theme.zIndex.appBar,
-              ...BACKDROP_STYLE,
-              width: "100%",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Typography variant="h6" sx={{ marginLeft: theme.spacing(5) }}>
-              {scene.name}
-            </Typography>
-            <Box />
-            <Box>
-              <TableDisplayButton scene={scene} />
-            </Box>
-          </Toolbar>
+      <Toolbar
+        sx={{
+          zIndex: theme.zIndex.appBar,
+          ...BACKDROP_STYLE,
+          width: "100%",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <Typography variant="h6" sx={{ marginLeft: theme.spacing(5) }}>
+          {scene?.name}
+        </Typography>
+        <Box />
+        <Box>{scene && <TableDisplayButton scene={scene} />}</Box>
+      </Toolbar>
 
-          <ToolbarPortalProvider>
-            <Canvas scene={scene} onUpdate={(s) => {
+      <ToolbarPortalProvider>
+        {scene && (
+          <Canvas
+            scene={scene}
+            onUpdate={(s) => {
               s.version++;
-              console.log('updateScene', s);
-              updateScene(s)
-            }} />
-          </ToolbarPortalProvider>
-        </>
-      )}
+              updateScene(s);
+            }}
+          />
+        )}
+      </ToolbarPortalProvider>
     </Box>
   );
 };

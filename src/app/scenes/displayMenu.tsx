@@ -1,21 +1,25 @@
-import React, {useCallback} from 'react';
+import React, { useCallback } from "react";
 
-import Button from '@mui/material/Button';
+import Button from "@mui/material/Button";
 
-import TabIcon from '@mui/icons-material/Tab';
-import CancelPresentation from '@mui/icons-material/CancelPresentation';
-import PresentToAll from '@mui/icons-material/PresentToAll';
+import TabIcon from "@mui/icons-material/Tab";
+import CancelPresentation from "@mui/icons-material/CancelPresentation";
+import PresentToAll from "@mui/icons-material/PresentToAll";
 
-import {useConnection, useConnectionState} from '@/external/hooks';
-import {ChannelState} from '@/external/abstractChannel';
-import PresentationApiChannel from '@/external/presentationApiChannel';
+import { useConnection, useConnectionState } from "@/external/hooks";
+import { ChannelState } from "@/external/abstractChannel";
+import PresentationApiChannel from "@/external/presentationApiChannel";
 
 const FullscreenButton: React.FunctionComponent = () => {
   const connection = useConnection();
   const connectionState = useConnectionState();
 
   const connect = useCallback(async () => {
-    await connection.connect();
+    try {
+      await connection.connect();
+    } catch (e) {
+      console.warn("Failed to connect to fullscreen display", e);
+    }
   }, [connection]);
 
   if (

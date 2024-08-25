@@ -142,7 +142,6 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
   }, [activeLayerId, onUpdate, scene]);
 
   const sceneMemo = useMemo(() => {
-    console.log('render', scene.version, activeLayerId);
     return (
       <>
         {scene.layers.map(flattenLayer).map((layer) => {
@@ -174,8 +173,8 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
 
   const initialZoom = tableDimensions
     ? Math.min(
-        containerSize.height / tableDimensions.height,
-        containerSize.width / tableDimensions.width
+        containerSize.height / (tableDimensions.height / (scene.table?.scale ?? 1)),
+        containerSize.width / (tableDimensions.width / (scene.table?.scale ?? 1))
       )
     : 1;
 
@@ -194,6 +193,7 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
             width={containerSize.width || 1}
             height={containerSize.height || 1}
             initialZoom={initialZoom}
+            initialOffset={scene.table ? scene.table.offset : { x: 0, y: 0 }}
           >
             {sceneMemo}
           </DraggableStage>

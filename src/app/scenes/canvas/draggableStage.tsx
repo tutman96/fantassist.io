@@ -1,14 +1,15 @@
-import React, {useRef, useEffect, useCallback} from 'react';
-import Konva from 'konva';
-import {Stage} from 'react-konva';
-import {SxProps} from '@mui/system';
+import React, { useRef, useEffect, useCallback } from "react";
+import Konva from "konva";
+import { Stage } from "react-konva";
+import { SxProps } from "@mui/system";
 
-import PanZoomControl, { Vector3d } from './panZoomControl';
+import PanZoomControl, { Vector3d } from "./panZoomControl";
 
-import Box from '@mui/material/Box';
+import Box from "@mui/material/Box";
+import { Vector2d } from "@/protos/scene";
 
-const TINT1 = '#3f3f3f';
-const TINT2 = '#353535';
+const TINT1 = "#3f3f3f";
+const TINT2 = "#353535";
 
 const ZOOM_SPEED = 1 / 250;
 const PAN_SPEED = 1 / 1;
@@ -16,13 +17,21 @@ const KEYBOARD_ZOOM_SPEED = 1.15;
 
 type Props = {
   initialZoom?: number;
+  initialOffset?: Vector2d;
   width: number;
   height: number;
   sx?: SxProps;
 };
 const DraggableStage: React.FunctionComponent<
   React.PropsWithChildren<Props>
-> = ({initialZoom = 1, width, height, sx, children}) => {
+> = ({
+  initialZoom = 1,
+  initialOffset = { x: 0, y: 0 },
+  width,
+  height,
+  sx,
+  children,
+}) => {
   const stageRef = useRef<Konva.Stage>();
 
   const zoomStageFromMiddle = useCallback(
@@ -43,7 +52,7 @@ const DraggableStage: React.FunctionComponent<
       };
 
       const newZoom = deltaZ > 0 ? oldZoom * deltaZ : oldZoom / -deltaZ;
-      stage.scale({x: newZoom, y: newZoom});
+      stage.scale({ x: newZoom, y: newZoom });
       stage.setPosition({
         x: absoluteCenterOfViewport.x - absoluteOffset.x * newZoom,
         y: absoluteCenterOfViewport.y - absoluteOffset.y * newZoom,
@@ -54,8 +63,8 @@ const DraggableStage: React.FunctionComponent<
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const zoomInPressed = e.code === 'Equal';
-      const zoomOutPressed = e.code === 'Minus';
+      const zoomInPressed = e.code === "Equal";
+      const zoomOutPressed = e.code === "Minus";
       if ((e.ctrlKey || e.metaKey) && (zoomInPressed || zoomOutPressed)) {
         e.preventDefault();
         zoomStageFromMiddle(
@@ -64,9 +73,9 @@ const DraggableStage: React.FunctionComponent<
         stageRef.current?.batchDraw();
       }
     };
-    window.document.addEventListener('keydown', onKeyDown);
+    window.document.addEventListener("keydown", onKeyDown);
     return () => {
-      window.document.removeEventListener('keydown', onKeyDown);
+      window.document.removeEventListener("keydown", onKeyDown);
     };
   }, [stageRef, zoomStageFromMiddle]);
 
@@ -94,26 +103,33 @@ const DraggableStage: React.FunctionComponent<
 
   const onHome = useCallback(() => {
     if (stageRef.current) {
-      stageRef.current.position({x: 0, y: 0});
-      stageRef.current.scale({x: initialZoom, y: initialZoom});
+      stageRef.current.position({
+        x: -initialOffset.x * initialZoom,
+        y: -initialOffset.y * initialZoom,
+      });
+      stageRef.current.scale({ x: initialZoom, y: initialZoom });
       stageRef.current.batchDraw();
     }
-  }, [stageRef, initialZoom]);
+  }, [stageRef, initialZoom, initialOffset]);
 
   useEffect(() => {
-    if (stageRef.current?.scaleX() == 1) {
-      stageRef.current.scale({x: initialZoom, y: initialZoom});
+    if (stageRef.current) {
+      stageRef.current.position({
+        x: -initialOffset.x * initialZoom,
+        y: -initialOffset.y * initialZoom,
+      });
+      stageRef.current.scale({ x: initialZoom, y: initialZoom });
       stageRef.current.batchDraw();
     }
-  }, [stageRef, initialZoom]);
+  }, []);
 
   return (
     <Box
       sx={{
         backgroundColor: TINT2,
         backgroundImage: `linear-gradient(45deg, ${TINT1} 25%, transparent 25%, transparent 75%, ${TINT1} 75%, ${TINT1}), linear-gradient(45deg, ${TINT1} 25%, transparent 25%, transparent 75%, ${TINT1} 75%, ${TINT1})`,
-        backgroundSize: '20px 20px',
-        backgroundPosition: '0 0, 10px 10px',
+        backgroundSize: "20px 20px",
+        backgroundPosition: "0 0, 10px 10px",
         width,
         height,
         ...sx,
@@ -124,13 +140,13 @@ const DraggableStage: React.FunctionComponent<
         ref={stageRef as any}
         width={width}
         height={height}
-        onMouseDown={e => {
+        onMouseDown={(e) => {
           if (e.evt.button === 1 || e.evt.button === 2) {
             stageRef.current?.startDrag(e);
             e.cancelBubble = true;
           }
         }}
-        onWheel={e => {
+        onWheel={(e) => {
           e.evt.preventDefault();
 
           const deltaX = -e.evt.deltaX;
@@ -162,7 +178,7 @@ const DraggableStage: React.FunctionComponent<
           const zoomSpeed = 1 + Math.abs(deltaZ) * ZOOM_SPEED;
           const newZoom =
             deltaZ < 0 ? oldZoom / zoomSpeed : oldZoom * zoomSpeed;
-          stage.scale({x: newZoom, y: newZoom});
+          stage.scale({ x: newZoom, y: newZoom });
 
           const newPos = {
             // x: (pointerPosition.x - mousePointTo.x + (deltaX * PAN_SPEED)) * newZoom,
@@ -175,7 +191,7 @@ const DraggableStage: React.FunctionComponent<
           stage.position(newPos);
           stage.batchDraw();
         }}
-        onContextMenu={e => {
+        onContextMenu={(e) => {
           e.evt.preventDefault();
           return false;
         }}

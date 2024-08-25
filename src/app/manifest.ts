@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
       "Fantassist is a web app built to allow creation and presentation of table-top roleplay map for in person sessions",
     start_url: "/",
     display: "standalone",
-    theme_color: "#0D1B2A",
-    background_color: "#071019",
+    theme_color: '#071019', // theme.pallette.background.default
+    background_color: '#071019', // theme.pallette.background.default
     icons: [
       {
         src: "/android-chrome-192x192.png",
