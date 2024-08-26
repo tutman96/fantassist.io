@@ -155,7 +155,7 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
   // Draw the lines to an offscreen canvas
   const canvas = useThrottledMemo(
     () => {
-      offscreenLayer.destroyChildren();
+      offscreenLayer.removeChildren();
 
       lines.forEach((line) => offscreenLayer.add(line));
 
