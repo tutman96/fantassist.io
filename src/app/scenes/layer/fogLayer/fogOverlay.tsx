@@ -45,8 +45,8 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
     };
   }, [layer.fogPolygons]);
 
-  const width = (fogBounds.maxX - fogBounds.minX) * PIXELS_PER_UNIT;
-  const height = (fogBounds.maxY - fogBounds.minY) * PIXELS_PER_UNIT;
+  const width = Math.max(1, (fogBounds.maxX - fogBounds.minX)) * PIXELS_PER_UNIT;
+  const height = Math.max(1, (fogBounds.maxY - fogBounds.minY)) * PIXELS_PER_UNIT;
 
   // Generate an offscreen canvas to render the fog overlay to
   const childStage = useMemo(() => {
@@ -77,6 +77,7 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
 
   // Calculate line elements that represent the composite fog overlay
   const lines = useMemo(() => {
+    if (layer.fogPolygons.length === 0) return [];
     const lines = new Array<Konva.Line>();
 
     layer.fogPolygons.forEach((polygon) => {
@@ -158,16 +159,18 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
 
       lines.forEach((line) => offscreenLayer.add(line));
 
-      offscreenLayer.cache({
-        pixelRatio: PIXELS_PER_UNIT,
-      });
+      if (lines.length > 0) {
+        offscreenLayer.cache({
+          pixelRatio: PIXELS_PER_UNIT,
+        });
 
-      offscreenLayer.filters([Konva.Filters.Blur]);
-      offscreenLayer.blurRadius(BLUR_RADIUS);
+        offscreenLayer.filters([Konva.Filters.Blur]);
+        offscreenLayer.blurRadius(BLUR_RADIUS);
 
-      offscreenLayer.batchDraw();
+        offscreenLayer.batchDraw();
 
-      imageRef.current?.getLayer()?.batchDraw();
+        imageRef.current?.getLayer()?.batchDraw();
+      }
       return childStage!.toCanvas();
     },
     [offscreenLayer, lines],

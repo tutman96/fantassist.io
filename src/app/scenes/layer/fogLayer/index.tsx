@@ -275,11 +275,9 @@ const FogLayer: React.FunctionComponent<Props> = ({
                 collection.splice(polygonIndex, 1);
               }
 
-              setLocalLayer({ ...localLayer });
               setSelectedPolygon(null);
-            } else if (selectedLight) {
+            } else if (selectedLight !== null) {
               localLayer.lightSources.splice(selectedLight, 1);
-              setLocalLayer({ ...localLayer });
               setSelectedLight(null);
             }
             save();
