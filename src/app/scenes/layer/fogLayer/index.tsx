@@ -26,7 +26,7 @@ import * as Types from "@/protos/scene";
 import { COSMIC_PURPLE } from "@/theme";
 import { darken, lighten } from "@mui/material/styles";
 import FogOverlay from "./fogOverlay";
-import RayCastRevealPolygon from "./rayCastRevealPolygon";
+import Light from "./light";
 
 const getPolygonStyle = (
   poly: Types.FogLayer_Polygon
@@ -366,7 +366,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
           {localLayer.obstructionPolygons.map(WrappedEditablePolygon)}
 
           {localLayer.lightSources.map((light, i) => (
-            <RayCastRevealPolygon
+            <Light
               key={`rcr${i}`}
               light={light}
               isTable={isTable}

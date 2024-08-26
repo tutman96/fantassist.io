@@ -1,10 +1,11 @@
 import React from "react";
-import { Shape } from "react-konva";
+import { Path } from "react-konva";
 
 import { yellow } from "@mui/material/colors";
 
-import theme from "@/theme";
 import * as Types from "@/protos/scene";
+import theme, { COSMIC_PURPLE } from "@/theme";
+import { darken } from "@mui/system";
 
 type Props = {
   light: Types.FogLayer_LightSource;
@@ -14,7 +15,7 @@ type Props = {
   selected: boolean;
   onSelected: () => void;
 };
-const RayCastRevealPolygon: React.FunctionComponent<Props> = ({
+const Light: React.FunctionComponent<Props> = ({
   light,
   onUpdate,
   onSave,
@@ -22,24 +23,18 @@ const RayCastRevealPolygon: React.FunctionComponent<Props> = ({
   onSelected,
 }) => {
   return (
-    <Shape
+    <Path
       name={"Icon"}
       x={light.position!.x}
       y={light.position!.y}
+      data={
+        "M12,2C6.48,2,2,6.48,2,12c0,5.52,4.48,10,10,10s10-4.48,10-10C22,6.48,17.52,2,12,2z M12,19c-0.83,0-1.5-0.67-1.5-1.5h3 C13.5,18.33,12.83,19,12,19z M15,16.5H9V15h6V16.5z M14.97,14H9.03C7.8,13.09,7,11.64,7,10c0-2.76,2.24-5,5-5s5,2.24,5,5 C17,11.64,16.2,13.09,14.97,14z"
+      }
       onMouseDown={(e) => {
         if (e.evt.button === 0 && selected) {
           e.target.startDrag(e);
           e.cancelBubble = true;
         }
-      }}
-      sceneFunc={(context, shape) => {
-        // custom scene function for rendering an "absolute" radius circle
-        const absoluteScale = shape.getAbsoluteScale();
-        const radius = 10 / absoluteScale.x;
-        context.beginPath();
-        context.ellipse(0, 0, radius, radius, 0, 0, Math.PI * 2, false);
-        context.closePath();
-        context.fillStrokeShape(shape);
       }}
       onDragMove={(e) => {
         light.position = {
@@ -59,13 +54,14 @@ const RayCastRevealPolygon: React.FunctionComponent<Props> = ({
           onSelected();
         }
       }}
-      fill={yellow[100]}
+      scaleX={0.03}
+      scaleY={0.03}
+      fill={"white"}
+      opacity={selected ? 1 : 0.8}
       strokeEnabled={selected}
-      stroke={selected ? theme.palette.primary.dark : undefined}
-      strokeWidth={5}
-      strokeScaleEnabled={false}
-      dash={[2, 2]}
+      stroke={darken(theme.palette.primary.dark, 0.2)}
+      strokeWidth={selected ? 0.6 : 0}
     />
   );
 };
-export default RayCastRevealPolygon;
+export default Light;

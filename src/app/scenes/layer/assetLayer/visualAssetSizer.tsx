@@ -5,7 +5,7 @@ import Konva from 'konva';
 import DraggableStage from '../../canvas/draggableStage';
 import Asset from './asset';
 import theme, {VISUAL_ASSET_SIZER_SIZE} from '@/theme';
-import TransformableAsset from '../../canvas/transformableAsset';
+import TransformableAsset from './transformableAsset';
 import * as Types from '@/protos/scene';
 
 const RESIZE_SQUARES = 3;

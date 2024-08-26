@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Image } from "react-konva";
 
 import { useAssetElement } from "../../asset";
-import TransformableAsset from "../../canvas/transformableAsset";
+import TransformableAsset from "./transformableAsset";
 import * as Types from "@/protos/scene";
 import Konva from "konva";
 
