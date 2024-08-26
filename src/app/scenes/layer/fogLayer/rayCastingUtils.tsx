@@ -135,3 +135,42 @@ export function getVisibilityPolygon(
     }),
   };
 }
+
+export function calculateBoundsPolygon(
+  lightSource: Konva.Vector2d,
+  fogPolygons: Array<Types.FogLayer_Polygon>
+): Types.FogLayer_Polygon {
+  let minX: number = lightSource.x;
+  let maxX: number = lightSource.x;
+  let minY: number = lightSource.y;
+  let maxY: number = lightSource.y;
+
+  fogPolygons.forEach((poly) => {
+    poly.verticies.forEach((v) => {
+      minX = Math.min(minX, v.x);
+      maxX = Math.max(maxX, v.x);
+      minY = Math.min(minY, v.y);
+      maxY = Math.max(maxY, v.y);
+    });
+  });
+
+  // Expand Bounds Around Light to make
+  // sure there's no weird issue with the light
+  // being on top of a vertex.
+  minX -= 10;
+  minY -= 10;
+  maxX += 10;
+  maxY += 10;
+
+  return {
+    type: Types.FogLayer_Polygon_PolygonType.LIGHT_OBSTRUCTION,
+    verticies: [
+      { x: minX, y: minY }, // top left
+      { x: maxX, y: minY }, // top right
+      { x: maxX, y: maxY }, // bottom right
+      { x: minX, y: maxY }, // bottom left
+      { x: minX, y: minY }, // top left (close the poly)
+    ],
+    visibleOnTable: true,
+  };
+}

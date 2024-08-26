@@ -27,7 +27,6 @@ export function createNewLayer(type: Types.Layer_LayerType): ILayer {
     visible: true,
     type,
   };
-  console.log('creating layer', layer);
   if (type === Types.Layer_LayerType.ASSETS) {
     return {
       ...layer,

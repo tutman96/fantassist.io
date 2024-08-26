@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useMemo,
-} from "react";
+import React, { useState, useCallback, useRef, useMemo } from "react";
 import Konva from "konva";
 import useComponentSize from "@rehooks/component-size";
 
@@ -24,44 +18,25 @@ import TableViewOverlay, { TABLEVIEW_LAYER_ID } from "../layer/tableView";
 import { useTableDimensions } from "@/app/settings";
 import * as Types from "@/protos/scene";
 import { SceneProvider } from "./sceneProvider";
+import { Rect } from "react-konva";
 
-export function calculateViewportCenter(
-  layerRef: React.MutableRefObject<Konva.Layer | undefined>
-): Konva.Vector2d {
-  if (layerRef.current) {
-    const konvaStage = layerRef.current.parent!;
-    const stageOffset = konvaStage.getAbsolutePosition();
-    const stageSize = konvaStage.getSize();
-    const stageZoom = konvaStage.getAbsoluteScale();
-    return {
-      x: (-stageOffset.x + stageSize.width / 2) / stageZoom.x,
-      y: (-stageOffset.y + stageSize.height / 2) / stageZoom.y,
-    };
-  } else {
-    return {
-      x: 0,
-      y: 0,
-    };
-  }
+export function calculateViewportCenter(stage: Konva.Stage): Konva.Vector2d {
+  const stageOffset = stage.getAbsolutePosition();
+  const stageSize = stage.getSize();
+  const stageZoom = stage.getAbsoluteScale();
+  return {
+    x: (-stageOffset.x + stageSize.width / 2) / stageZoom.x,
+    y: (-stageOffset.y + stageSize.height / 2) / stageZoom.y,
+  };
 }
 
-export function calculateViewportDimensions(
-  layerRef: React.MutableRefObject<Konva.Layer | undefined>
-) {
-  if (layerRef.current) {
-    const konvaStage = layerRef.current.parent!;
-    const stageSize = konvaStage.getSize();
-    const stageZoom = konvaStage.getAbsoluteScale();
-    return {
-      width: stageSize.width / stageZoom.x,
-      height: stageSize.height / stageZoom.y,
-    };
-  } else {
-    return {
-      width: 0,
-      height: 0,
-    };
-  }
+export function calculateViewportDimensions(stage: Konva.Stage) {
+  const stageSize = stage.getSize();
+  const stageZoom = stage.getAbsoluteScale();
+  return {
+    width: stageSize.width / stageZoom.x,
+    height: stageSize.height / stageZoom.y,
+  };
 }
 
 type Props = { scene: Types.Scene; onUpdate: (scene: Types.Scene) => void };
@@ -169,12 +144,14 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
         />
       </>
     );
-  }, [scene.version, activeLayerId]);
+  }, [scene.version, activeLayerId, tableDimensions]);
 
   const initialZoom = tableDimensions
     ? Math.min(
-        containerSize.height / (tableDimensions.height / (scene.table?.scale ?? 1)),
-        containerSize.width / (tableDimensions.width / (scene.table?.scale ?? 1))
+        containerSize.height /
+          (tableDimensions.height / (scene.table?.scale ?? 1)),
+        containerSize.width /
+          (tableDimensions.width / (scene.table?.scale ?? 1))
       )
     : 1;
 

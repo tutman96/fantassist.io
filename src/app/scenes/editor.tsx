@@ -208,6 +208,7 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
             scene={scene}
             onUpdate={(s) => {
               s.version++;
+              console.log("updating scene", s);
               updateScene(s);
             }}
           />

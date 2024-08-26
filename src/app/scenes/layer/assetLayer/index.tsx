@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { Layer } from "react-konva";
+import { Group } from "react-konva";
 import Konva from "konva";
 
 import AddPhotoAlternateOutlinedIcon from "@mui/icons-material/AddPhotoAlternateOutlined";
@@ -34,7 +34,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
   isTable,
 }) => {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
-  const layerRef = useRef<Konva.Layer>();
+  const groupRef = useRef<Konva.Group>();
   const [playAudioOnTable] = usePlayAudioOnTable();
 
   const deleteSelectedAsset = useCallback(async () => {
@@ -50,7 +50,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
 
   // Animate the layer if there are any video assets
   useEffect(() => {
-    if (!layerRef.current) return;
+    if (!groupRef.current) return;
     if (
       !Object.values(layer.assets).some(
         (asset) => asset.type === Types.AssetLayer_Asset_AssetType.VIDEO
@@ -65,16 +65,16 @@ const AssetLayer: React.FunctionComponent<Props> = ({
       if (!isTable && now - previousUpdate < 100) return false;
       else previousUpdate = now;
       return true;
-    }, layerRef.current);
+    }, groupRef.current);
     anim.start();
     return () => {
       anim.stop();
     };
-  }, [layerRef, layer.assets, isTable]);
+  }, [groupRef, layer.assets, isTable]);
 
   useEffect(() => {
-    if (!layerRef.current?.parent) return;
-    const parent = layerRef.current.parent;
+    if (!groupRef.current?.parent) return;
+    const parent = groupRef.current.parent;
 
     function onParentClick() {
       if (selectedAssetId) {
@@ -85,7 +85,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
     return () => {
       parent.off("click.konva", onParentClick);
     };
-  }, [layerRef, selectedAssetId]);
+  }, [groupRef, selectedAssetId]);
 
   // Reset selected asset when active layer changes
   useEffect(() => {
@@ -105,8 +105,9 @@ const AssetLayer: React.FunctionComponent<Props> = ({
           label="Add Asset"
           onClick={async () => {
             const assets = await getNewAssets();
-            const viewportCenter = calculateViewportCenter(layerRef);
-            const viewportDimensions = calculateViewportDimensions(layerRef);
+            const stage = groupRef.current!.getStage()!;
+            const viewportCenter = calculateViewportCenter(stage);
+            const viewportDimensions = calculateViewportDimensions(stage);
             for (const asset of assets) {
               const aspectRatio = asset.size!.width / asset.size!.height;
               asset.transform!.height = viewportDimensions.height / 2;
@@ -156,11 +157,11 @@ const AssetLayer: React.FunctionComponent<Props> = ({
         />
       </>
     );
-  }, [layer, layerRef, selectedAssetId, onUpdate, deleteSelectedAsset]);
+  }, [layer, groupRef, selectedAssetId, onUpdate, deleteSelectedAsset]);
   return (
     <>
       {layerActive && <ToolbarPortal>{toolbar}</ToolbarPortal>}
-      <Layer ref={layerRef as any} listening={layerActive}>
+      <Group ref={groupRef as any} listening={layerActive}>
         {Object.values(layer.assets).map((asset) => {
           return (
             <AssetComponent
@@ -176,7 +177,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
             />
           );
         })}
-      </Layer>
+      </Group>
     </>
   );
 };

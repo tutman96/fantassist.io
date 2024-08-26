@@ -1,6 +1,6 @@
 import React, {useMemo, useRef, useEffect, useState} from 'react';
 import Konva from 'konva';
-import {Layer, Rect, Line, Group, Transformer} from 'react-konva';
+import {Rect, Line, Group, Transformer} from 'react-konva';
 
 import {grey} from '@mui/material/colors';
 
@@ -162,7 +162,7 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
   const height = tableDimensions.height;
 
   return (
-    <Layer listening={active}>
+    <Group listening={active}>
       {active && <ToolbarPortal>{toolbar}</ToolbarPortal>}
       {lines}
       {showBorder || active ? (
@@ -245,7 +245,7 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
           )}
         </>
       ) : null}
-    </Layer>
+    </Group>
   );
 };
 

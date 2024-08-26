@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from "react";
 import Konva from "konva";
-import { Stage } from "react-konva";
+import { Layer, Rect, Stage } from "react-konva";
 import { SxProps } from "@mui/system";
 
 import PanZoomControl, { Vector3d } from "./panZoomControl";
@@ -196,7 +196,9 @@ const DraggableStage: React.FunctionComponent<
           return false;
         }}
       >
-        {children}
+        <Layer>
+          {children}
+        </Layer>
       </Stage>
     </Box>
   );

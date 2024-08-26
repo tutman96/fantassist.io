@@ -5,7 +5,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { Layer } from "react-konva";
+import { Group } from "react-konva";
 import Konva from "konva";
 
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
@@ -20,17 +20,51 @@ import { ILayerComponentProps } from "..";
 import ToolbarPortal from "../toolbarPortal";
 import ToolbarItem, { ToolbarSeparator } from "../toolbarItem";
 import EditablePolygon from "./editablePolygon";
-import { useTablePPI } from "../../../settings";
-import RayCastRevealPolygon, {
-  defaultLightSource,
-} from "./rayCastRevealPolygon";
 import { calculateViewportCenter } from "../../canvas";
 import EditLightToolbarItem from "./editLightToolbarItem";
 import * as Types from "@/protos/scene";
 import { COSMIC_PURPLE } from "@/theme";
 import { darken, lighten } from "@mui/material/styles";
+import FogOverlay from "./fogOverlay";
+import RayCastRevealPolygon from "./rayCastRevealPolygon";
 
-export const BLUR_RADIUS = 1 / 20;
+const getPolygonStyle = (
+  poly: Types.FogLayer_Polygon
+): Partial<Konva.LineConfig> => {
+  switch (poly.type) {
+    case Types.FogLayer_Polygon_PolygonType.FOG:
+      return {
+        closed: true,
+        stroke: darken(COSMIC_PURPLE, 0.2),
+        strokeWidth: 5,
+        hitStrokeWidth: 20,
+        dash: poly.visibleOnTable ? undefined : [5, 5],
+        strokeScaleEnabled: false,
+      };
+    case Types.FogLayer_Polygon_PolygonType.FOG_CLEAR:
+      return {
+        closed: true,
+        stroke: darken(COSMIC_PURPLE, 0),
+        strokeWidth: 5,
+        hitStrokeWidth: 20,
+        dash: poly.visibleOnTable ? undefined : [5, 5],
+        strokeScaleEnabled: false,
+      };
+    case Types.FogLayer_Polygon_PolygonType.LIGHT_OBSTRUCTION:
+    default:
+      return {
+        stroke: poly.visibleOnTable
+          ? lighten(COSMIC_PURPLE, 0.1)
+          : darken(COSMIC_PURPLE, 0.2),
+        opacity: poly.visibleOnTable ? 1 : 0.5,
+        strokeWidth: 10,
+        hitStrokeWidth: 20,
+        lineCap: "round",
+        strokeScaleEnabled: false,
+        closed: false,
+      };
+  }
+};
 
 type Props = ILayerComponentProps<Types.FogLayer>;
 const FogLayer: React.FunctionComponent<Props> = ({
@@ -39,8 +73,16 @@ const FogLayer: React.FunctionComponent<Props> = ({
   onUpdate,
   active,
 }) => {
-  const layerRef = useRef<Konva.Layer>();
-  const tablePPI = useTablePPI();
+  const groupRef = useRef<Konva.Group>();
+  const [localLayer, setLocalLayer] = useState<Types.FogLayer>(layer);
+
+  useEffect(() => {
+    setLocalLayer(layer);
+  }, [layer]);
+
+  const save = () => {
+    onUpdate(localLayer);
+  };
 
   const [addingPolygon, setAddingPolygon] =
     useState<Types.FogLayer_Polygon | null>(null);
@@ -58,22 +100,23 @@ const FogLayer: React.FunctionComponent<Props> = ({
     [type: number]: Types.FogLayer_Polygon[];
   } = useMemo(
     () => ({
-      [Types.FogLayer_Polygon_PolygonType.FOG]: layer.fogPolygons,
-      [Types.FogLayer_Polygon_PolygonType.FOG_CLEAR]: layer.fogClearPolygons,
+      [Types.FogLayer_Polygon_PolygonType.FOG]: localLayer.fogPolygons,
+      [Types.FogLayer_Polygon_PolygonType.FOG_CLEAR]:
+        localLayer.fogClearPolygons,
       [Types.FogLayer_Polygon_PolygonType.LIGHT_OBSTRUCTION]:
-        layer.obstructionPolygons,
+        localLayer.obstructionPolygons,
     }),
-    [layer]
+    [localLayer]
   );
 
-  const selectedPolygon = useMemo(() => {
+  const selectedPolygon = (() => {
     if (!_selectedPolygon) return null;
     if ("type" in _selectedPolygon && "idx" in _selectedPolygon) {
       return collections[_selectedPolygon.type][_selectedPolygon.idx];
     } else {
       return _selectedPolygon;
     }
-  }, [_selectedPolygon, collections]);
+  })();
 
   useEffect(() => {
     if (!active) {
@@ -81,11 +124,11 @@ const FogLayer: React.FunctionComponent<Props> = ({
       setAddingPolygon(null);
       setSelectedLight(null);
     }
-  }, [active, setSelectedPolygon, setAddingPolygon, setSelectedLight]);
+  }, [active]);
 
   useEffect(() => {
-    if (!layerRef.current?.parent || addingPolygon) return;
-    const stage = layerRef.current.parent;
+    if (!groupRef.current || addingPolygon) return;
+    const stage = groupRef.current.getStage()!;
 
     function onParentClick(e: Konva.KonvaEventObject<MouseEvent>) {
       if (e.evt.button === 0) {
@@ -97,7 +140,25 @@ const FogLayer: React.FunctionComponent<Props> = ({
     return () => {
       stage.off("click", onParentClick);
     };
-  }, [layerRef, addingPolygon, setSelectedPolygon, setSelectedLight]);
+  }, [groupRef.current, addingPolygon]);
+
+  const updatePolygons = (
+    type: Types.FogLayer_Polygon_PolygonType,
+    polygons: Types.FogLayer_Polygon[]
+  ) => {
+    switch (type) {
+      case Types.FogLayer_Polygon_PolygonType.FOG:
+        localLayer.fogPolygons = Array.from(polygons);
+        break;
+      case Types.FogLayer_Polygon_PolygonType.FOG_CLEAR:
+        localLayer.fogClearPolygons = Array.from(polygons);
+        break;
+      case Types.FogLayer_Polygon_PolygonType.LIGHT_OBSTRUCTION:
+        localLayer.obstructionPolygons = Array.from(polygons);
+        break;
+    }
+    setLocalLayer({ ...localLayer });
+  };
 
   const toolbar = useMemo(() => {
     return (
@@ -136,13 +197,18 @@ const FogLayer: React.FunctionComponent<Props> = ({
           label="Add Light"
           icon={<LightbulbOutlinedIcon />}
           onClick={() => {
-            const viewportCenter = calculateViewportCenter(layerRef);
-            const light = defaultLightSource({
+            const viewportCenter = calculateViewportCenter(
+              groupRef.current!.getStage()!
+            );
+            const light = {
               position: viewportCenter,
-            });
-            layer.lightSources = [...layer.lightSources, light];
-            setSelectedLight(layer.lightSources.length - 1);
-            onUpdate({ ...layer });
+              brightLightDistance: 4,
+              dimLightDistance: 8,
+            } as Types.FogLayer_LightSource;
+            localLayer.lightSources = [...layer.lightSources, light];
+            setSelectedLight(localLayer.lightSources.length - 1);
+            setLocalLayer({ ...localLayer });
+            save();
           }}
           keyboardShortcuts={["e"]}
         />
@@ -180,14 +246,19 @@ const FogLayer: React.FunctionComponent<Props> = ({
           onClick={() => {
             if (!selectedPolygon) return;
             selectedPolygon.visibleOnTable = !selectedPolygon.visibleOnTable;
-            onUpdate({ ...layer });
+            save();
           }}
         />
         <EditLightToolbarItem
-          light={selectedLight ? layer.lightSources[selectedLight] : null}
+          light={
+            selectedLight !== null
+              ? localLayer.lightSources[selectedLight]
+              : null
+          }
           onUpdate={(light) => {
-            layer.lightSources[selectedLight!] = light;
-            onUpdate({ ...layer });
+            localLayer.lightSources[selectedLight!] = light;
+            setLocalLayer({ ...layer });
+            save();
           }}
         />
         <ToolbarSeparator />
@@ -204,27 +275,26 @@ const FogLayer: React.FunctionComponent<Props> = ({
                 collection.splice(polygonIndex, 1);
               }
 
-              onUpdate({ ...layer });
+              setLocalLayer({ ...localLayer });
               setSelectedPolygon(null);
             } else if (selectedLight) {
-              layer.lightSources.splice(selectedLight, 1);
-              onUpdate({ ...layer });
+              localLayer.lightSources.splice(selectedLight, 1);
+              setLocalLayer({ ...localLayer });
               setSelectedLight(null);
             }
+            save();
           }}
           keyboardShortcuts={["Delete", "Backspace"]}
         />
       </>
     );
-  }, [selectedPolygon, selectedLight, layer, onUpdate, collections, layerRef]);
-
-  useEffect(() => {
-    if (isTable && layerRef.current && tablePPI) {
-      layerRef.current.canvas._canvas.style.filter = `blur(${
-        tablePPI * BLUR_RADIUS
-      }px)`;
-    }
-  }, [layerRef, isTable, tablePPI]);
+  }, [
+    selectedPolygon,
+    selectedLight,
+    localLayer,
+    collections,
+    groupRef.current,
+  ]);
 
   const onPolygonAdded = useCallback(() => {
     if (addingPolygon) {
@@ -245,161 +315,101 @@ const FogLayer: React.FunctionComponent<Props> = ({
       setSelectedPolygon(null);
       collection.push(addingPolygon);
 
-      onUpdate({ ...layer });
+      setLocalLayer({ ...localLayer });
+      save();
     }
-  }, [setAddingPolygon, layer, onUpdate, addingPolygon, collections]);
+  }, [layer, addingPolygon, collections]);
 
-  const getPolygonStyle = useCallback(
-    (poly: Types.FogLayer_Polygon): Partial<Konva.LineConfig> => {
-      if (isTable) {
-        switch (poly.type) {
-          case Types.FogLayer_Polygon_PolygonType.FOG:
-            return {
-              fill: "black",
-              closed: true,
-            };
-          case Types.FogLayer_Polygon_PolygonType.FOG_CLEAR:
-            return {
-              fill: "black",
-              globalCompositeOperation: "destination-out",
-              closed: true,
-            };
-          case Types.FogLayer_Polygon_PolygonType.LIGHT_OBSTRUCTION:
-            return {
-              closed: false,
-            };
-        }
-      } else {
-        switch (poly.type) {
-          case Types.FogLayer_Polygon_PolygonType.FOG:
-            return {
-              opacity: poly.visibleOnTable ? (active ? 0.7 : 0.4) : 0.3,
-              fill: "black",
-              closed: true,
-            };
-          case Types.FogLayer_Polygon_PolygonType.FOG_CLEAR:
-            return {
-              opacity: poly.visibleOnTable ? (active ? 0.3 : 1) : 0.6,
-              fill: darken(COSMIC_PURPLE, 0.9),
-              globalCompositeOperation: active ? undefined : "destination-out",
-              closed: true,
-            };
-          case Types.FogLayer_Polygon_PolygonType.LIGHT_OBSTRUCTION:
-            return {
-              stroke: active
-                ? poly.visibleOnTable
-                  ? lighten(COSMIC_PURPLE, 0.1)
-                  : darken(COSMIC_PURPLE, 0.2)
-                : undefined,
-              opacity: poly.visibleOnTable ? 1 : 0.5,
-              strokeWidth: active ? 10 : undefined,
-              hitStrokeWidth: 20,
-              lineCap: "round",
-              strokeScaleEnabled: false,
-              closed: false,
-            };
-        }
-      }
-      return {};
-    },
-    [isTable, active]
-  );
+  const WrappedEditablePolygon = (
+    poly: Types.FogLayer_Polygon,
+    i: number,
+    polygons: Types.FogLayer_Polygon[]
+  ) => {
+    if (isTable && !poly.visibleOnTable) return null;
 
-  const polyToEditablePolygon = (type: Types.FogLayer_Polygon_PolygonType) => {
-    return function WrappedEditablePolygon(
-      poly: Types.FogLayer_Polygon,
-      i: number,
-      polygons: Types.FogLayer_Polygon[]
-    ) {
-      poly.type = type;
-      if (isTable && !poly.visibleOnTable) return null;
+    const style = getPolygonStyle(poly);
 
-      const style = getPolygonStyle(poly);
-
-      const selected = selectedPolygon === poly;
-      return (
-        <EditablePolygon
-          key={i}
-          polygon={poly}
-          {...style}
-          selectable={!addingPolygon}
-          selected={selected}
-          onSelected={() => {
-            setSelectedPolygon({
-              type,
-              idx: i,
-            });
-            setSelectedLight(null);
-          }}
-          adding={false}
-          onUpdate={(polygon) => {
-            polygons[i] = { ...polygon };
-            onUpdate(layer);
-          }}
-        />
-      );
-    };
+    const selected = selectedPolygon === poly;
+    return (
+      <EditablePolygon
+        key={i}
+        polygon={poly}
+        {...style}
+        selectable={!addingPolygon}
+        selected={selected}
+        onSelected={() => {
+          setSelectedPolygon({
+            type: poly.type,
+            idx: i,
+          });
+          setSelectedLight(null);
+        }}
+        adding={false}
+        onUpdate={(polygon) => {
+          polygons[i] = polygon;
+          updatePolygons(poly.type, polygons);
+        }}
+        onSave={save}
+      />
+    );
   };
 
-  layer.lightSources.forEach(defaultLightSource);
-
   return (
-    <Layer ref={layerRef as any} listening={active}>
+    <>
       {active && <ToolbarPortal>{toolbar}</ToolbarPortal>}
+      <FogOverlay
+        opacity={isTable ? 1 : active ? 0.8 : 0.4}
+        layer={localLayer}
+      />
+      {active && (
+        <Group ref={groupRef as any} listening={active}>
+          {localLayer.fogPolygons.map(WrappedEditablePolygon)}
+          {localLayer.fogClearPolygons.map(WrappedEditablePolygon)}
+          {localLayer.obstructionPolygons.map(WrappedEditablePolygon)}
 
-      {layer.fogPolygons.map(
-        polyToEditablePolygon(Types.FogLayer_Polygon_PolygonType.FOG)
-      )}
-      {layer.fogClearPolygons.map(
-        polyToEditablePolygon(Types.FogLayer_Polygon_PolygonType.FOG_CLEAR)
-      )}
-
-      {layer.lightSources.map((light, i) => (
-        <RayCastRevealPolygon
-          key={`rcr${i}`}
-          light={light}
-          displayIcon={!isTable}
-          isTable={isTable}
-          obstructionPolygons={layer.obstructionPolygons}
-          fogPolygons={layer.fogPolygons}
-          onUpdate={(light) => {
-            layer.lightSources[i] = light;
-            onUpdate(layer);
-          }}
-          selected={selectedLight === i}
-          onSelected={() => {
-            setSelectedLight(i);
-            setSelectedPolygon(null);
-          }}
-        />
-      ))}
-
-      {layer.obstructionPolygons.map(
-        polyToEditablePolygon(
-          Types.FogLayer_Polygon_PolygonType.LIGHT_OBSTRUCTION
-        )
-      )}
-
-      {addingPolygon &&
-        (() => {
-          const style = getPolygonStyle(addingPolygon);
-
-          return (
-            <EditablePolygon
-              key="adding"
-              polygon={addingPolygon}
-              {...style}
-              selectable={false}
-              selected={true}
-              adding={true}
-              onAdded={onPolygonAdded}
-              onUpdate={() => {
-                onUpdate(layer);
+          {localLayer.lightSources.map((light, i) => (
+            <RayCastRevealPolygon
+              key={`rcr${i}`}
+              light={light}
+              isTable={isTable}
+              onUpdate={(light) => {
+                localLayer.lightSources[i] = light;
+                localLayer.lightSources = Array.from(localLayer.lightSources);
+                setLocalLayer({ ...localLayer });
+              }}
+              onSave={save}
+              selected={selectedLight === i}
+              onSelected={() => {
+                setSelectedLight(i);
+                setSelectedPolygon(null);
               }}
             />
-          );
-        })()}
-    </Layer>
+          ))}
+
+          {addingPolygon &&
+            (() => {
+              const style = getPolygonStyle(addingPolygon);
+
+              return (
+                <EditablePolygon
+                  layerId={layer.id}
+                  key="adding"
+                  polygon={addingPolygon}
+                  {...style}
+                  selectable={false}
+                  selected={true}
+                  adding={true}
+                  onAdded={onPolygonAdded}
+                  onUpdate={() => {
+                    setLocalLayer(layer);
+                  }}
+                  onSave={save}
+                />
+              );
+            })()}
+        </Group>
+      )}
+    </>
   );
 };
 export default FogLayer;
