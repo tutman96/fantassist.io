@@ -68,7 +68,7 @@ const Light: React.FunctionComponent<Props> = ({
           onSelected();
         }
       }}
-      fill={"white"}
+      fill={`rgba(${light.color!.r}, ${light.color!.g}, ${light.color!.b}, 0.5)`}
       opacity={selected ? 1 : 0.8}
       strokeEnabled={selected}
       stroke={darken(theme.palette.primary.dark, 0.2)}

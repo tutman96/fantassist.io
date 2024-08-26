@@ -204,6 +204,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
               position: viewportCenter,
               brightLightDistance: 4,
               dimLightDistance: 8,
+              color: { r: 255, g: 255, b: 255, a: 255 },
             } as Types.FogLayer_LightSource;
             localLayer.lightSources = [...layer.lightSources, light];
             setSelectedLight(localLayer.lightSources.length - 1);

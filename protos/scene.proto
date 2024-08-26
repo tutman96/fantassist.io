@@ -85,6 +85,14 @@ message FogLayer {
     Vector2d position = 1;
     float brightLightDistance = 2;
     float dimLightDistance = 3;
+    Color color = 4;
+
+    message Color {
+      uint32 r = 1;
+      uint32 g = 2;
+      uint32 b = 3;
+      uint32 a = 4;
+    }
   }
 
   repeated Polygon obstructionPolygons = 7;

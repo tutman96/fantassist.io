@@ -45,8 +45,8 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
     };
   }, [layer.fogPolygons]);
 
-  const width = Math.max(1, (fogBounds.maxX - fogBounds.minX)) * PIXELS_PER_UNIT;
-  const height = Math.max(1, (fogBounds.maxY - fogBounds.minY)) * PIXELS_PER_UNIT;
+  const width = Math.max(1, fogBounds.maxX - fogBounds.minX) * PIXELS_PER_UNIT;
+  const height = Math.max(1, fogBounds.maxY - fogBounds.minY) * PIXELS_PER_UNIT;
 
   // Generate an offscreen canvas to render the fog overlay to
   const childStage = useMemo(() => {
@@ -117,6 +117,18 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
         x: light.position!.x - fogBounds.minX,
         y: light.position!.y - fogBounds.minY,
       };
+      const fillRadialGradientColorStops = [
+        0,
+        `rgba(${light.color!.r},${light.color!.g},${light.color!.b},${light.color!.a / 255})`,
+        Math.max(
+          0,
+          Math.min(1, light.brightLightDistance! / light.dimLightDistance!)
+        ),
+        `rgba(${light.color!.r},${light.color!.g},${light.color!.b},${light.color!.a / 255 * 0.7})`,
+        1,
+        `rgba(${light.color!.r},${light.color!.g},${light.color!.b},0)`,
+      ];
+      console.log({ fillRadialGradientColorStops });
       lines.push(
         new Konva.Line({
           points: visibilityLinePoints,
@@ -128,17 +140,7 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
             light.brightLightDistance!,
             light.dimLightDistance!
           ),
-          fillRadialGradientColorStops: [
-            0,
-            `rgba(255,255,255,1)`,
-            Math.max(
-              0,
-              Math.min(1, light.brightLightDistance! / light.dimLightDistance!)
-            ),
-            `rgba(255,255,255,0.7)`,
-            1,
-            "rgba(255,255,255,0)",
-          ],
+          fillRadialGradientColorStops,
         })
       );
     });

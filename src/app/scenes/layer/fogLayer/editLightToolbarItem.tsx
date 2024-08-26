@@ -1,48 +1,72 @@
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect } from "react";
 
-import Box from '@mui/material/Box';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
+import Box from "@mui/material/Box";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
 
-import SettingsBrightnessOutlinedIcon from '@mui/icons-material/SettingsBrightnessOutlined';
+import SettingsBrightnessOutlinedIcon from "@mui/icons-material/SettingsBrightnessOutlined";
 
-import ToolbarItem from '../toolbarItem';
-import InputGroup from '@/partials/inputGroup';
-import InputWithUnit from '@/partials/inputWithUnit';
-import theme from '@/theme';
-import * as Types from '@/protos/scene';
+import ToolbarItem from "../toolbarItem";
+import InputGroup from "@/partials/inputGroup";
+import InputWithUnit from "@/partials/inputWithUnit";
+import theme from "@/theme";
+import * as Types from "@/protos/scene";
+import { MuiColorInput } from "mui-color-input";
 
 const DEFAULT_LIGHT_SOURCES = [
   {
-    name: 'Torch / Light Spell',
+    name: "Torch / Light Spell",
     brightLightDistance: 20 / 5,
     dimLightDistance: 40 / 5,
+    color: { r: 255, g: 255, b: 255, a: 255 },
   },
   {
-    name: 'Lantern',
+    name: "Lantern",
     brightLightDistance: 30 / 5,
     dimLightDistance: 60 / 5,
+    color: { r: 255, g: 255, b: 255, a: 255 },
   },
   {
-    name: 'Produce Flame Spell',
+    name: "Produce Flame Spell",
     brightLightDistance: 10 / 5,
     dimLightDistance: 20 / 5,
+    color: { r: 255, g: 167, b: 117, a: 255 },
   },
   {
-    name: 'Dancing Lights Spell',
+    name: "Dancing Lights Spell",
     brightLightDistance: 0 / 5,
     dimLightDistance: 10 / 5,
+    color: { r: 190, g: 190, b: 255, a: 255 },
   },
   {
-    name: 'Daylight Spell',
+    name: "Daylight Spell",
     brightLightDistance: 60 / 5,
     dimLightDistance: 120 / 5,
+    color: { r: 200, g: 240, b: 255, a: 255 },
   },
-] as Array<Partial<Types.FogLayer_LightSource> & {name: string}>;
+] as Array<Partial<Types.FogLayer_LightSource> & { name: string }>;
+
+function hexToRGBA(hex: string): {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+} {
+  // Remove the '#' at the start if it's there
+  hex = hex.replace(/^#/, "");
+
+  // Parse the values from the hex string
+  let r = parseInt(hex.slice(0, 2), 16);
+  let g = parseInt(hex.slice(2, 4), 16);
+  let b = parseInt(hex.slice(4, 6), 16);
+  let a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) : 255; // Default alpha to 255 if not provided
+
+  return { r, g, b, a };
+}
 
 type Props = {
   light: Types.FogLayer_LightSource | null;
@@ -78,7 +102,7 @@ const EditLightToolbarItem: React.FunctionComponent<Props> = ({
       <ToolbarItem
         icon={<SettingsBrightnessOutlinedIcon />}
         label="Configure"
-        keyboardShortcuts={['r']}
+        keyboardShortcuts={["r"]}
         disabled={!light}
         onClick={() => setShowModal(true)}
       />
@@ -94,12 +118,12 @@ const EditLightToolbarItem: React.FunctionComponent<Props> = ({
             <Box
               sx={{
                 paddingY: theme.spacing(2),
-                display: 'flex',
-                flexDirection: 'row',
-                flexWrap: 'wrap',
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "wrap",
               }}
             >
-              {DEFAULT_LIGHT_SOURCES.map(lightSource => (
+              {DEFAULT_LIGHT_SOURCES.map((lightSource) => (
                 <Button
                   key={lightSource.name}
                   size="small"
@@ -110,15 +134,21 @@ const EditLightToolbarItem: React.FunctionComponent<Props> = ({
                   color={
                     lightSource.brightLightDistance ===
                       localLight.brightLightDistance &&
-                    lightSource.dimLightDistance === localLight.dimLightDistance
-                      ? 'primary'
-                      : 'secondary'
+                    lightSource.dimLightDistance ===
+                      localLight.dimLightDistance &&
+                    lightSource.color!.r === localLight.color!.r &&
+                    lightSource.color!.g === localLight.color!.g &&
+                    lightSource.color!.b === localLight.color!.b &&
+                    lightSource.color!.a === localLight.color!.a
+                      ? "primary"
+                      : "secondary"
                   }
                   onClick={() => {
                     setLocalLight({
                       ...localLight,
                       brightLightDistance: lightSource.brightLightDistance!,
                       dimLightDistance: lightSource.dimLightDistance!,
+                      color: lightSource.color!,
                     });
                   }}
                 >
@@ -133,9 +163,11 @@ const EditLightToolbarItem: React.FunctionComponent<Props> = ({
                 type="number"
                 unit="ft"
                 fullWidth
-                value={localLight.brightLightDistance! * 5 + ''}
-                onChange={e => updateNumberParameter('brightLightDistance', e)}
-                inputProps={{min: 0}}
+                value={localLight.brightLightDistance! * 5 + ""}
+                onChange={(e) =>
+                  updateNumberParameter("brightLightDistance", e)
+                }
+                inputProps={{ min: 0 }}
               />
             </InputGroup>
             <InputGroup header="Dim Light Distance">
@@ -143,9 +175,38 @@ const EditLightToolbarItem: React.FunctionComponent<Props> = ({
                 type="number"
                 unit="ft"
                 fullWidth
-                value={localLight.dimLightDistance! * 5 + ''}
-                onChange={e => updateNumberParameter('dimLightDistance', e)}
-                inputProps={{min: 0}}
+                value={localLight.dimLightDistance! * 5 + ""}
+                onChange={(e) => updateNumberParameter("dimLightDistance", e)}
+                inputProps={{ min: 0 }}
+              />
+            </InputGroup>
+
+            <InputGroup header="Color">
+              <MuiColorInput
+                variant="outlined"
+                size="small"
+                fullWidth
+                PopoverProps={{
+                  elevation: 3,
+                  sx: {
+                    "& .MuiColorInput-PopoverBody": {
+                      padding: 2,
+                    },
+                  },
+                }}
+                value={
+                  {
+                    ...localLight.color!,
+                    a: localLight.color!.a / 255,
+                  }!
+                }
+                onChange={(_, colors) => {
+                  console.log(hexToRGBA(colors.hex8));
+                  setLocalLight({
+                    ...localLight,
+                    color: hexToRGBA(colors.hex8),
+                  });
+                }}
               />
             </InputGroup>
           </DialogContent>
@@ -153,7 +214,7 @@ const EditLightToolbarItem: React.FunctionComponent<Props> = ({
           <DialogActions>
             <Button
               onClick={() => {
-                onUpdate({...localLight});
+                onUpdate({ ...localLight });
                 setShowModal(false);
               }}
             >
