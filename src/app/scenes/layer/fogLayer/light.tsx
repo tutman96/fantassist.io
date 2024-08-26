@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Path } from "react-konva";
 
 import { yellow } from "@mui/material/colors";
@@ -6,6 +6,7 @@ import { yellow } from "@mui/material/colors";
 import * as Types from "@/protos/scene";
 import theme, { COSMIC_PURPLE } from "@/theme";
 import { darken } from "@mui/system";
+import Konva from "konva";
 
 type Props = {
   light: Types.FogLayer_LightSource;
@@ -22,11 +23,24 @@ const Light: React.FunctionComponent<Props> = ({
   selected,
   onSelected,
 }) => {
+  // const pathRef = React.useRef<Konva.Path>(null);
+
+  // useEffect(() => {
+  //   if (!pathRef.current) return null;
+  //   const stage = pathRef.current.getStage()!;
+  //   const handler = (e) => {
+
+  //   }
+  //   pathRef.current.scen
+  // }, [pathRef]);
+
   return (
     <Path
       name={"Icon"}
-      x={light.position!.x}
-      y={light.position!.y}
+      x={light.position!.x - 0.6}
+      y={light.position!.y - 0.6}
+      scaleX={0.05}
+      scaleY={0.05}
       data={
         "M12,2C6.48,2,2,6.48,2,12c0,5.52,4.48,10,10,10s10-4.48,10-10C22,6.48,17.52,2,12,2z M12,19c-0.83,0-1.5-0.67-1.5-1.5h3 C13.5,18.33,12.83,19,12,19z M15,16.5H9V15h6V16.5z M14.97,14H9.03C7.8,13.09,7,11.64,7,10c0-2.76,2.24-5,5-5s5,2.24,5,5 C17,11.64,16.2,13.09,14.97,14z"
       }
@@ -38,14 +52,14 @@ const Light: React.FunctionComponent<Props> = ({
       }}
       onDragMove={(e) => {
         light.position = {
-          x: e.target.x(),
-          y: e.target.y(),
+          x: e.target.x() + 0.6,
+          y: e.target.y() + 0.6,
         };
         onUpdate(light);
       }}
       onDragEnd={(e) => {
-        light.position!.x = e.target.x();
-        light.position!.y = e.target.y();
+        light.position!.x = e.target.x() + 0.6;
+        light.position!.y = e.target.y() + 0.6;
         onSave(light);
       }}
       onClick={(e) => {
@@ -54,8 +68,6 @@ const Light: React.FunctionComponent<Props> = ({
           onSelected();
         }
       }}
-      scaleX={0.03}
-      scaleY={0.03}
       fill={"white"}
       opacity={selected ? 1 : 0.8}
       strokeEnabled={selected}
