@@ -74,7 +74,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
 
   useEffect(() => {
     if (!groupRef.current?.parent) return;
-    const parent = groupRef.current.parent;
+    const parent = groupRef.current.getStage()!;
 
     function onParentClick() {
       if (selectedAssetId) {
