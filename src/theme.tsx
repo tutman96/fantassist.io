@@ -1,8 +1,8 @@
-'use client';
-import {singletonHook} from 'react-singleton-hook';
-import {createTheme, darken, lighten} from '@mui/material/styles';
-import {useState} from 'react';
-import {grey} from '@mui/material/colors';
+"use client";
+import { singletonHook } from "react-singleton-hook";
+import { createTheme, darken, lighten } from "@mui/material/styles";
+import { useState } from "react";
+import { grey } from "@mui/material/colors";
 
 export const SIDEBAR_WIDTH = 48;
 export const SCENE_LIST_WIDTH = 240;
@@ -15,21 +15,21 @@ export const useSceneSidebarOpen = singletonHook([true, () => {}], () =>
 
 export const theme = createTheme({
   palette: {
-    mode: 'dark',
+    mode: "dark",
     background: {
-      default: darken('#0D1B2A', 0.4),
-      paper: '#0D1B2A',
+      default: "#0D1B2A",
+      paper: "#0D1B2A",
     },
     primary: {
-      main: lighten('#1E90FF', 0.5),
-      dark: '#1E90FF',
-      light: lighten('#1E90FF', 0.7)
+      main: lighten("#1E90FF", 0.1),
+      dark: darken("#1E90FF", 0.1),
+      light: lighten("#1E90FF", 0.7),
     },
     secondary: grey,
     error: {
-      main: '#db292f',
-      dark: '#991c20',
-      light: '#e25358',
+      main: "#db292f",
+      dark: "#991c20",
+      light: "#e25358",
     },
   },
   shape: {
@@ -39,8 +39,8 @@ export const theme = createTheme({
 export default theme;
 
 export const BACKDROP_STYLE = {
-  backgroundColor: theme.palette.background.default, 
+  backgroundColor: theme.palette.background.default,
   boxShadow: theme.shadows[10],
 };
 
-export const COSMIC_PURPLE = '#3A0CA3';
+export const COSMIC_PURPLE = "#3A0CA3";

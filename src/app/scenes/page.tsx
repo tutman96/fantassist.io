@@ -4,7 +4,7 @@ import { createNewScene, sceneDatabase } from ".";
 import { Settings, settingsDatabase } from "../settings";
 import { useEffect } from "react";
 
-const {useAllValues: useAllScenes, createItem} = sceneDatabase();
+const {useAllValues: useAllScenes, createItem} = sceneDatabase;
 const {useOneValue: useOneSettingValue} = settingsDatabase();
 
 const Scenes: React.FunctionComponent = () => {

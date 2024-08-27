@@ -25,7 +25,7 @@ import ConfirmDialog from '@/partials/confirmDialog';
 import RenameDialog from '@/partials/renameDialog';
 import * as Types from '@/protos/scene';
 
-const {deleteItem, useOneValue} = sceneDatabase();
+const {deleteItem, useOneValue} = sceneDatabase;
 const {useOneValue: useOneSettingValue} = settingsDatabase();
 
 const SceneStatusIcon: React.FunctionComponent<{scene: Types.Scene}> = ({

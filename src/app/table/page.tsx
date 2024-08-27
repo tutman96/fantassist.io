@@ -12,7 +12,7 @@ import {sceneDatabase} from '../scenes';
 import * as Types from '@/protos/scene';
 import TableCanvas from './canvas';
 
-const {useOneValue} = sceneDatabase();
+const {useOneValue} = sceneDatabase;
 const {useOneValue: useOneSettingValue} = settingsDatabase();
 
 

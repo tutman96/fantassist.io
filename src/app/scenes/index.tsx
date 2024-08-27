@@ -12,75 +12,32 @@ const storage = globalStorage<Types.Scene, Uint8Array>(
   (s) => Types.Scene.encode(s).finish(),
   Types.Scene.decode
 );
-export function sceneDatabase() {
-  return {
-    ...storage,
-    // Only update value if the version is newer
-    // useOneValue: (
-    //   key: string | null
-    // ): [Types.Scene | null | undefined, (newData: Types.Scene) => void] => {
-    //   const [storedValue, setStoredValue] = storage.useOneValue(key);
-    //   const [localValue, setLocalValue] = useState<Types.Scene>();
+export const sceneDatabase = {
+  ...storage,
+  deleteItem: async (key: string) => {
+    const sceneRaw = await storage.storage.getItem(key);
+    if (!sceneRaw) return;
+    const scene = Types.Scene.decode(sceneRaw);
+    for (const layer of scene.layers) {
+      if (!layer.assetLayer) continue;
 
-    //   useEffect(() => {
-    //     setLocalValue(undefined);
-    //   }, [key]);
-
-    //   useEffect(() => {
-    //     if (
-    //       storedValue &&
-    //       (storedValue.id !== localValue?.id ||
-    //         storedValue.version > localValue.version)
-    //     ) {
-    //       setLocalValue(storedValue);
-    //       return;
-    //     }
-    //   }, [localValue, storedValue, setStoredValue]);
-
-    //   const updateScene = useCallback((scene: Types.Scene) => {
-    //     scene.version++;
-    //     console.log(
-    //       "Updating scene " + scene.name + " to v" + scene.version,
-    //       scene
-    //     );
-    //     setLocalValue(scene);
-    //     setStoredValue(scene);
-    //   }, []);
-
-    //   if (storedValue === undefined) {
-    //     return [undefined, updateScene];
-    //   }
-
-    //   if (storedValue === null) {
-    //     return [null, updateScene];
-    //   }
-
-    //   return [localValue, updateScene];
-    // },
-    deleteItem: async (key: string) => {
-      const sceneRaw = await storage.storage.getItem(key);
-      if (!sceneRaw) return;
-      const scene = Types.Scene.decode(sceneRaw);
-      for (const layer of scene.layers) {
-        if (!layer.assetLayer) continue;
-
-        for (const asset of Object.values(
-          (layer.assetLayer as Types.AssetLayer).assets
-        )) {
-          await deleteAsset(asset);
-        }
+      for (const asset of Object.values(
+        (layer.assetLayer as Types.AssetLayer).assets
+      )) {
+        await deleteAsset(asset);
       }
+    }
 
-      await storage.deleteItem(key);
-    },
-  };
-}
+    await storage.deleteItem(key);
+  },
+};
+export default sceneDatabase;
 
-export function createNewScene(): Types.Scene {
+export function createNewScene(campaignId: string): Types.Scene {
   const defaultLayer = createNewLayer(Types.Layer_LayerType.ASSETS);
   defaultLayer.name = "Layer 1";
   return {
-    id: v4(),
+    id: `${campaignId}/${v4()}`,
     name: "Untitled",
     version: 0,
     table: {
@@ -150,7 +107,7 @@ export async function exportAllScenes() {
   link.click();
 }
 
-export async function importScene() {
+export async function importScene(campaignId: string) {
   const fileDialogInput = document.createElement("input");
   fileDialogInput.type = "file";
   fileDialogInput.accept = ".scene";
@@ -181,7 +138,7 @@ export async function importScene() {
 
   const exp = Types.SceneExport.decode(new Uint8Array(exportBinary));
   const scene = exp.scene!;
-  scene.id = v4();
+  scene.id = `${campaignId}/${v4()}`;
 
   const existingScenes = (
     await Promise.all(
@@ -201,7 +158,7 @@ export async function importScene() {
   for (const layer of scene.layers) {
     if (!layer.assetLayer) continue;
     for (const assetId of Object.keys(layer.assetLayer.assets)) {
-      const newAssetId = v4();
+      const newAssetId = `${campaignId}/${v4()}`;
       assetMap.set(assetId, newAssetId);
 
       layer.assetLayer.assets[assetId].id = newAssetId;

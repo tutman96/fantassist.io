@@ -25,6 +25,7 @@ import {
   calculateViewportDimensions,
 } from "../../canvas";
 import * as Types from "@/protos/scene";
+import { useCampaignId } from "@/app/campaigns/hooks";
 
 type Props = ILayerComponentProps<Types.AssetLayer>;
 const AssetLayer: React.FunctionComponent<Props> = ({
@@ -33,6 +34,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
   active: layerActive,
   isTable,
 }) => {
+  const campaignId = useCampaignId();
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const groupRef = useRef<Konva.Group>();
   const [playAudioOnTable] = usePlayAudioOnTable();
@@ -104,7 +106,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
           icon={<AddPhotoAlternateOutlinedIcon />}
           label="Add Asset"
           onClick={async () => {
-            const assets = await getNewAssets();
+            const assets = await getNewAssets(campaignId!);
             const stage = groupRef.current!.getStage()!;
             const viewportCenter = calculateViewportCenter(stage);
             const viewportDimensions = calculateViewportDimensions(stage);
