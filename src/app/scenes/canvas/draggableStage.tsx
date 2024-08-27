@@ -10,8 +10,8 @@ import PanZoomControl, { Vector3d } from "./panZoomControl";
 import Box from "@mui/material/Box";
 import { Vector2d } from "@/protos/scene";
 
-const TINT1 = grey[900];
-const TINT2 = darken(grey[900], 0.2);
+export const TINT1 = grey[900];
+export const TINT2 = darken(grey[900], 0.2);
 
 const ZOOM_SPEED = 1 / 250;
 const PAN_SPEED = 1 / 1;

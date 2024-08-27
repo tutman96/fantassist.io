@@ -128,7 +128,6 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
         1,
         `rgba(${light.color!.r},${light.color!.g},${light.color!.b},0)`,
       ];
-      console.log({ fillRadialGradientColorStops });
       lines.push(
         new Konva.Line({
           points: visibilityLinePoints,

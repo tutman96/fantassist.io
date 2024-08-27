@@ -32,6 +32,7 @@ import {
 import { ChannelState } from "@/external/abstractChannel";
 import { fileStorage } from "./asset";
 import { ToolbarPortalProvider } from "./layer/toolbarPortal";
+import { TINT2 } from "./canvas/draggableStage";
 
 const { useOneValue } = sceneDatabase();
 const { useOneValue: useOneSettingValue } = settingsDatabase();
@@ -162,7 +163,7 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
       {!scene && (
         <Box
           sx={{
-            background: "#3f3f3f",
+            background: TINT2,
             position: "absolute",
             top: 0,
             bottom: 0,

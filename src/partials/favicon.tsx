@@ -20,6 +20,7 @@ const Favicon: React.FunctionComponent<Props> = ({ active, sx }) => {
         ...sx,
         width: FAVICON_SIZE,
         height: FAVICON_SIZE,
+        overflow: "hidden",
       }}
     >
       <Image
