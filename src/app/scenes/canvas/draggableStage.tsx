@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useCallback } from "react";
+import {darken} from '@mui/material/styles';
+import {grey} from '@mui/material/colors';
 import Konva from "konva";
-import { Layer, Rect, Stage } from "react-konva";
+import { Layer, Stage } from "react-konva";
 import { SxProps } from "@mui/system";
 
 import PanZoomControl, { Vector3d } from "./panZoomControl";
@@ -8,8 +10,8 @@ import PanZoomControl, { Vector3d } from "./panZoomControl";
 import Box from "@mui/material/Box";
 import { Vector2d } from "@/protos/scene";
 
-const TINT1 = "#3f3f3f";
-const TINT2 = "#353535";
+const TINT1 = grey[900];
+const TINT2 = darken(grey[900], 0.2);
 
 const ZOOM_SPEED = 1 / 250;
 const PAN_SPEED = 1 / 1;

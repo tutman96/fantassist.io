@@ -19,6 +19,7 @@ import { useTableDimensions } from "@/app/settings";
 import * as Types from "@/protos/scene";
 import { SceneProvider } from "./sceneProvider";
 import { Rect } from "react-konva";
+import ToolbarPortal from "../layer/toolbarPortal";
 
 export function calculateViewportCenter(stage: Konva.Stage): Konva.Vector2d {
   const stageOffset = stage.getAbsolutePosition();
@@ -119,6 +120,7 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
   const sceneMemo = useMemo(() => {
     return (
       <>
+        {activeLayerId === null && <ToolbarPortal />}
         {scene.layers.map(flattenLayer).map((layer) => {
           const Component = LayerTypeToComponent[layer.type];
           if (!Component || !layer.visible) return null;

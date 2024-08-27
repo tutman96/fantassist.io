@@ -13,6 +13,7 @@ import AddOutlinedIcon from '@mui/icons-material/AddOutlined';
 import RemoveOutlinedIcon from '@mui/icons-material/RemoveOutlined';
 
 import theme, {BACKDROP_STYLE} from '@/theme';
+import { SxProps } from '@mui/system';
 
 const PAN_CONTROL_RADIUS = theme.spacing(10);
 
@@ -63,8 +64,9 @@ const PanZoomControl: React.FunctionComponent<Props> = ({
 }) => {
   const controlBase = {
     display: 'flex',
-    ...BACKDROP_STYLE,
-  };
+    backgroundColor: theme.palette.background.paper,
+    boxShadow: theme.shadows[10],
+  } as SxProps;
 
   const controlButtonBase = {
     width: theme.spacing(3),

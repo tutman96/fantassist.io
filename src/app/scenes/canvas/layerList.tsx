@@ -29,7 +29,7 @@ import {TABLEVIEW_LAYER_ID} from '../layer/tableView';
 type Props = {
   layers: Array<ILayer>;
   activeLayerId: string | null;
-  setActiveLayer: (layerId: string) => void;
+  setActiveLayer: (layerId: string | null) => void;
   updateLayer: (layer: ILayer) => void;
   addLayer: (type: Types.Layer_LayerType) => void;
   editActiveLayerName: (name: string) => void; // TODO
@@ -90,7 +90,13 @@ const LayerList: React.FunctionComponent<Props> = ({
             >
               <ListItemButton
                 selected={activeLayer === layer}
-                onClick={() => setActiveLayer(layer.id)}
+                onClick={() => {
+                  if (!layer.visible) {
+                    layer.visible = true;
+                    updateLayer(layer);
+                  }
+                  setActiveLayer(layer.id)
+                }}
               >
                 <ListItemIcon>
                   <IconButton
@@ -99,6 +105,9 @@ const LayerList: React.FunctionComponent<Props> = ({
                       layer.visible = !layer.visible;
                       updateLayer(layer);
                       e.stopPropagation(); // to prevent the layer from becoming active
+                      if (!layer.visible && activeLayerId === layer.id) {
+                        setActiveLayer(null);
+                      }
                     }}
                     disableRipple
                   >

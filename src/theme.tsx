@@ -40,7 +40,6 @@ export default theme;
 
 export const BACKDROP_STYLE = {
   backgroundColor: theme.palette.background.default, 
-  backdropFilter: 'blur(2px)',
   boxShadow: theme.shadows[10],
 };
 
