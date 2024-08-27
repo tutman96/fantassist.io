@@ -5,7 +5,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 
 import Add from "@mui/icons-material/Add";
-import { minWidth } from "@mui/system";
+import CollectionsBookmarkOutlinedIcon from "@mui/icons-material/CollectionsBookmarkOutlined";
 
 type Props = {
   selectedCampaignId: string;
@@ -26,6 +26,7 @@ const CampaignSelector: React.FC<Props> = ({
         sx={{
           minWidth: 200,
         }}
+        startAdornment={<CollectionsBookmarkOutlinedIcon />}
       >
         <MenuItem value="loading">Loading...</MenuItem>
       </Select>
@@ -40,6 +41,16 @@ const CampaignSelector: React.FC<Props> = ({
       sx={{
         minWidth: 200,
       }}
+      MenuProps={{
+        elevation: 5,
+      }}
+      startAdornment={
+        <CollectionsBookmarkOutlinedIcon
+          fontSize="small"
+          color="secondary"
+          sx={{ marginRight: 1 }}
+        />
+      }
     >
       {Array.from(allCampaigns.values()).map((campaign) => (
         <MenuItem key={campaign.id} value={campaign.id}>

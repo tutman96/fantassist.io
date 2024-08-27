@@ -55,7 +55,7 @@ const Page: React.FC<Props> = ({ params }) => {
             paddingY: theme.spacing(1),
             paddingX: theme.spacing(2),
           }}
-          elevation={2}
+          elevation={1}
         >
           <Typography variant="h5" gutterBottom>
             Scenes
