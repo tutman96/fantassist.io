@@ -3,6 +3,8 @@ import type { Metadata, Viewport } from "next";
 import {ThemeProvider} from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
+import DatadogInit from '@/datadog-init';
+
 export const metadata: Metadata = {
   title: "Fantassist",
   description: "Fantasy World Builder",
@@ -22,6 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <DatadogInit />
         <ThemeProvider theme={theme}>
           <CssBaseline enableColorScheme />
           {children}
