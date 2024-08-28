@@ -179,13 +179,16 @@ export default function globalStorage<T, B = T>(
   };
 
   return {
-    useAllValues: () => {
+    useAllValues: (prefix?: string) => {
       const [data, setState] = useState<Map<string, T>>();
 
       useEffect(() => {
         function handleStorageChange() {
           storage.keys().then(async (keys: string[]) => {
             const items = new Map<string, T>();
+            if (prefix) {
+              keys = keys.filter((k) => k.startsWith(prefix));
+            }
             await Promise.all(
               keys.map(async (k) => {
                 const item = await storage.getItem(k);
@@ -205,6 +208,25 @@ export default function globalStorage<T, B = T>(
       }, []);
 
       return data;
+    },
+    useKeys: () => {
+      const [keys, setKeys] = useState<string[]>();
+
+      useEffect(() => {
+        function handleStorageChange() {
+          storage.keys().then((keys) => {
+            setKeys(keys);
+          });
+        }
+
+        handleStorageChange();
+        const subscription = storage.subscribe(handleStorageChange);
+        return () => {
+          subscription.unsubscribe();
+        };
+      }, []);
+
+      return keys;
     },
     useOneValue,
     createItem: async (key: string, object: T) => {

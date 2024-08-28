@@ -34,7 +34,7 @@ import { fileStorage } from "./asset";
 import { ToolbarPortalProvider } from "./layer/toolbarPortal";
 import { TINT2 } from "./canvas/draggableStage";
 
-const { useOneValue } = sceneDatabase();
+const { useOneValue } = sceneDatabase;
 const { useOneValue: useOneSettingValue } = settingsDatabase();
 
 function useRequestHandlers() {

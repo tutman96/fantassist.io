@@ -19,7 +19,7 @@ import * as Types from '@/protos/scene';
 import {SceneListItem} from './listItem';
 import RenameDialog from '@/partials/renameDialog';
 
-const {useAllValues, createItem} = sceneDatabase();
+const {useAllValues, createItem} = sceneDatabase;
 
 function LoadingScenes() {
   return (
@@ -34,8 +34,9 @@ function LoadingScenes() {
 }
 
 const AddButton: React.FunctionComponent<{
+  campaignId: string,
   onAdd: (scene: Types.Scene) => void;
-}> = ({onAdd}) => {
+}> = ({campaignId, onAdd}) => {
   const anchorEl = useRef<HTMLElement>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -44,7 +45,7 @@ const AddButton: React.FunctionComponent<{
   const allScenes = useAllValues();
 
   async function addNewScene() {
-    const s = createNewScene();
+    const s = createNewScene(campaignId);
     if (allScenes) {
       s.name = `Scene ${allScenes.size + 1}`;
     }
@@ -56,7 +57,7 @@ const AddButton: React.FunctionComponent<{
   async function importNewScene() {
     try {
       setImporting(true);
-      const scene = await importScene();
+      const scene = await importScene(campaignId);
       onAdd(scene);
     } catch (e) {
       console.error('Error importing scene', e);
@@ -99,13 +100,15 @@ const AddButton: React.FunctionComponent<{
 
 type Props = {
   onSceneSelect: (scene: Types.Scene) => any;
-  selectedSceneId: string;
+  selectedSceneId: string | null;
+  campaignId: string;
 };
 const SceneList: React.FunctionComponent<Props> = ({
   onSceneSelect,
   selectedSceneId,
+  campaignId,
 }) => {
-  const allScenes = useAllValues();
+  const allScenes = useAllValues(campaignId ? `${campaignId}/` : undefined);
   const [searchText, setSearchText] = useState('');
 
   if (allScenes === undefined) {
@@ -129,7 +132,7 @@ const SceneList: React.FunctionComponent<Props> = ({
           value={searchText}
           fullWidth
         />
-        <AddButton onAdd={onSceneSelect} />
+        <AddButton campaignId={campaignId} onAdd={onSceneSelect} />
       </Box>
       <List sx={{marginX: -2}}>
         <Box sx={{overflow: 'auto'}}>

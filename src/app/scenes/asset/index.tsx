@@ -9,7 +9,7 @@ import { ChannelState } from "@/external/abstractChannel";
 
 export const { storage: fileStorage, useOneValue } = assetFileDatabase();
 
-export function getNewAssets() {
+export function getNewAssets(campaignId: string) {
   const fileDialogInput = document.createElement("input");
   fileDialogInput.type = "file";
   fileDialogInput.multiple = true;
@@ -28,16 +28,16 @@ export function getNewAssets() {
         const file = files.item(i);
         if (!file) continue;
 
-        assets.push(await createAsset(file));
+        assets.push(await createAsset(campaignId, file));
       }
       res(assets);
     };
   });
 }
 
-export async function createAsset(file: File) {
+async function createAsset(campaignId: string, file: File) {
   const asset = {
-    id: v4(),
+    id: `${campaignId}/${v4()}`,
     type: Types.AssetLayer_Asset_AssetType.IMAGE,
     transform: {
       x: 0,

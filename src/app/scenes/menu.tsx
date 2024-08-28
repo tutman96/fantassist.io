@@ -27,8 +27,8 @@ function useCurrentSelectedSceneId() {
   return routeMatch?.[1];
 }
 
-type Props = {};
-const Menu: React.FunctionComponent<Props> = () => {
+type Props = { campaignId: string };
+const Menu: React.FunctionComponent<Props> = ({campaignId}) => {
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const [selectedTab, setSelectedTab] = useState(TabOptions.SCENES);
   const location = usePathname();
@@ -96,6 +96,7 @@ const Menu: React.FunctionComponent<Props> = () => {
               }}
             >
               <SceneList
+                campaignId={campaignId}
                 onSceneSelect={onSceneSelect}
                 selectedSceneId={currentSelectedSceneId}
               />
