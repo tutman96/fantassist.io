@@ -4,14 +4,8 @@ import { useRouter } from "next/navigation";
 
 import Toolbar from "@mui/material/Toolbar";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
-
-import UploadIcon from "@mui/icons-material/Upload";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import PauseIcon from "@mui/icons-material/Pause";
 
 import { sceneDatabase } from ".";
 import Canvas from "./canvas";
@@ -23,7 +17,6 @@ import {
   usePlayAudioOnTable,
 } from "../settings";
 import theme, { BACKDROP_STYLE } from "@/theme";
-import * as Types from "@/protos/scene";
 import {
   useConnection,
   useConnectionState,
@@ -33,6 +26,7 @@ import { ChannelState } from "@/external/abstractChannel";
 import { fileStorage } from "./asset";
 import { ToolbarPortalProvider } from "./layer/toolbarPortal";
 import { TINT2 } from "./canvas/draggableStage";
+import TableDisplayButton from "./displayButton";
 
 const { useOneValue } = sceneDatabase;
 const { useOneValue: useOneSettingValue } = settingsDatabase();
@@ -95,47 +89,6 @@ function useExternalDisplay() {
     });
   }, [scene, connection, connectionState, tableFreeze]);
 }
-
-const TableDisplayButton: React.FunctionComponent<{ scene: Types.Scene }> = ({
-  scene,
-}) => {
-  const [displayedScene, updateDisplayedScene] = useOneSettingValue(
-    Settings.DISPLAYED_SCENE
-  );
-  const [tableFreeze, updateTableFreeze] = useOneSettingValue(
-    Settings.TABLE_FREEZE
-  );
-
-  const currentSceneDisplayed = displayedScene === scene.id;
-
-  return (
-    <>
-      <Button
-        startIcon={
-          currentSceneDisplayed ? <VisibilityOffIcon /> : <UploadIcon />
-        }
-        variant={currentSceneDisplayed ? "contained" : "outlined"}
-        color={currentSceneDisplayed ? "success" : "primary"}
-        onClick={() => {
-          updateDisplayedScene(!currentSceneDisplayed ? scene.id : null);
-          updateTableFreeze(false);
-        }}
-        sx={{ marginRight: theme.spacing(1) }}
-      >
-        {currentSceneDisplayed ? "Hide TV/Table View" : "Send to Table"}
-      </Button>
-      <Button
-        startIcon={tableFreeze ? <PlayArrowIcon /> : <PauseIcon />}
-        variant="outlined"
-        color="secondary"
-        disabled={!currentSceneDisplayed}
-        onClick={() => updateTableFreeze(!tableFreeze)}
-      >
-        {tableFreeze ? "Unpause Table" : "Pause Table"}
-      </Button>
-    </>
-  );
-};
 
 type Props = { id: string };
 const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {

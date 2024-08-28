@@ -8,7 +8,10 @@ type Props = { params: { campaignId: string; sceneId: string } };
 const ScenePage: React.FunctionComponent<Props> = ({ params }) => {
   return (
     <>
-      <Menu campaignId={params.campaignId} />
+      <Menu
+        campaignId={params.campaignId}
+        sceneId={`${params.campaignId}/${params.sceneId}`}
+      />
       <SceneEditor id={`${params.campaignId}/${params.sceneId}`} />
     </>
   );

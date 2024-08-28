@@ -70,7 +70,7 @@ const LayerList: React.FunctionComponent<Props> = ({
               <TvOutlinedIcon />
             </IconButton>
           </ListItemIcon>
-          <ListItemText primary="TV/Table View" secondary=" " />
+          <ListItemText primary="Display View" secondary=" " />
         </ListItemButton>
 
         {Array.from(layers)

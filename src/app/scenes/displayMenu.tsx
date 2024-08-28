@@ -1,8 +1,9 @@
 import React, { useCallback } from "react";
 
 import Button from "@mui/material/Button";
+import ButtonGroup from "@mui/material/ButtonGroup";
 
-import TabIcon from "@mui/icons-material/Tab";
+import OpenInNewOutlinedIcon from "@mui/icons-material/OpenInNewOutlined";
 import CancelPresentation from "@mui/icons-material/CancelPresentation";
 import PresentToAll from "@mui/icons-material/PresentToAll";
 
@@ -22,16 +23,6 @@ const FullscreenButton: React.FunctionComponent = () => {
     }
   }, [connection]);
 
-  if (
-    connectionState !== ChannelState.DISCONNECTED &&
-    !(connection instanceof PresentationApiChannel)
-  ) {
-    return (
-      <Button startIcon={<PresentToAll />} fullWidth disabled>
-        Open Display Fullscreen
-      </Button>
-    );
-  }
   if (connectionState === ChannelState.CONNECTED) {
     return (
       <Button
@@ -40,7 +31,7 @@ const FullscreenButton: React.FunctionComponent = () => {
         color="warning"
         startIcon={<CancelPresentation />}
       >
-        Disconnect Fullscreen Display
+        Disconnect Fullscreen
       </Button>
     );
   }
@@ -52,20 +43,31 @@ const FullscreenButton: React.FunctionComponent = () => {
     );
   }
   return (
-    <Button onClick={connect} startIcon={<PresentToAll />} fullWidth>
-      Open Display Fullscreen
+    <Button
+      onClick={connect}
+      startIcon={<PresentToAll />}
+      fullWidth
+      color="secondary"
+    >
+      Open Fullscreen
     </Button>
   );
 };
 
 const DisplayMenu: React.FunctionComponent = () => {
   return (
-    <>
+    <ButtonGroup fullWidth variant="text" color="secondary">
       <FullscreenButton />
-      <Button href="/table" target="_blank" startIcon={<TabIcon />} fullWidth>
-        Open Display as Tab
+      <Button
+        href="/table"
+        color="secondary"
+        target="fantassist-table"
+        startIcon={<OpenInNewOutlinedIcon />}
+        fullWidth
+      >
+        Open as Tab
       </Button>
-    </>
+    </ButtonGroup>
   );
 };
 

@@ -81,7 +81,7 @@ export function useAssetElement(asset: Types.AssetLayer_Asset) {
   const connection = useConnection();
   const connectionState = useConnectionState();
 
-  const elementRef = useRef<HTMLImageElement | HTMLVideoElement | null>(
+  const elementRef = useRef<HTMLImageElement | HTMLVideoElement>(
     document.createElement(
       asset.type === Types.AssetLayer_Asset_AssetType.IMAGE ? "img" : "video"
     )

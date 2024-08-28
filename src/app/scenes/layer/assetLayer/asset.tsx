@@ -62,15 +62,13 @@ const Asset: React.FunctionComponent<Props> = ({
         onUpdate(asset);
       }}
     >
-      {el && (
-        // eslint-disable-next-line jsx-a11y/alt-text
-        <Image
-          ref={imgRef as any}
-          image={el}
-          width={asset.transform!.width}
-          height={asset.transform!.height}
-        />
-      )}
+      {/* // eslint-disable-next-line jsx-a11y/alt-text */}
+      <Image
+        ref={imgRef as any}
+        image={el}
+        width={asset.transform!.width}
+        height={asset.transform!.height}
+      />
     </TransformableAsset>
   );
 };

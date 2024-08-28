@@ -1,25 +1,26 @@
-import React, {useState, useEffect} from 'react';
-import Konva from 'konva';
+import React, { useState, useEffect } from "react";
+import Konva from "konva";
+import { lighten } from "@mui/material/styles";
 
-import IconButton, {IconButtonProps} from '@mui/material/IconButton';
-import Box from '@mui/material/Box';
+import IconButton, { IconButtonProps } from "@mui/material/IconButton";
+import Box from "@mui/material/Box";
 
-import KeyboardArrowUpOutlinedIcon from '@mui/icons-material/KeyboardArrowUpOutlined';
-import KeyboardArrowDownOutlinedIcon from '@mui/icons-material/KeyboardArrowDownOutlined';
-import KeyboardArrowLeftOutlinedIcon from '@mui/icons-material/KeyboardArrowLeftOutlined';
-import KeyboardArrowRightOutlinedIcon from '@mui/icons-material/KeyboardArrowRightOutlined';
-import HomeOutlinedIcon from '@mui/icons-material/HomeOutlined';
-import AddOutlinedIcon from '@mui/icons-material/AddOutlined';
-import RemoveOutlinedIcon from '@mui/icons-material/RemoveOutlined';
+import KeyboardArrowUpOutlinedIcon from "@mui/icons-material/KeyboardArrowUpOutlined";
+import KeyboardArrowDownOutlinedIcon from "@mui/icons-material/KeyboardArrowDownOutlined";
+import KeyboardArrowLeftOutlinedIcon from "@mui/icons-material/KeyboardArrowLeftOutlined";
+import KeyboardArrowRightOutlinedIcon from "@mui/icons-material/KeyboardArrowRightOutlined";
+import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
+import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
+import RemoveOutlinedIcon from "@mui/icons-material/RemoveOutlined";
 
-import theme, {BACKDROP_STYLE} from '@/theme';
-import { SxProps } from '@mui/system';
+import theme, { BACKDROP_STYLE } from "@/theme";
+import { SxProps } from "@mui/system";
 
 const PAN_CONTROL_RADIUS = theme.spacing(10);
 
 const PanButton: React.FunctionComponent<
-  {onActivateRepeat?: (multiplier: number) => void} & IconButtonProps
-> = ({onActivateRepeat, sx, ...props}) => {
+  { onActivateRepeat?: (multiplier: number) => void } & IconButtonProps
+> = ({ onActivateRepeat, sx, ...props }) => {
   const [mouseDown, setMouseDown] = useState<boolean>(false);
 
   useEffect(() => {
@@ -56,15 +57,15 @@ const PanButton: React.FunctionComponent<
   );
 };
 
-export type Vector3d = Konva.Vector2d & {z: number};
-type Props = {onPanZoom: (direction: Vector3d) => void; onHome: () => void};
+export type Vector3d = Konva.Vector2d & { z: number };
+type Props = { onPanZoom: (direction: Vector3d) => void; onHome: () => void };
 const PanZoomControl: React.FunctionComponent<Props> = ({
   onPanZoom,
   onHome,
 }) => {
   const controlBase = {
-    display: 'flex',
-    backgroundColor: theme.palette.background.paper,
+    display: "flex",
+    backgroundColor: lighten(theme.palette.background.paper, 0.1),
     boxShadow: theme.shadows[10],
   } as SxProps;
 
@@ -76,13 +77,13 @@ const PanZoomControl: React.FunctionComponent<Props> = ({
   return (
     <Box
       sx={{
-        position: 'relative',
-        float: 'right',
+        position: "relative",
+        float: "right",
         zIndex: 1,
         padding: theme.spacing(2),
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
         // top: theme.spacing(8),
       }}
     >
@@ -90,17 +91,17 @@ const PanZoomControl: React.FunctionComponent<Props> = ({
       <Box
         sx={{
           ...controlBase,
-          borderRadius: '50%',
+          borderRadius: "50%",
           width: PAN_CONTROL_RADIUS,
           height: PAN_CONTROL_RADIUS,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          overflow: 'hidden',
+          alignItems: "center",
+          justifyContent: "space-between",
+          overflow: "hidden",
         }}
       >
         <PanButton
-          onActivateRepeat={multiplier =>
-            onPanZoom({x: -multiplier, y: 0, z: 0})
+          onActivateRepeat={(multiplier) =>
+            onPanZoom({ x: -multiplier, y: 0, z: 0 })
           }
           sx={controlButtonBase}
         >
@@ -108,16 +109,16 @@ const PanZoomControl: React.FunctionComponent<Props> = ({
         </PanButton>
         <Box
           sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            height: '100%',
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "space-between",
+            height: "100%",
           }}
         >
           <PanButton
-            onActivateRepeat={multiplier =>
-              onPanZoom({x: 0, y: -multiplier, z: 0})
+            onActivateRepeat={(multiplier) =>
+              onPanZoom({ x: 0, y: -multiplier, z: 0 })
             }
             sx={controlButtonBase}
           >
@@ -127,8 +128,8 @@ const PanZoomControl: React.FunctionComponent<Props> = ({
             <HomeOutlinedIcon />
           </PanButton>
           <PanButton
-            onActivateRepeat={multiplier =>
-              onPanZoom({x: 0, y: multiplier, z: 0})
+            onActivateRepeat={(multiplier) =>
+              onPanZoom({ x: 0, y: multiplier, z: 0 })
             }
             sx={controlButtonBase}
           >
@@ -136,8 +137,8 @@ const PanZoomControl: React.FunctionComponent<Props> = ({
           </PanButton>
         </Box>
         <PanButton
-          onActivateRepeat={multiplier =>
-            onPanZoom({x: multiplier, y: 0, z: 0})
+          onActivateRepeat={(multiplier) =>
+            onPanZoom({ x: multiplier, y: 0, z: 0 })
           }
           sx={controlButtonBase}
         >
@@ -149,23 +150,23 @@ const PanZoomControl: React.FunctionComponent<Props> = ({
       <Box
         sx={{
           ...controlBase,
-          flexDirection: 'column',
+          flexDirection: "column",
           marginTop: theme.spacing(2),
           borderRadius: theme.shape.borderRadius,
         }}
       >
         <PanButton
           size="small"
-          onActivateRepeat={multiplier =>
-            onPanZoom({x: 0, y: 0, z: multiplier})
+          onActivateRepeat={(multiplier) =>
+            onPanZoom({ x: 0, y: 0, z: multiplier })
           }
         >
           <AddOutlinedIcon />
         </PanButton>
         <PanButton
           size="small"
-          onActivateRepeat={multiplier =>
-            onPanZoom({x: 0, y: 0, z: -multiplier})
+          onActivateRepeat={(multiplier) =>
+            onPanZoom({ x: 0, y: 0, z: -multiplier })
           }
         >
           <RemoveOutlinedIcon />
