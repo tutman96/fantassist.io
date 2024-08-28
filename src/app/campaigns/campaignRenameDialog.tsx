@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
@@ -8,19 +8,29 @@ import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
 import TextField from "@mui/material/TextField";
 
-const AddCampaignDialog: React.FunctionComponent<{
+const CampaignRenameDialog: React.FunctionComponent<{
+  name: string;
+  isNew?: boolean;
   onConfirm: (newName: string) => void;
   onCancel: () => void;
   open: boolean;
-}> = ({ onConfirm, onCancel, open }) => {
-  const [localName, setLocalName] = useState("");
+}> = ({ name, isNew, onConfirm, onCancel, open }) => {
+  const [localName, setLocalName] = useState(name);
+
+  useEffect(() => {
+    setLocalName(name);
+  }, [name]);
 
   return (
     <Dialog open={open} onClose={onCancel}>
-      <DialogTitle>Create new campaign</DialogTitle>
-      <DialogContent>
+      <DialogTitle>
+        {isNew ? "Create new campaign" : `Rename '${name}'`}
+      </DialogTitle>
+      <DialogContent sx={{ minWidth: 400 }}>
         <DialogContentText>
-          What would you like to name this campaign? This can be changed later
+          {isNew
+            ? "What would you like to name this campaign? This can be changed later"
+            : `Edit the name of '${name}' here.`}
         </DialogContentText>
         <TextField
           autoFocus
@@ -34,11 +44,15 @@ const AddCampaignDialog: React.FunctionComponent<{
       </DialogContent>
       <DialogActions>
         <Button onClick={onCancel}>Cancel</Button>
-        <Button onClick={() => onConfirm(localName)} autoFocus>
-          Create
+        <Button
+          onClick={() => onConfirm(localName)}
+          disabled={!localName}
+          autoFocus
+        >
+          OK
         </Button>
       </DialogActions>
     </Dialog>
   );
 };
-export default AddCampaignDialog;
+export default CampaignRenameDialog;

@@ -88,10 +88,16 @@ export async function exportScene(scene: Types.Scene) {
 }
 
 // Export all scenes as individual .scene files in a single tarball
-export async function exportAllScenes() {
+export async function exportAllScenes(
+  campaignId?: string | null,
+  name?: string
+) {
   const tar = new TarWriter();
   const sceneIds = await storage.storage.keys();
   for (const sceneId of sceneIds) {
+    if (campaignId && !sceneId.startsWith(campaignId)) {
+      continue;
+    }
     const sceneRaw = await storage.storage.getItem(sceneId);
     if (!sceneRaw) continue;
     const scene = Types.Scene.decode(sceneRaw);
@@ -102,7 +108,7 @@ export async function exportAllScenes() {
   const blob = await tar.write();
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.download = "scenes.tar";
+  link.download = `${name ?? "scenes"}.tar`;
   link.href = objectUrl;
   link.click();
 }

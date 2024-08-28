@@ -7,7 +7,6 @@ import InputGroup from '@/partials/inputGroup';
 
 import globalStorage from '../../storage';
 import ScreenSizeSettings from './ScreenSizeSettings';
-import ExportAllButton from './exportAllButton';
 
 export enum Settings {
   DISPLAYED_SCENE = 'displayed_scene',
@@ -15,6 +14,7 @@ export enum Settings {
   TABLE_RESOLUTION = 'table_resolution',
   TABLE_SIZE = 'table_size',
   PLAY_AUDIO_ON_TABLE = 'play_audio_on_table',
+  LAST_CAMPAIGN = 'last_campaign',
 }
 
 const storage = globalStorage<unknown>('settings');
@@ -22,7 +22,7 @@ export function settingsDatabase() {
   return storage;
 }
 
-const {useOneValue: useOneSettingValue} = settingsDatabase();
+export const {useOneValue: useOneSettingValue} = settingsDatabase();
 
 type TableResolution = {width: number; height: number};
 export function useTableResolution(): [
@@ -140,7 +140,6 @@ const SettingsPanel: React.FunctionComponent = () => {
           label="Play Audio on Table"
         />
       </InputGroup>
-      <ExportAllButton />
     </>
   );
 };

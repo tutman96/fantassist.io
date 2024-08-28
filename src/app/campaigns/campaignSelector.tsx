@@ -33,6 +33,10 @@ const CampaignSelector: React.FC<Props> = ({
     );
   }
 
+  const sortedCampaigns = Array.from(allCampaigns.values()).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+
   return (
     <Select
       value={selectedCampaignId}
@@ -52,7 +56,7 @@ const CampaignSelector: React.FC<Props> = ({
         />
       }
     >
-      {Array.from(allCampaigns.values()).map((campaign) => (
+      {sortedCampaigns.map((campaign) => (
         <MenuItem key={campaign.id} value={campaign.id}>
           {campaign.name}
         </MenuItem>

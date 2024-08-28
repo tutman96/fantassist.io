@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import Layout from "../fullScreenLayout";
-import AddCampaignDialog from "../addCampaignDialog";
+import EditCampaignDialog from "../campaignRenameDialog";
 import { v4 } from "uuid";
 import campaignDatabase from "../storage";
 
@@ -10,7 +10,9 @@ const Page: React.FC = () => {
   const router = useRouter();
   return (
     <Layout>
-      <AddCampaignDialog
+      <EditCampaignDialog
+        name="Untitled Campaign"
+        isNew
         open={true}
         onCancel={() => router.push("/campaigns")}
         onConfirm={(name) => {

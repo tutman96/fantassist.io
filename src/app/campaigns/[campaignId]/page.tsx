@@ -8,8 +8,16 @@ import SceneList from "@/app/scenes/list";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
+import IconButton from "@mui/material/IconButton";
+import Button from "@mui/material/Button";
+
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 
 import theme from "@/theme";
+import CampaignRenameDialog from "../campaignRenameDialog";
+import { useState } from "react";
+import { exportAllScenes } from "@/app/scenes";
 
 type Props = { params: { campaignId: string } };
 const Page: React.FC<Props> = ({ params }) => {
@@ -17,9 +25,10 @@ const Page: React.FC<Props> = ({ params }) => {
   const [campaign, updateCampaign] = campaignDatabase.useOneValue(
     params.campaignId
   );
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   if (campaign === undefined) {
-    return null; // TODO: loading spinner
+    return <Layout loadingText="Loading campaign..." />;
   }
 
   if (campaign === null) {
@@ -40,26 +49,52 @@ const Page: React.FC<Props> = ({ params }) => {
     >
       <Box
         sx={{
-          maxWidth: 800,
+          maxWidth: 1000,
           width: "100%",
           flex: 2,
           alignSelf: "center",
         }}
       >
-        <Typography variant="h5" gutterBottom>
-          {campaign.name} 
-          {/* TODO: edit name button */}
-        </Typography>
         <Paper
           sx={{
-            paddingY: theme.spacing(1),
-            paddingX: theme.spacing(2),
+            paddingY: theme.spacing(3),
+            paddingX: theme.spacing(3),
           }}
           elevation={1}
         >
-          <Typography variant="h5" gutterBottom>
-            Scenes
-          </Typography>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignContent: "center",
+            }}
+          >
+            <Typography variant="h5" gutterBottom>
+              {campaign.name}
+            </Typography>
+            <Box>
+              <IconButton
+                size="small"
+                color="secondary"
+                onClick={() => setShowEditDialog(true)}
+              >
+                <EditOutlinedIcon />
+              </IconButton>
+            </Box>
+            <Box sx={{ flex: 2 }} />
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<DownloadOutlinedIcon />}
+              size="small"
+              sx={{ height: theme.spacing(4) }}
+              onClick={() => {
+                exportAllScenes(params.campaignId, campaign.name);
+              }}
+            >
+              Download Campaign
+            </Button>
+          </Box>
           <SceneList
             campaignId={params.campaignId}
             selectedSceneId={null}
@@ -70,6 +105,15 @@ const Page: React.FC<Props> = ({ params }) => {
           />
         </Paper>
       </Box>
+      <CampaignRenameDialog
+        name={campaign.name}
+        open={showEditDialog}
+        onCancel={() => setShowEditDialog(false)}
+        onConfirm={(name) => {
+          updateCampaign({ ...campaign, name });
+          setShowEditDialog(false);
+        }}
+      />
     </Layout>
   );
 };
