@@ -160,6 +160,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
       </>
     );
   }, [layer, groupRef, selectedAssetId, onUpdate, deleteSelectedAsset]);
+
   return (
     <>
       {layerActive && <ToolbarPortal>{toolbar}</ToolbarPortal>}

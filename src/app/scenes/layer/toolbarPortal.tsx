@@ -3,6 +3,7 @@ import React, {
   useContext,
   createContext,
   useEffect,
+  useMemo,
 } from "react";
 
 import Toolbar from "./toolbar";
@@ -20,6 +21,9 @@ const ToolbarPortal: React.FunctionComponent<React.PropsWithChildren> = ({
   useEffect(() => {
     if (render) {
       render(<ThemeProvider theme={theme}>{children}</ThemeProvider>);
+      return () => {
+        render(null);
+      };
     }
   }, [render, children]);
 
@@ -37,24 +41,26 @@ export const ToolbarPortalProvider: React.FunctionComponent<
     if (node.current && !rootRef.current) {
       rootRef.current = createRoot(node.current);
     }
-    const currentRoot = rootRef.current;
+  }, [node]);
 
-    return () => {
-      if (currentRoot) {
-        currentRoot.unmount();
-        rootRef.current = null;
+  const render = useMemo(() => {
+    return (children: React.ReactNode) => {
+      if (rootRef.current) {
+        try {
+          rootRef.current.render(children);
+        } catch (e) {
+          // no-op - this happens when the page is navigated away and the provider is unmounted
+        }
       }
     };
-  }, [node]);
+  }, [rootRef.current]);
 
   return (
     <>
       <Toolbar>
         <span ref={node as any} />
       </Toolbar>
-      <ToolbarContext.Provider
-        value={rootRef.current?.render.bind(rootRef.current) ?? null}
-      >
+      <ToolbarContext.Provider value={render}>
         {children}
       </ToolbarContext.Provider>
     </>

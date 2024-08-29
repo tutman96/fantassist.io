@@ -34,8 +34,6 @@ export const sceneDatabase = {
 export default sceneDatabase;
 
 export function createNewScene(campaignId: string): Types.Scene {
-  const defaultLayer = createNewLayer(Types.Layer_LayerType.ASSETS);
-  defaultLayer.name = "Layer 1";
   return {
     id: `${campaignId}/${v4()}`,
     name: "Untitled",
@@ -46,7 +44,20 @@ export function createNewScene(campaignId: string): Types.Scene {
       scale: 1,
       displayGrid: true,
     },
-    layers: [unflattenLayer(defaultLayer)],
+    layers: [
+      unflattenLayer({
+        ...createNewLayer(Types.Layer_LayerType.ASSETS),
+        name: "Assets",
+      }),
+      unflattenLayer({
+        ...createNewLayer(Types.Layer_LayerType.FOG),
+        name: "Fog",
+      }),
+      unflattenLayer({
+        ...createNewLayer(Types.Layer_LayerType.MARKERS),
+        name: "Markers",
+      }),
+    ],
   };
 }
 

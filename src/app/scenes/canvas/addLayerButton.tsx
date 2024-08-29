@@ -11,6 +11,7 @@ import ListItemText from "@mui/material/ListItemText";
 import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
+import ScatterPlotOutlinedIcon from '@mui/icons-material/ScatterPlotOutlined';
 
 import { Layer_LayerType } from "@/protos/scene";
 
@@ -39,7 +40,7 @@ const AddLayerButton: React.FunctionComponent<Props> = ({ onAdd }) => {
         anchorEl={anchorEl.current}
         open={showMenu}
         onClose={() => setShowMenu(false)}
-        elevation={3}
+        elevation={6}
       >
         <MenuList dense disablePadding>
           <MenuItem onClick={addLayer(Layer_LayerType.ASSETS)}>
@@ -53,6 +54,12 @@ const AddLayerButton: React.FunctionComponent<Props> = ({ onAdd }) => {
               <CloudOutlinedIcon />
             </ListItemIcon>
             <ListItemText primary="Fog Layer" />
+          </MenuItem>
+          <MenuItem onClick={addLayer(Layer_LayerType.MARKERS)}>
+            <ListItemIcon>
+              <ScatterPlotOutlinedIcon />
+            </ListItemIcon>
+            <ListItemText primary="Marker Layer" />
           </MenuItem>
         </MenuList>
       </Menu>

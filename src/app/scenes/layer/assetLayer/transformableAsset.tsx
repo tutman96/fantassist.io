@@ -1,16 +1,16 @@
-import React, {useRef, useEffect} from 'react';
-import {Group, Transformer} from 'react-konva';
-import Konva from 'konva';
+import React, { useRef, useEffect } from "react";
+import { Group, Transformer } from "react-konva";
+import Konva from "konva";
 
-import theme from '@/theme';
-import * as Types from '@/protos/scene';
+import theme from "@/theme";
+import * as Types from "@/protos/scene";
 
 type Props = {
   rectTransform: Types.AssetLayer_Asset_AssetTransform;
   onTransform: (newRect: Types.AssetLayer_Asset_AssetTransform) => void;
   isSelected: boolean;
   onSelected: () => void;
-  snapOffset?: {x: number; y: number};
+  snapOffset?: { x: number; y: number };
   scaleEnabled?: boolean;
   skewEnabled?: boolean;
   rotateEnabled?: boolean;
@@ -45,7 +45,7 @@ const TransformableAsset: React.FunctionComponent<
     <React.Fragment>
       <Group
         ref={groupRef as any}
-        onMouseDown={e => {
+        onMouseDown={(e) => {
           if (e.evt.button === 0 && isSelected) {
             groupRef.current?.startDrag(e);
             e.cancelBubble = true;
@@ -56,13 +56,13 @@ const TransformableAsset: React.FunctionComponent<
         height={rectTransform.height}
         width={rectTransform.width}
         rotation={rectTransform.rotation}
-        onClick={e => {
+        onClick={(e) => {
           if (e.evt.button === 0) {
             e.cancelBubble = true;
             onSelected();
           }
         }}
-        onDragEnd={e => {
+        onDragEnd={(e) => {
           const node = groupRef.current!;
           const scaleX = node.scaleX();
           const scaleY = node.scaleY();
@@ -115,7 +115,7 @@ const TransformableAsset: React.FunctionComponent<
           resizeEnabled={scaleEnabled}
           enabledAnchors={
             skewEnabled === false
-              ? ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+              ? ["top-left", "top-right", "bottom-left", "bottom-right"]
               : undefined
           }
           ref={trRef as any}

@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/alt-text */
 import React, { useEffect, useRef } from "react";
 import { Image } from "react-konva";
 
@@ -62,7 +63,6 @@ const Asset: React.FunctionComponent<Props> = ({
         onUpdate(asset);
       }}
     >
-      {/* // eslint-disable-next-line jsx-a11y/alt-text */}
       <Image
         ref={imgRef as any}
         image={el}

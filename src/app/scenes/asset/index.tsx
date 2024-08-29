@@ -75,17 +75,13 @@ export async function deleteAsset(asset: Types.AssetLayer_Asset) {
   await fileStorage.removeItem(asset.id);
 }
 
-export function useAssetElement(asset: Types.AssetLayer_Asset) {
+export function useAssetElementSrc(asset: Types.AssetLayer_Asset) {
   const [file, setFile] = useOneValue(asset.id);
 
   const connection = useConnection();
   const connectionState = useConnectionState();
 
-  const elementRef = useRef<HTMLImageElement | HTMLVideoElement>(
-    document.createElement(
-      asset.type === Types.AssetLayer_Asset_AssetType.IMAGE ? "img" : "video"
-    )
-  );
+  const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (
@@ -104,8 +100,28 @@ export function useAssetElement(asset: Types.AssetLayer_Asset) {
         });
     }
 
-    if (file && elementRef.current) {
-      elementRef.current.src = URL.createObjectURL(file);
+    if (file && !src) {
+      setSrc(URL.createObjectURL(file));
+      return () => {
+        URL.revokeObjectURL(src!);
+      };
+    }
+  }, [connection, connectionState, file, asset.id, src, setFile]);
+
+  return src;
+}
+
+export function useAssetElement(asset: Types.AssetLayer_Asset) {
+  const src = useAssetElementSrc(asset);
+  const elementRef = useRef<HTMLImageElement | HTMLVideoElement>(
+    document.createElement(
+      asset.type === Types.AssetLayer_Asset_AssetType.IMAGE ? "img" : "video"
+    )
+  );
+
+  useEffect(() => {
+    if (src) {
+      elementRef.current.src = src;
 
       if (asset.type === Types.AssetLayer_Asset_AssetType.VIDEO) {
         const video = elementRef.current as HTMLVideoElement;
@@ -114,12 +130,8 @@ export function useAssetElement(asset: Types.AssetLayer_Asset) {
         video.autoplay = true;
         video.play();
       }
-
-      return () => {
-        URL.revokeObjectURL(elementRef.current!.src);
-      }
     }
-  }, [connection, connectionState, file, asset.id, setFile]);
+  }, [src, asset.type]);
 
   return elementRef.current;
 }

@@ -20,6 +20,8 @@ import * as Types from "@/protos/scene";
 import { SceneProvider } from "./sceneProvider";
 import { Rect } from "react-konva";
 import ToolbarPortal from "../layer/toolbarPortal";
+import theme from "@/theme";
+import { LayerListTopperProvider } from "./layerListTopperProvider";
 
 export function calculateViewportCenter(stage: Konva.Stage): Konva.Vector2d {
   const stageOffset = stage.getAbsolutePosition();
@@ -159,36 +161,40 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
 
   return (
     <SceneProvider scene={scene}>
-      <Box
-        ref={containerRef as any}
-        sx={{
-          display: "flex",
-          flexGrow: 2,
-          height: "100%",
-        }}
+      <LayerListTopperProvider
+        layerList={
+          <LayerList
+            layers={layers}
+            activeLayerId={activeLayerId}
+            setActiveLayer={setActiveLayerId}
+            updateLayer={updateLayer}
+            addLayer={addLayer}
+            editActiveLayerName={editActiveLayerName}
+            moveActiveLayer={moveActiveLayer}
+            deleteActiveLayer={deleteActiveLayer}
+          />
+        }
       >
-        {containerSize.height !== 0 && tableDimensions ? (
-          <DraggableStage
-            width={containerSize.width || 1}
-            height={containerSize.height || 1}
-            initialZoom={initialZoom}
-            initialOffset={scene.table ? scene.table.offset : { x: 0, y: 0 }}
-          >
-            {sceneMemo}
-          </DraggableStage>
-        ) : null}
-      </Box>
-
-      <LayerList
-        layers={layers}
-        activeLayerId={activeLayerId}
-        setActiveLayer={setActiveLayerId}
-        updateLayer={updateLayer}
-        addLayer={addLayer}
-        editActiveLayerName={editActiveLayerName}
-        moveActiveLayer={moveActiveLayer}
-        deleteActiveLayer={deleteActiveLayer}
-      />
+        <Box
+          ref={containerRef as any}
+          sx={{
+            display: "flex",
+            flexGrow: 2,
+            height: "100%",
+          }}
+        >
+          {containerSize.height !== 0 && tableDimensions ? (
+            <DraggableStage
+              width={containerSize.width || 1}
+              height={containerSize.height || 1}
+              initialZoom={initialZoom}
+              initialOffset={scene.table ? scene.table.offset : { x: 0, y: 0 }}
+            >
+              {sceneMemo}
+            </DraggableStage>
+          ) : null}
+        </Box>
+      </LayerListTopperProvider>
     </SceneProvider>
   );
 };

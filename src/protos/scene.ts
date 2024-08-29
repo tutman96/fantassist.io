@@ -30,14 +30,21 @@ export interface Vector2d {
   y: number;
 }
 
+export interface Size {
+  width: number;
+  height: number;
+}
+
 export interface Layer {
   assetLayer?: AssetLayer | undefined;
   fogLayer?: FogLayer | undefined;
+  markerLayer?: MarkerLayer | undefined;
 }
 
 export enum Layer_LayerType {
   ASSETS = 0,
   FOG = 1,
+  MARKERS = 2,
   UNRECOGNIZED = -1,
 }
 
@@ -49,6 +56,9 @@ export function layer_LayerTypeFromJSON(object: any): Layer_LayerType {
     case 1:
     case "FOG":
       return Layer_LayerType.FOG;
+    case 2:
+    case "MARKERS":
+      return Layer_LayerType.MARKERS;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -62,6 +72,8 @@ export function layer_LayerTypeToJSON(object: Layer_LayerType): string {
       return "ASSETS";
     case Layer_LayerType.FOG:
       return "FOG";
+    case Layer_LayerType.MARKERS:
+      return "MARKERS";
     case Layer_LayerType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -84,7 +96,7 @@ export interface AssetLayer_AssetsEntry {
 export interface AssetLayer_Asset {
   id: string;
   type: AssetLayer_Asset_AssetType;
-  size: AssetLayer_Asset_AssetSize | undefined;
+  size: Size | undefined;
   transform: AssetLayer_Asset_AssetTransform | undefined;
   calibration?: AssetLayer_Asset_AssetCalibration | undefined;
   snapToGrid?: boolean | undefined;
@@ -121,11 +133,6 @@ export function assetLayer_Asset_AssetTypeToJSON(object: AssetLayer_Asset_AssetT
     default:
       return "UNRECOGNIZED";
   }
-}
-
-export interface AssetLayer_Asset_AssetSize {
-  width: number;
-  height: number;
 }
 
 export interface AssetLayer_Asset_AssetTransform {
@@ -211,6 +218,19 @@ export function fogLayer_Polygon_PolygonTypeToJSON(object: FogLayer_Polygon_Poly
     default:
       return "UNRECOGNIZED";
   }
+}
+
+export interface MarkerLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  type: Layer_LayerType;
+  markers: Marker[];
+}
+
+export interface Marker {
+  id: string;
+  asset: AssetLayer_Asset | undefined;
 }
 
 export interface SceneExport {
@@ -525,8 +545,82 @@ export const Vector2d = {
   },
 };
 
+function createBaseSize(): Size {
+  return { width: 0, height: 0 };
+}
+
+export const Size = {
+  encode(message: Size, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.width !== 0) {
+      writer.uint32(9).double(message.width);
+    }
+    if (message.height !== 0) {
+      writer.uint32(17).double(message.height);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): Size {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSize();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 9) {
+            break;
+          }
+
+          message.width = reader.double();
+          continue;
+        case 2:
+          if (tag !== 17) {
+            break;
+          }
+
+          message.height = reader.double();
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): Size {
+    return {
+      width: isSet(object.width) ? globalThis.Number(object.width) : 0,
+      height: isSet(object.height) ? globalThis.Number(object.height) : 0,
+    };
+  },
+
+  toJSON(message: Size): unknown {
+    const obj: any = {};
+    if (message.width !== 0) {
+      obj.width = message.width;
+    }
+    if (message.height !== 0) {
+      obj.height = message.height;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Size>, I>>(base?: I): Size {
+    return Size.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Size>, I>>(object: I): Size {
+    const message = createBaseSize();
+    message.width = object.width ?? 0;
+    message.height = object.height ?? 0;
+    return message;
+  },
+};
+
 function createBaseLayer(): Layer {
-  return { assetLayer: undefined, fogLayer: undefined };
+  return { assetLayer: undefined, fogLayer: undefined, markerLayer: undefined };
 }
 
 export const Layer = {
@@ -536,6 +630,9 @@ export const Layer = {
     }
     if (message.fogLayer !== undefined) {
       FogLayer.encode(message.fogLayer, writer.uint32(18).fork()).ldelim();
+    }
+    if (message.markerLayer !== undefined) {
+      MarkerLayer.encode(message.markerLayer, writer.uint32(26).fork()).ldelim();
     }
     return writer;
   },
@@ -561,6 +658,13 @@ export const Layer = {
 
           message.fogLayer = FogLayer.decode(reader, reader.uint32());
           continue;
+        case 3:
+          if (tag !== 26) {
+            break;
+          }
+
+          message.markerLayer = MarkerLayer.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -574,6 +678,7 @@ export const Layer = {
     return {
       assetLayer: isSet(object.assetLayer) ? AssetLayer.fromJSON(object.assetLayer) : undefined,
       fogLayer: isSet(object.fogLayer) ? FogLayer.fromJSON(object.fogLayer) : undefined,
+      markerLayer: isSet(object.markerLayer) ? MarkerLayer.fromJSON(object.markerLayer) : undefined,
     };
   },
 
@@ -584,6 +689,9 @@ export const Layer = {
     }
     if (message.fogLayer !== undefined) {
       obj.fogLayer = FogLayer.toJSON(message.fogLayer);
+    }
+    if (message.markerLayer !== undefined) {
+      obj.markerLayer = MarkerLayer.toJSON(message.markerLayer);
     }
     return obj;
   },
@@ -598,6 +706,9 @@ export const Layer = {
       : undefined;
     message.fogLayer = (object.fogLayer !== undefined && object.fogLayer !== null)
       ? FogLayer.fromPartial(object.fogLayer)
+      : undefined;
+    message.markerLayer = (object.markerLayer !== undefined && object.markerLayer !== null)
+      ? MarkerLayer.fromPartial(object.markerLayer)
       : undefined;
     return message;
   },
@@ -833,7 +944,7 @@ export const AssetLayer_Asset = {
       writer.uint32(16).int32(message.type);
     }
     if (message.size !== undefined) {
-      AssetLayer_Asset_AssetSize.encode(message.size, writer.uint32(26).fork()).ldelim();
+      Size.encode(message.size, writer.uint32(26).fork()).ldelim();
     }
     if (message.transform !== undefined) {
       AssetLayer_Asset_AssetTransform.encode(message.transform, writer.uint32(34).fork()).ldelim();
@@ -873,7 +984,7 @@ export const AssetLayer_Asset = {
             break;
           }
 
-          message.size = AssetLayer_Asset_AssetSize.decode(reader, reader.uint32());
+          message.size = Size.decode(reader, reader.uint32());
           continue;
         case 4:
           if (tag !== 34) {
@@ -909,7 +1020,7 @@ export const AssetLayer_Asset = {
     return {
       id: isSet(object.id) ? globalThis.String(object.id) : "",
       type: isSet(object.type) ? assetLayer_Asset_AssetTypeFromJSON(object.type) : 0,
-      size: isSet(object.size) ? AssetLayer_Asset_AssetSize.fromJSON(object.size) : undefined,
+      size: isSet(object.size) ? Size.fromJSON(object.size) : undefined,
       transform: isSet(object.transform) ? AssetLayer_Asset_AssetTransform.fromJSON(object.transform) : undefined,
       calibration: isSet(object.calibration)
         ? AssetLayer_Asset_AssetCalibration.fromJSON(object.calibration)
@@ -927,7 +1038,7 @@ export const AssetLayer_Asset = {
       obj.type = assetLayer_Asset_AssetTypeToJSON(message.type);
     }
     if (message.size !== undefined) {
-      obj.size = AssetLayer_Asset_AssetSize.toJSON(message.size);
+      obj.size = Size.toJSON(message.size);
     }
     if (message.transform !== undefined) {
       obj.transform = AssetLayer_Asset_AssetTransform.toJSON(message.transform);
@@ -948,9 +1059,7 @@ export const AssetLayer_Asset = {
     const message = createBaseAssetLayer_Asset();
     message.id = object.id ?? "";
     message.type = object.type ?? 0;
-    message.size = (object.size !== undefined && object.size !== null)
-      ? AssetLayer_Asset_AssetSize.fromPartial(object.size)
-      : undefined;
+    message.size = (object.size !== undefined && object.size !== null) ? Size.fromPartial(object.size) : undefined;
     message.transform = (object.transform !== undefined && object.transform !== null)
       ? AssetLayer_Asset_AssetTransform.fromPartial(object.transform)
       : undefined;
@@ -958,80 +1067,6 @@ export const AssetLayer_Asset = {
       ? AssetLayer_Asset_AssetCalibration.fromPartial(object.calibration)
       : undefined;
     message.snapToGrid = object.snapToGrid ?? undefined;
-    return message;
-  },
-};
-
-function createBaseAssetLayer_Asset_AssetSize(): AssetLayer_Asset_AssetSize {
-  return { width: 0, height: 0 };
-}
-
-export const AssetLayer_Asset_AssetSize = {
-  encode(message: AssetLayer_Asset_AssetSize, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    if (message.width !== 0) {
-      writer.uint32(9).double(message.width);
-    }
-    if (message.height !== 0) {
-      writer.uint32(17).double(message.height);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): AssetLayer_Asset_AssetSize {
-    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseAssetLayer_Asset_AssetSize();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          if (tag !== 9) {
-            break;
-          }
-
-          message.width = reader.double();
-          continue;
-        case 2:
-          if (tag !== 17) {
-            break;
-          }
-
-          message.height = reader.double();
-          continue;
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skipType(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): AssetLayer_Asset_AssetSize {
-    return {
-      width: isSet(object.width) ? globalThis.Number(object.width) : 0,
-      height: isSet(object.height) ? globalThis.Number(object.height) : 0,
-    };
-  },
-
-  toJSON(message: AssetLayer_Asset_AssetSize): unknown {
-    const obj: any = {};
-    if (message.width !== 0) {
-      obj.width = message.width;
-    }
-    if (message.height !== 0) {
-      obj.height = message.height;
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<AssetLayer_Asset_AssetSize>, I>>(base?: I): AssetLayer_Asset_AssetSize {
-    return AssetLayer_Asset_AssetSize.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<AssetLayer_Asset_AssetSize>, I>>(object: I): AssetLayer_Asset_AssetSize {
-    const message = createBaseAssetLayer_Asset_AssetSize();
-    message.width = object.width ?? 0;
-    message.height = object.height ?? 0;
     return message;
   },
 };
@@ -1570,7 +1605,7 @@ export const FogLayer_LightSource_Color = {
       writer.uint32(24).uint32(message.b);
     }
     if (message.a !== 0) {
-      writer.uint32(37).float(message.a);
+      writer.uint32(32).uint32(message.a);
     }
     return writer;
   },
@@ -1604,11 +1639,11 @@ export const FogLayer_LightSource_Color = {
           message.b = reader.uint32();
           continue;
         case 4:
-          if (tag !== 37) {
+          if (tag !== 32) {
             break;
           }
 
-          message.a = reader.float();
+          message.a = reader.uint32();
           continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
@@ -1640,7 +1675,7 @@ export const FogLayer_LightSource_Color = {
       obj.b = Math.round(message.b);
     }
     if (message.a !== 0) {
-      obj.a = message.a;
+      obj.a = Math.round(message.a);
     }
     return obj;
   },
@@ -1745,6 +1780,201 @@ export const FogLayer_Polygon = {
     message.type = object.type ?? 0;
     message.verticies = object.verticies?.map((e) => Vector2d.fromPartial(e)) || [];
     message.visibleOnTable = object.visibleOnTable ?? false;
+    return message;
+  },
+};
+
+function createBaseMarkerLayer(): MarkerLayer {
+  return { id: "", name: "", visible: false, type: 0, markers: [] };
+}
+
+export const MarkerLayer = {
+  encode(message: MarkerLayer, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.name !== "") {
+      writer.uint32(26).string(message.name);
+    }
+    if (message.visible !== false) {
+      writer.uint32(32).bool(message.visible);
+    }
+    if (message.type !== 0) {
+      writer.uint32(40).int32(message.type);
+    }
+    for (const v of message.markers) {
+      Marker.encode(v!, writer.uint32(50).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): MarkerLayer {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseMarkerLayer();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.id = reader.string();
+          continue;
+        case 3:
+          if (tag !== 26) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        case 4:
+          if (tag !== 32) {
+            break;
+          }
+
+          message.visible = reader.bool();
+          continue;
+        case 5:
+          if (tag !== 40) {
+            break;
+          }
+
+          message.type = reader.int32() as any;
+          continue;
+        case 6:
+          if (tag !== 50) {
+            break;
+          }
+
+          message.markers.push(Marker.decode(reader, reader.uint32()));
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): MarkerLayer {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      visible: isSet(object.visible) ? globalThis.Boolean(object.visible) : false,
+      type: isSet(object.type) ? layer_LayerTypeFromJSON(object.type) : 0,
+      markers: globalThis.Array.isArray(object?.markers) ? object.markers.map((e: any) => Marker.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: MarkerLayer): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.visible !== false) {
+      obj.visible = message.visible;
+    }
+    if (message.type !== 0) {
+      obj.type = layer_LayerTypeToJSON(message.type);
+    }
+    if (message.markers?.length) {
+      obj.markers = message.markers.map((e) => Marker.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<MarkerLayer>, I>>(base?: I): MarkerLayer {
+    return MarkerLayer.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<MarkerLayer>, I>>(object: I): MarkerLayer {
+    const message = createBaseMarkerLayer();
+    message.id = object.id ?? "";
+    message.name = object.name ?? "";
+    message.visible = object.visible ?? false;
+    message.type = object.type ?? 0;
+    message.markers = object.markers?.map((e) => Marker.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseMarker(): Marker {
+  return { id: "", asset: undefined };
+}
+
+export const Marker = {
+  encode(message: Marker, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.asset !== undefined) {
+      AssetLayer_Asset.encode(message.asset, writer.uint32(18).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): Marker {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseMarker();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.id = reader.string();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.asset = AssetLayer_Asset.decode(reader, reader.uint32());
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): Marker {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      asset: isSet(object.asset) ? AssetLayer_Asset.fromJSON(object.asset) : undefined,
+    };
+  },
+
+  toJSON(message: Marker): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.asset !== undefined) {
+      obj.asset = AssetLayer_Asset.toJSON(message.asset);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Marker>, I>>(base?: I): Marker {
+    return Marker.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Marker>, I>>(object: I): Marker {
+    const message = createBaseMarker();
+    message.id = object.id ?? "";
+    message.asset = (object.asset !== undefined && object.asset !== null)
+      ? AssetLayer_Asset.fromPartial(object.asset)
+      : undefined;
     return message;
   },
 };

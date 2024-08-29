@@ -20,14 +20,21 @@ message Vector2d {
   double y = 2;
 }
 
+message Size {
+  double width = 1;
+  double height = 2;
+}
+
 message Layer {
   oneof layerType {
     AssetLayer assetLayer = 1;
     FogLayer fogLayer = 2;
+    MarkerLayer markerLayer = 3;
   }
   enum LayerType {
     ASSETS = 0;
     FOG = 1;
+    MARKERS = 2;
   }
 }
 
@@ -47,11 +54,7 @@ message AssetLayer {
       VIDEO = 1;
     }
 
-    AssetSize size = 3;
-    message AssetSize {
-      double width = 1;
-      double height = 2;
-    }
+    Size size = 3;
 
     AssetTransform transform = 4;
     message AssetTransform {
@@ -109,6 +112,20 @@ message FogLayer {
     repeated Vector2d verticies = 2;
     bool visibleOnTable = 3;
   }
+}
+
+message MarkerLayer {
+  string id = 1;
+  string name = 3;
+  bool visible = 4;
+  Layer.LayerType type = 5;
+
+  repeated Marker markers = 6;
+}
+
+message Marker {
+  string id = 1;
+  AssetLayer.Asset asset = 2;
 }
 
 message SceneExport {
