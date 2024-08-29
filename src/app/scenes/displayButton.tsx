@@ -43,7 +43,7 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
       ? "lightblue"
       : theme.palette.success.main
     : theme.palette.secondary.main;
-  console.log("buttonColor", buttonColor);
+
   return (
     <>
       <Tooltip title="Display Settings">

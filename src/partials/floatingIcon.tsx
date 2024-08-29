@@ -12,7 +12,7 @@ const FloatingIcon: React.FunctionComponent<{
   return (
     <IconButton
       sx={{
-        position: 'fixed',
+        position: 'absolute',
         margin: theme.spacing(1),
         top: 0,
         left: 0,

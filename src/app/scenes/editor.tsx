@@ -111,6 +111,10 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
         width: "100vw",
         flexGrow: 1,
         overflow: "hidden",
+        // To handle iOS toolbars
+        "@supports (-webkit-touch-callout: none)": {
+          height: "-webkit-fill-available",
+        },
       }}
     >
       {!scene && (
