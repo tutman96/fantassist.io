@@ -5,6 +5,7 @@ import { AppRouterCacheProvider } from "@mui/material-nextjs/v13-appRouter";
 import CssBaseline from "@mui/material/CssBaseline";
 
 import DatadogInit from "@/datadog-init";
+import { DEEP_SPACE_BLUE } from "@/colors";
 
 export const metadata: Metadata = {
   title: "Fantassist",
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   userScalable: false,
   colorScheme: "dark",
-  themeColor: "#071019",
+  themeColor: DEEP_SPACE_BLUE,
 };
 
 export default function RootLayout({

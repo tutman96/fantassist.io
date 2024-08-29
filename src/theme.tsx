@@ -1,29 +1,24 @@
 "use client";
-import { singletonHook } from "react-singleton-hook";
 import { createTheme, darken, lighten } from "@mui/material/styles";
-import { useState } from "react";
 import { grey } from "@mui/material/colors";
+import { DEEP_SPACE_BLUE, STELLAR_BLUE } from "./colors";
 
 export const SIDEBAR_WIDTH = 48;
 export const SCENE_LIST_WIDTH = 240;
 export const HEADER_HEIGHT = 64;
 export const VISUAL_ASSET_SIZER_SIZE = 650;
 
-export const useSceneSidebarOpen = singletonHook([true, () => {}], () =>
-  useState<boolean>(true)
-);
-
 export const theme = createTheme({
   palette: {
     mode: "dark",
     background: {
-      default: "#0D1B2A",
-      paper: "#0D1B2A",
+      default: DEEP_SPACE_BLUE,
+      paper: DEEP_SPACE_BLUE,
     },
     primary: {
-      main: lighten("#1E90FF", 0.1),
-      dark: darken("#1E90FF", 0.1),
-      light: lighten("#1E90FF", 0.7),
+      main: lighten(STELLAR_BLUE, 0.1),
+      dark: darken(STELLAR_BLUE, 0.1),
+      light: lighten(STELLAR_BLUE, 0.7),
     },
     secondary: grey,
     error: {
@@ -43,4 +38,3 @@ export const BACKDROP_STYLE = {
   boxShadow: theme.shadows[10],
 };
 
-export const COSMIC_PURPLE = "#3A0CA3";

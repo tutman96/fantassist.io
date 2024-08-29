@@ -1,12 +1,4 @@
-import React from "react";
-
-import Switch from "@mui/material/Switch";
-import FormControlLabel from "@mui/material/FormControlLabel";
-
-import InputGroup from "@/partials/inputGroup";
-
 import globalStorage from "../../storage";
-import ScreenSizeSettings from "./ScreenSizeSettings";
 
 export enum Settings {
   DISPLAYED_SCENE = "displayed_scene",

@@ -1,12 +1,9 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Path } from "react-konva";
 
-import { yellow } from "@mui/material/colors";
-
 import * as Types from "@/protos/scene";
-import theme, { COSMIC_PURPLE } from "@/theme";
+import theme from "@/theme";
 import { darken } from "@mui/system";
-import Konva from "konva";
 
 type Props = {
   light: Types.FogLayer_LightSource;
@@ -23,17 +20,6 @@ const Light: React.FunctionComponent<Props> = ({
   selected,
   onSelected,
 }) => {
-  // const pathRef = React.useRef<Konva.Path>(null);
-
-  // useEffect(() => {
-  //   if (!pathRef.current) return null;
-  //   const stage = pathRef.current.getStage()!;
-  //   const handler = (e) => {
-
-  //   }
-  //   pathRef.current.scen
-  // }, [pathRef]);
-
   return (
     <Path
       name={"Icon"}
@@ -68,7 +54,9 @@ const Light: React.FunctionComponent<Props> = ({
           onSelected();
         }
       }}
-      fill={`rgba(${light.color!.r}, ${light.color!.g}, ${light.color!.b}, 0.5)`}
+      fill={`rgba(${light.color!.r}, ${light.color!.g}, ${
+        light.color!.b
+      }, 0.5)`}
       opacity={selected ? 1 : 0.8}
       strokeEnabled={selected}
       stroke={darken(theme.palette.primary.dark, 0.2)}

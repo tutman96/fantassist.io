@@ -4,10 +4,16 @@ import Layout from "../fullScreenLayout";
 import EditCampaignDialog from "../campaignRenameDialog";
 import { v4 } from "uuid";
 import campaignDatabase from "../storage";
+import { useEffect, useRef } from "react";
 
 // TODO: make this a pretty landing page with lots of cool graphics and whatnots
 const Page: React.FC = () => {
   const router = useRouter();
+  const id = useRef<string>(v4());
+  useEffect(() => {
+    router.prefetch(`/campaigns/${id.current}`);
+  }, [router, id]);
+
   return (
     <Layout>
       <EditCampaignDialog
@@ -16,9 +22,8 @@ const Page: React.FC = () => {
         open={true}
         onCancel={() => router.push("/campaigns")}
         onConfirm={(name) => {
-          const id = v4();
-          campaignDatabase.createItem(id, {
-            id,
+          campaignDatabase.createItem(id.current, {
+            id: id.current,
             name,
           });
           router.push(`/campaigns/${id}`);
