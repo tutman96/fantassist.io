@@ -201,7 +201,6 @@ const EditLightToolbarItem: React.FunctionComponent<Props> = ({
                   }!
                 }
                 onChange={(_, colors) => {
-                  console.log(hexToRGBA(colors.hex8));
                   setLocalLight({
                     ...localLight,
                     color: hexToRGBA(colors.hex8),

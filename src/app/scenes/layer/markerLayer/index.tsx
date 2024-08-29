@@ -55,10 +55,7 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
       if (!e.dataTransfer) return; // TODO: handle raw image drops?
 
       const markerId = e.dataTransfer.getData(DROP_DATA_TYPE);
-      console.log({e, markerId})
       if (!markerId) return;  
-
-      console.log("Dropped marker", markerId);
 
       const marker = await cloneMarker(campaignId!, markerId);
 
