@@ -1,9 +1,10 @@
 import theme from "@/theme";
 import type { Metadata, Viewport } from "next";
-import {ThemeProvider} from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
+import { ThemeProvider } from "@mui/material/styles";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v13-appRouter";
+import CssBaseline from "@mui/material/CssBaseline";
 
-import DatadogInit from '@/datadog-init';
+import DatadogInit from "@/datadog-init";
 
 export const metadata: Metadata = {
   title: "Fantassist",
@@ -13,8 +14,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   userScalable: false,
   colorScheme: "dark",
-  themeColor: '#071019',
-}
+  themeColor: "#071019",
+};
 
 export default function RootLayout({
   children,
@@ -25,10 +26,12 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <DatadogInit />
-        <ThemeProvider theme={theme}>
-          <CssBaseline enableColorScheme />
-          {children}
-        </ThemeProvider>
+        <AppRouterCacheProvider>
+          <ThemeProvider theme={theme}>
+            <CssBaseline enableColorScheme />
+            {children}
+          </ThemeProvider>
+        </AppRouterCacheProvider>
       </body>
     </html>
   );

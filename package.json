@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "@datadog/browser-rum": "^5.23.3",
+    "@emotion/cache": "^11.13.1",
     "@emotion/react": "^11.7.1",
     "@emotion/styled": "^11.6.0",
     "@gera2ld/tarjs": "^0.3.1",
     "@mui/icons-material": "^5.2.5",
     "@mui/material": "^5.2.5",
+    "@mui/material-nextjs": "^6.0.1",
     "@mui/system": "^5.2.5",
     "@rehooks/component-size": "^1.0.3",
     "canvas": "^2.11.2",
