@@ -46,7 +46,7 @@ type Props = { scene: Types.Scene; onUpdate: (scene: Types.Scene) => void };
 const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
   const layers = scene.layers.map(flattenLayer);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(
-    layers[0]?.id ?? null
+    layers.find(l => l.visible)?.id ?? null
   );
   const containerRef = useRef<HTMLDivElement>();
   const containerSize = useComponentSize(containerRef);
