@@ -1,57 +1,115 @@
-'use client';
-import React, {useState, useEffect} from 'react';
+"use client";
+import React, { useState, useEffect } from "react";
+
+import Box from "@mui/material/Box";
+import CircularProgress from "@mui/material/CircularProgress";
+
+import * as Types from "@/protos/scene";
+import * as ExternalTypes from "@/protos/external";
 
 import {
-  settingsDatabase,
-  Settings,
+  useConnection,
+  useConnectionState,
+  useRequestHandler,
+} from "@/external/hooks";
+import { ChannelState } from "@/external/abstractChannel";
+import {
+  usePlayAudioOnTable,
   useTableResolution,
   useTableSize,
-  usePlayAudioOnTable,
-} from '../settings';
-import {sceneDatabase} from '../scenes';
-import * as Types from '@/protos/scene';
-import TableCanvas from './canvas';
+} from "@/app/settings";
+import TableCanvas from "./canvas";
 
-const {useOneValue} = sceneDatabase;
-const {useOneValue: useOneSettingValue} = settingsDatabase();
+function useDisplayedScene() {
+  const [scene, setScene] = useState<Types.Scene | null>(null);
+  const connection = useConnection();
+  useEffect(() => {
+    if (connection.hasCurrentChannel) {
+      connection
+        .connect()
+        .then(() => console.log("connected"))
+        .catch(console.warn);
+    }
+  }, [connection]);
 
+  useRequestHandler(async (request) => {
+    if (request.displaySceneRequest) {
+      setScene(request.displaySceneRequest.scene!);
+      return {
+        ackResponse: {},
+        getAssetResponse: undefined,
+      };
+    }
+    return null;
+  });
 
-type Props = {};
-const TablePage: React.FunctionComponent<Props> = () => {
-  const [displayedScene] = useOneSettingValue(Settings.DISPLAYED_SCENE);
-  const [tableFreeze] = useOneSettingValue(Settings.TABLE_FREEZE);
-  const [tableResolution] = useTableResolution();
-  const [playAudioOnTable] = usePlayAudioOnTable();
+  return scene;
+}
 
-  const [scene] = useOneValue(displayedScene as string);
-  const [tableScene, setTableScene] = useState<Types.Scene | null>(null);
-
-  const [tableSize] = useTableSize();
+function useTableConfiguration():
+  | ExternalTypes.GetTableConfigurationResponse
+  | undefined {
+  const connection = useConnection();
+  const connectionState = useConnectionState();
+  const [, setStoredTableResolution] = useTableResolution();
+  const [, setStoredTableSize] = useTableSize();
+  const [, setPlayAudioOnTable] = usePlayAudioOnTable();
+  const [tableConfiguration, setTableConfiguration] =
+    useState<ExternalTypes.GetTableConfigurationResponse>();
 
   useEffect(() => {
-    if (scene === null || displayedScene === null) {
-      setTableScene(null);
-    } else if (!tableFreeze && scene !== undefined) {
-      if (scene === null) setTableScene(null);
-      else if (scene.version !== tableScene?.version) {
-        setTableScene(scene);
-      }
+    if (tableConfiguration) return;
+    if (connectionState === ChannelState.CONNECTED) {
+      connection.request({ getTableConfigurationRequest: {} }).then((res) => {
+        setTableConfiguration(res.getTableConfigurationResponse!);
+        setStoredTableResolution(
+          res.getTableConfigurationResponse!.resolution!
+        );
+        setStoredTableSize(res.getTableConfigurationResponse!.size);
+        setPlayAudioOnTable(
+          res.getTableConfigurationResponse!.playAudioOnTable
+        );
+      });
     }
-  }, [displayedScene, scene, tableScene, tableFreeze]);
+  }, [
+    connection,
+    connectionState,
+    tableConfiguration,
+    setStoredTableResolution,
+    setStoredTableSize,
+    setPlayAudioOnTable,
+  ]);
 
-  if (!tableResolution || !tableSize) {
-    return null;
+  return tableConfiguration;
+}
+
+type Props = {};
+const PresentationPage: React.FunctionComponent<Props> = () => {
+  const tableConfiguration = useTableConfiguration();
+  const tableScene = useDisplayedScene();
+
+  if (!tableConfiguration) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+        }}
+      >
+        <CircularProgress color="secondary" />
+        Connecting....
+      </Box>
+    );
   }
 
   return (
     <TableCanvas
-      tableConfiguration={{
-        resolution: tableResolution,
-        size: tableSize,
-        playAudioOnTable: playAudioOnTable ?? false,
-      }}
+      tableConfiguration={tableConfiguration}
       tableScene={tableScene}
     />
   );
 };
-export default TablePage;
+export default PresentationPage;

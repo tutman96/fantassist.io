@@ -1,10 +1,10 @@
-import React, { useCallback } from "react";
+import React from "react";
 
 import Button from "@mui/material/Button";
-import ButtonGroup from "@mui/material/ButtonGroup";
 import Divider from "@mui/material/Divider";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 
-import OpenInNewOutlinedIcon from "@mui/icons-material/OpenInNewOutlined";
 import CancelPresentation from "@mui/icons-material/CancelPresentation";
 import PresentToAll from "@mui/icons-material/PresentToAll";
 
@@ -12,47 +12,78 @@ import { useConnection, useConnectionState } from "@/external/hooks";
 import { ChannelState } from "@/external/abstractChannel";
 import theme from "@/theme";
 import ScreenSizeSettings from "./ScreenSizeSettings";
+import { DisplayTypes, useDisplayPreference } from ".";
+import InputGroup from "@/partials/inputGroup";
 
-const FullscreenButton: React.FunctionComponent = () => {
+const ChannelSelector: React.FunctionComponent = () => {
+  const connection = useConnection();
+  const connectionState = useConnectionState();
+  const [displayPreference, setDisplayPreference] = useDisplayPreference();
+  const supportedChannels = connection.supportedChannels;
+
+  if (displayPreference === undefined || supportedChannels.length === 1) {
+    return null;
+  }
+
+  return (
+    <InputGroup header="Display Type">
+      <Select
+        value={displayPreference ?? connection.supportedChannels[0]}
+        onChange={(e) => setDisplayPreference(e.target.value as DisplayTypes)}
+        disabled={connectionState !== ChannelState.DISCONNECTED}
+        fullWidth
+      >
+        <MenuItem
+          value="presentationApi"
+          disabled={!supportedChannels.some((c) => c === "presentationApi")}
+        >
+          Presentation API (preferred)
+        </MenuItem>
+        <MenuItem
+          value="window"
+          disabled={!supportedChannels.some((c) => c === "window")}
+        >
+          New Window
+        </MenuItem>
+      </Select>
+    </InputGroup>
+  );
+};
+
+const DisplayButton: React.FunctionComponent = () => {
   const connection = useConnection();
   const connectionState = useConnectionState();
 
-  const connect = useCallback(async () => {
-    try {
-      await connection.connect();
-    } catch (e) {
-      console.warn("Failed to connect to fullscreen display", e);
-    }
-  }, [connection]);
+  const connected = connectionState === ChannelState.CONNECTED;
 
-  if (connectionState === ChannelState.CONNECTED) {
-    return (
-      <Button
-        onClick={() => connection.disconnect()}
-        fullWidth
-        color="warning"
-        startIcon={<CancelPresentation />}
-      >
-        Disconnect Fullscreen
-      </Button>
-    );
-  }
-  if (connectionState === ChannelState.CONNECTING) {
-    return (
-      <Button disabled fullWidth>
-        Connecting to Fullscreen...
-      </Button>
-    );
-  }
   return (
-    <Button
-      onClick={connect}
-      startIcon={<PresentToAll />}
-      fullWidth
-      color="secondary"
-    >
-      Open Fullscreen
-    </Button>
+    <>
+      <ChannelSelector />
+
+      <Button
+        onClick={() => {
+          if (connected) {
+            connection.disconnect();
+          } else {
+            connection.connect();
+          }
+        }}
+        startIcon={connected ? <CancelPresentation /> : <PresentToAll />}
+        fullWidth
+        variant="contained"
+        color={connected ? "warning" : "primary"}
+        disabled={
+          connectionState === ChannelState.CONNECTING ||
+          connectionState === ChannelState.DISCONNECTING
+        }
+        size="large"
+      >
+        {connectionState === ChannelState.DISCONNECTED && "Launch Display"}
+        {connectionState === ChannelState.CONNECTING &&
+          "Connecting to Display..."}
+        {connected && "Close Display"}
+      </Button>
+    </>
   );
 };
 
@@ -61,18 +92,7 @@ const DisplaySettings: React.FunctionComponent = () => {
     <>
       <ScreenSizeSettings />
       <Divider sx={{ marginY: theme.spacing(2) }} />
-      <ButtonGroup fullWidth variant="text" color="secondary">
-        <FullscreenButton />
-        <Button
-          href="/table"
-          color="secondary"
-          target="fantassist-table"
-          startIcon={<OpenInNewOutlinedIcon />}
-          fullWidth
-        >
-          Open as Tab
-        </Button>
-      </ButtonGroup>
+      <DisplayButton />
     </>
   );
 };

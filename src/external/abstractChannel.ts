@@ -8,13 +8,14 @@ export enum ChannelState {
   DISCONNECTED = 'DISCONNECTED',
 }
 
-type RequestHandler = (request: Request) => Promise<Partial<Response> | null>;
+export type RequestHandler = (request: Request) => Promise<Partial<Response> | null>;
 
 export default abstract class AbstractChannel {
   private _responseListeners = new Map<string, (message: Packet) => void>();
 
   abstract get state(): ChannelState;
 
+  abstract isSupported: boolean;
   abstract connect(): Promise<void>;
   abstract disconnect(): Promise<void>;
   abstract sendOutgoingPacket(packet: Packet): Promise<void>;

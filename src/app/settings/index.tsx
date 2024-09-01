@@ -7,6 +7,7 @@ export enum Settings {
   TABLE_SIZE = "table_size",
   PLAY_AUDIO_ON_TABLE = "play_audio_on_table",
   LAST_CAMPAIGN = "last_campaign",
+  DISPLAY_PREFERENCE = "display_preference",
 }
 
 const storage = globalStorage<unknown>("settings");
@@ -105,4 +106,9 @@ export function useTablePPI(): number | null {
 
   const ppi = resolution.width / tableDimensions.width;
   return ppi;
+}
+
+export type DisplayTypes = "window" | "presentationApi";
+export function useDisplayPreference() {
+  return useOneSettingValue<DisplayTypes>(Settings.DISPLAY_PREFERENCE);
 }

@@ -13,12 +13,11 @@ import UploadIcon from "@mui/icons-material/Upload";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import AcUnitOutlinedIcon from "@mui/icons-material/AcUnitOutlined";
-import DisplaySettingsOutlinedIcon from "@mui/icons-material/DisplaySettingsOutlined";
+import TvIcon from "@mui/icons-material/Tv";
 
 import { Settings, settingsDatabase } from "../settings";
 import { Scene } from "@/protos/scene";
 import theme from "@/theme";
-import DisplaySettings from "../settings/DisplaySettings";
 
 const { useOneValue: useOneSettingValue } = settingsDatabase();
 
@@ -40,11 +39,11 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
     ? tableFreeze
       ? "lightblue"
       : theme.palette.success.main
-    : theme.palette.secondary.main;
+    : "white";
 
   return (
     <>
-      <Tooltip title="Display Settings">
+      <Tooltip title="Display">
         <Button
           size="large"
           color="success"
@@ -87,7 +86,7 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
                 <PlayArrowIcon />
               )
             ) : (
-              <DisplaySettingsOutlinedIcon />
+              <TvIcon />
             )
           }
         >

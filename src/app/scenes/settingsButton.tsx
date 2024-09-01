@@ -40,13 +40,7 @@ const SettingsButton: React.FC<Props> = ({}) => {
         onClose={() => setShowSettings(false)}
         maxWidth="md"
       >
-        <DialogTitle
-          sx={{
-            borderBottom: `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          Settings
-        </DialogTitle>
+        <DialogTitle>Settings</DialogTitle>
         <IconButton
           aria-label="close"
           onClick={() => setShowSettings(false)}
@@ -89,7 +83,7 @@ const SettingsButton: React.FC<Props> = ({}) => {
           <Box
             sx={{
               width: 600,
-              minHeight: "800px",
+              minHeight: "600px",
               padding: theme.spacing(2),
               background: lighten(theme.palette.background.default, 0.12),
             }}

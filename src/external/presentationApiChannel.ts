@@ -1,29 +1,35 @@
-import { Settings, settingsDatabase } from "@/app/settings";
 import { Packet } from "../protos/external";
 import AbstractChannel, { ChannelState } from "./abstractChannel";
 
 export default class PresentationApiChannel extends AbstractChannel {
+  private _presentationRequest: PresentationRequest | null = null;
   private _presentationConnection: PresentationConnection | null = null;
   private _connected = false;
 
-  get state(): ChannelState {
-    if (!this._presentationConnection) {
-      return ChannelState.DISCONNECTED;
-    }
+  get isSupported() {
+    return "PresentationRequest" in window || "presentation" in navigator;
+  }
 
-    if (this._connected) {
+  get state(): ChannelState {
+    if (
+      this._connected &&
+      this._presentationConnection?.state === "connected"
+    ) {
       return ChannelState.CONNECTED;
     }
 
-    if (
-      this._presentationConnection.state === "connecting" ||
-      this._presentationConnection.state === "connected"
-    ) {
-      if (this._connected) return ChannelState.CONNECTED;
-      else return ChannelState.CONNECTING;
-    } else {
-      return ChannelState.DISCONNECTED;
+    if (this._presentationRequest) {
+      return ChannelState.CONNECTING;
     }
+
+    return ChannelState.DISCONNECTED;
+  }
+
+  constructor() {
+    super();
+
+    const beforeunload = this.disconnect.bind(this);
+    window.addEventListener("beforeunload", beforeunload);
   }
 
   async connect() {
@@ -35,34 +41,43 @@ export default class PresentationApiChannel extends AbstractChannel {
       if (connections.length) {
         this._presentationConnection = connections[0]!;
       } else {
-        window.close();
+        // window.close();
         throw new Error(
           "There was a presentation.receiver without any connections"
         );
       }
     } else {
-      const request = new PresentationRequest("/table/presentation");
-      const availability = await request.getAvailability();
-      if (!availability.value) {
-        await Promise.race([
-          new Promise<void>((res) => {
-            availability.onchange = () => {
-              if (availability.value) {
-                res();
-                availability.onchange = null;
-              }
-            };
-          }),
-          new Promise((_res, rej) =>
-            setTimeout(
-              () => rej("Could not get Presentation Request availability"),
-              5000
-            )
-          ),
-        ]);
-      }
+      const request = new PresentationRequest("/table");
+      this._presentationRequest = request;
+      this.notifyConnectionStateChange();
 
-      this._presentationConnection = await request.start();
+      try {
+        const availability = await request.getAvailability();
+        if (!availability.value) {
+          await Promise.race([
+            new Promise<void>((res) => {
+              availability.onchange = () => {
+                if (availability.value) {
+                  res();
+                  availability.onchange = null;
+                }
+              };
+            }),
+            new Promise((_res, rej) =>
+              setTimeout(
+                () => rej("Could not get Presentation Request availability"),
+                5000
+              )
+            ),
+          ]);
+        }
+
+        this._presentationConnection = await request.start();
+      } catch (e) {
+        this._presentationRequest = null;
+        this.notifyConnectionStateChange();
+        return;
+      }
     }
 
     this._presentationConnection.onconnect = () => {
@@ -94,10 +109,6 @@ export default class PresentationApiChannel extends AbstractChannel {
     if (navigator.presentation.receiver) {
       this.request({ helloRequest: {} });
     }
-
-    window.addEventListener("beforeunload", () => {
-      this.disconnect();
-    });
   }
 
   async disconnect() {
@@ -105,11 +116,14 @@ export default class PresentationApiChannel extends AbstractChannel {
     this._connected = false;
     this._presentationConnection.terminate();
     this._presentationConnection.close();
+    this._presentationConnection = null;
+    this._presentationRequest = null;
     this.notifyConnectionStateChange();
   }
 
   async sendOutgoingPacket(packet: Packet) {
-    if (!this._presentationConnection) {
+    if (this.state !== ChannelState.CONNECTED) {
+      this.notifyConnectionStateChange();
       throw new Error("Not connected");
     }
     const encodedPacket = Packet.encode(packet).finish();
@@ -117,6 +131,6 @@ export default class PresentationApiChannel extends AbstractChannel {
       encodedPacket.byteOffset,
       encodedPacket.byteOffset + encodedPacket.byteLength
     );
-    this._presentationConnection.send(buffer);
+    this._presentationConnection!.send(buffer);
   }
 }
