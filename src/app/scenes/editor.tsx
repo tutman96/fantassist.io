@@ -27,6 +27,7 @@ import { fileStorage } from "./asset";
 import { ToolbarPortalProvider } from "./layer/toolbarPortal";
 import { TINT2 } from "./canvas/draggableStage";
 import TableDisplayButton from "./displayButton";
+import SettingsButton from "./settingsButton";
 
 const { useOneValue } = sceneDatabase;
 const { useOneValue: useOneSettingValue } = settingsDatabase();
@@ -157,7 +158,10 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
           {scene?.name}
         </Typography>
         <Box />
-        <Box>{scene && <TableDisplayButton scene={scene} />}</Box>
+        <Box>
+          {scene && <TableDisplayButton scene={scene} />}
+          <SettingsButton />
+        </Box>
       </Toolbar>
 
       <ToolbarPortalProvider>

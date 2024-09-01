@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
+import Divider from "@mui/material/Divider";
 
 import OpenInNewOutlinedIcon from "@mui/icons-material/OpenInNewOutlined";
 import CancelPresentation from "@mui/icons-material/CancelPresentation";
@@ -9,7 +10,8 @@ import PresentToAll from "@mui/icons-material/PresentToAll";
 
 import { useConnection, useConnectionState } from "@/external/hooks";
 import { ChannelState } from "@/external/abstractChannel";
-import PresentationApiChannel from "@/external/presentationApiChannel";
+import theme from "@/theme";
+import ScreenSizeSettings from "./ScreenSizeSettings";
 
 const FullscreenButton: React.FunctionComponent = () => {
   const connection = useConnection();
@@ -54,21 +56,25 @@ const FullscreenButton: React.FunctionComponent = () => {
   );
 };
 
-const DisplayMenu: React.FunctionComponent = () => {
+const DisplaySettings: React.FunctionComponent = () => {
   return (
-    <ButtonGroup fullWidth variant="text" color="secondary">
-      <FullscreenButton />
-      <Button
-        href="/table"
-        color="secondary"
-        target="fantassist-table"
-        startIcon={<OpenInNewOutlinedIcon />}
-        fullWidth
-      >
-        Open as Tab
-      </Button>
-    </ButtonGroup>
+    <>
+      <ScreenSizeSettings />
+      <Divider sx={{ marginY: theme.spacing(2) }} />
+      <ButtonGroup fullWidth variant="text" color="secondary">
+        <FullscreenButton />
+        <Button
+          href="/table"
+          color="secondary"
+          target="fantassist-table"
+          startIcon={<OpenInNewOutlinedIcon />}
+          fullWidth
+        >
+          Open as Tab
+        </Button>
+      </ButtonGroup>
+    </>
   );
 };
 
-export default DisplayMenu;
+export default DisplaySettings;

@@ -1,27 +1,24 @@
-import React, { useState } from "react";
-import { lighten } from "@mui/material/styles";
+import React, { useRef, useState } from "react";
 
-import IconButton from "@mui/material/IconButton";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
-import DialogTitle from "@mui/material/DialogTitle";
-import Divider from "@mui/material/Divider";
+import Menu from "@mui/material/Menu";
+import MenuList from "@mui/material/MenuList";
+import MenuItem from "@mui/material/MenuItem";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
 
 import UploadIcon from "@mui/icons-material/Upload";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import AcUnitOutlinedIcon from "@mui/icons-material/AcUnitOutlined";
 import DisplaySettingsOutlinedIcon from "@mui/icons-material/DisplaySettingsOutlined";
-import CloseIcon from "@mui/icons-material/Close";
 
 import { Settings, settingsDatabase } from "../settings";
 import { Scene } from "@/protos/scene";
 import theme from "@/theme";
-import DisplayMenu from "./displayMenu";
-import ScreenSizeSettings from "../settings/ScreenSizeSettings";
+import DisplaySettings from "../settings/DisplaySettings";
 
 const { useOneValue: useOneSettingValue } = settingsDatabase();
 
@@ -34,7 +31,8 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
   const [tableFreeze, updateTableFreeze] = useOneSettingValue(
     Settings.TABLE_FREEZE
   );
-  const [showModal, setShowModal] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const anchorEl = useRef<HTMLElement>();
 
   const currentSceneDisplayed = displayedScene === scene.id;
 
@@ -49,8 +47,11 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
       <Tooltip title="Display Settings">
         <Button
           size="large"
+          color="success"
+          ref={anchorEl as any}
           sx={{
             color: buttonColor,
+            marginRight: theme.spacing(1),
             animation: currentSceneDisplayed
               ? `pulse-${tableFreeze ? "freeze" : "play"} 2s infinite`
               : "none",
@@ -77,7 +78,7 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
               },
             },
           }}
-          onClick={() => setShowModal(true)}
+          onClick={() => setShowMenu(true)}
           endIcon={
             currentSceneDisplayed ? (
               tableFreeze ? (
@@ -97,55 +98,48 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
             : "DISPLAY"}
         </Button>
       </Tooltip>
-      <Dialog open={showModal} onClose={() => setShowModal(false)}>
-        <DialogTitle>Display Settings</DialogTitle>
-        <IconButton
-          aria-label="close"
-          onClick={() => setShowModal(false)}
-          sx={(theme) => ({
-            position: "absolute",
-            right: 8,
-            top: 8,
-            color: theme.palette.grey[500],
-          })}
-        >
-          <CloseIcon />
-        </IconButton>
-        <DialogContent>
-          <ScreenSizeSettings />
-          <Divider sx={{ marginY: theme.spacing(2) }} />
-          <DisplayMenu />
-          <ButtonGroup
-            fullWidth
-            sx={{
-              marginTop: theme.spacing(2),
+      <Menu
+        open={showMenu}
+        onClose={() => setShowMenu(false)}
+        anchorEl={anchorEl.current!}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        elevation={7}
+      >
+        <MenuList dense>
+          <MenuItem
+            onClick={() => {
+              updateDisplayedScene(!currentSceneDisplayed ? scene.id : null);
+              updateTableFreeze(false);
+              setShowMenu(false);
             }}
           >
-            <Button
-              startIcon={
-                currentSceneDisplayed ? <VisibilityOffIcon /> : <UploadIcon />
+            <ListItemIcon>
+              {currentSceneDisplayed ? <VisibilityOffIcon /> : <UploadIcon />}
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                currentSceneDisplayed ? "Hide Display" : "Send to Display"
               }
-              variant={currentSceneDisplayed ? "contained" : "outlined"}
-              color={currentSceneDisplayed ? "success" : "primary"}
-              onClick={() => {
-                updateDisplayedScene(!currentSceneDisplayed ? scene.id : null);
-                updateTableFreeze(false);
-              }}
-            >
-              {currentSceneDisplayed ? "Hide Display" : "Send to Display"}
-            </Button>
-            <Button
-              startIcon={<AcUnitOutlinedIcon />}
-              variant={tableFreeze ? "contained" : "outlined"}
-              color="primary"
-              disabled={!currentSceneDisplayed}
-              onClick={() => updateTableFreeze(!tableFreeze)}
-            >
-              {tableFreeze ? "Unfreeze Table" : "Freeze Table"}
-            </Button>
-          </ButtonGroup>
-        </DialogContent>
-      </Dialog>
+            />
+          </MenuItem>
+          <MenuItem
+            color="primary"
+            disabled={!currentSceneDisplayed}
+            onClick={() => {
+              updateTableFreeze(!tableFreeze);
+              setShowMenu(false);
+            }}
+          >
+            <ListItemIcon>
+              <AcUnitOutlinedIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary={tableFreeze ? "Unfreeze Table" : "Freeze Table"}
+            />
+          </MenuItem>
+        </MenuList>
+      </Menu>
     </>
   );
 };
