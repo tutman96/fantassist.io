@@ -73,7 +73,7 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
     layer.add(new Konva.Rect({ width, height, fill: "black" }));
     childStage.add(layer);
     return layer;
-  }, [childStage]);
+  }, [childStage, height, width]);
 
   // Calculate line elements that represent the composite fog overlay
   const lines = useMemo(() => {
@@ -119,12 +119,16 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
       };
       const fillRadialGradientColorStops = [
         0,
-        `rgba(${light.color!.r},${light.color!.g},${light.color!.b},${light.color!.a / 255})`,
+        `rgba(${light.color!.r},${light.color!.g},${light.color!.b},${
+          light.color!.a / 255
+        })`,
         Math.max(
           0,
           Math.min(1, light.brightLightDistance! / light.dimLightDistance!)
         ),
-        `rgba(${light.color!.r},${light.color!.g},${light.color!.b},${light.color!.a / 255 * 0.7})`,
+        `rgba(${light.color!.r},${light.color!.g},${light.color!.b},${
+          (light.color!.a / 255) * 0.7
+        })`,
         1,
         `rgba(${light.color!.r},${light.color!.g},${light.color!.b},0)`,
       ];
@@ -192,6 +196,7 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
       clipHeight={
         scene ? tableDimensions!.height / scene.table!.scale! : undefined
       }
+      listening={false}
     >
       <Rect
         x={scene.table!.offset!.x}
@@ -201,6 +206,7 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
         fill="black"
         globalCompositeOperation="destination-over"
       />
+      {/* eslint-disable-next-line jsx-a11y/alt-text */}
       <Image
         {...imageConfig}
         x={fogBounds.minX}

@@ -140,7 +140,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
     return () => {
       stage.off("click", onParentClick);
     };
-  }, [groupRef.current, addingPolygon]);
+  }, [groupRef, addingPolygon]);
 
   const updatePolygons = (
     type: Types.FogLayer_Polygon_PolygonType,
@@ -206,7 +206,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
               dimLightDistance: 8,
               color: { r: 255, g: 255, b: 255, a: 255 },
             } as Types.FogLayer_LightSource;
-            localLayer.lightSources = [...layer.lightSources, light];
+            localLayer.lightSources = [...localLayer.lightSources, light];
             setSelectedLight(localLayer.lightSources.length - 1);
             setLocalLayer({ ...localLayer });
             save();
@@ -258,7 +258,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
           }
           onUpdate={(light) => {
             localLayer.lightSources[selectedLight!] = light;
-            setLocalLayer({ ...layer });
+            setLocalLayer({ ...localLayer });
             save();
           }}
         />
@@ -287,13 +287,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
         />
       </>
     );
-  }, [
-    selectedPolygon,
-    selectedLight,
-    localLayer,
-    collections,
-    groupRef.current,
-  ]);
+  }, [selectedPolygon, selectedLight, localLayer, collections, save]);
 
   const onPolygonAdded = useCallback(() => {
     if (addingPolygon) {
@@ -317,7 +311,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
       setLocalLayer({ ...localLayer });
       save();
     }
-  }, [layer, addingPolygon, collections]);
+  }, [localLayer, addingPolygon, collections, save]);
 
   const WrappedEditablePolygon = (
     poly: Types.FogLayer_Polygon,
@@ -357,7 +351,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
     <>
       {active && <ToolbarPortal>{toolbar}</ToolbarPortal>}
       <FogOverlay
-        opacity={isTable ? 1 : active ? 0.8 : 0.4}
+        opacity={isTable ? 1 : active ? 0.8 : 1}
         layer={localLayer}
       />
       {active && (

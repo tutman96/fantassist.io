@@ -8,12 +8,10 @@ import * as Types from "@/protos/scene";
 import { useCampaignId } from "@/app/campaigns/hooks";
 import ToolbarItem, { ToolbarSeparator } from "../toolbarItem";
 
-import AddReactionOutlinedIcon from "@mui/icons-material/AddReactionOutlined";
 import Grid3x3OutlinedIcon from "@mui/icons-material/Grid3x3Outlined";
 import GridGoldenratioOutlinedIcon from "@mui/icons-material/GridGoldenratioOutlined";
 import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 
-import { getNewAssets } from "../../asset";
 import AssetComponent from "../assetLayer/asset";
 import Konva from "konva";
 import { cloneMarker, markerStorage } from "../../marker/storage";
@@ -32,7 +30,7 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
   const groupRef = useRef<Konva.Group>();
 
   useEffect(() => {
-    if (!groupRef.current || !campaignId) return;
+    if (!groupRef.current || !campaignId || !layerActive) return;
     const parent = groupRef.current.getStage()!;
 
     function onParentClick() {
@@ -43,19 +41,13 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
     parent.on("click.konva", onParentClick);
 
     const container = parent.container();
-    
-    function onDragover(e: DragEvent) {
-      // TODO: display an overlay or something?
-      e.preventDefault();
-    }
-    container.addEventListener("dragover", onDragover);
 
     async function onDrop(e: DragEvent) {
       e.preventDefault();
       if (!e.dataTransfer) return; // TODO: handle raw image drops?
 
       const markerId = e.dataTransfer.getData(DROP_DATA_TYPE);
-      if (!markerId) return;  
+      if (!markerId) return;
 
       const marker = await cloneMarker(campaignId!, markerId);
 
@@ -65,8 +57,12 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
       // put the center of the marker at the pointer position
 
       marker.asset!.snapToGrid = true;
-      marker.asset!.transform!.x = Math.floor(position.x - marker.asset!.transform!.width / 2);
-      marker.asset!.transform!.y = Math.floor(position.y - marker.asset!.transform!.height / 2);
+      marker.asset!.transform!.x = Math.floor(
+        position.x - marker.asset!.transform!.width / 2
+      );
+      marker.asset!.transform!.y = Math.floor(
+        position.y - marker.asset!.transform!.height / 2
+      );
 
       layer.markers.push(marker);
       layer.markers = Array.from(layer.markers);
@@ -77,10 +73,9 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
 
     return () => {
       parent.off("click.konva", onParentClick);
-      container.removeEventListener("dragover", onDragover);
       container.removeEventListener("drop", onDrop);
     };
-  }, [layer, campaignId, groupRef, selectedMarkerId]);
+  }, [layer, layerActive, campaignId, groupRef, selectedMarkerId, onUpdate]);
 
   const toolbar = useMemo(() => {
     const selectedAsset = selectedMarkerId
@@ -123,7 +118,7 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
         />
       </>
     );
-  }, [layer, campaignId, selectedMarkerId, onUpdate]);
+  }, [layer, selectedMarkerId, onUpdate]);
   return (
     <>
       {layerActive && <ToolbarPortal>{toolbar}</ToolbarPortal>}
