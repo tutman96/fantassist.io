@@ -27,6 +27,7 @@ import { COSMIC_PURPLE } from "@/colors";
 import { darken, lighten } from "@mui/material/styles";
 import FogOverlay from "./fogOverlay";
 import Light from "./light";
+import { useStageClick } from "@/utils";
 
 const getPolygonStyle = (
   poly: Types.FogLayer_Polygon
@@ -126,21 +127,10 @@ const FogLayer: React.FunctionComponent<Props> = ({
     }
   }, [active]);
 
-  useEffect(() => {
-    if (!groupRef.current || addingPolygon) return;
-    const stage = groupRef.current.getStage()!;
-
-    function onParentClick(e: Konva.KonvaEventObject<MouseEvent>) {
-      if (e.evt.button === 0) {
-        setSelectedLight(null);
-        setSelectedPolygon(null);
-      }
-    }
-    stage.on("click.konva", onParentClick);
-    return () => {
-      stage.off("click.konva", onParentClick);
-    };
-  }, [groupRef, addingPolygon]);
+  useStageClick(groupRef.current, () => {
+    setSelectedLight(null);
+    setSelectedPolygon(null);
+  });
 
   const updatePolygons = (
     type: Types.FogLayer_Polygon_PolygonType,

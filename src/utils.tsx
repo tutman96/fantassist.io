@@ -1,3 +1,4 @@
+import Konva from "konva";
 import { useState, useEffect, DependencyList, useRef } from "react";
 
 export function useKeyPress(targetKey: string) {
@@ -60,4 +61,36 @@ export function useThrottledMemo<T>(
   }, [...deps, delayMs]);
 
   return value;
+}
+
+export function useStageClick(
+  node: Konva.Node | undefined,
+  onClick: () => void,
+  refs: Array<unknown> = []
+) {
+  useEffect(() => {
+    if (!node) return;
+    const stage = node.getStage()!;
+
+    let isClick = false;
+
+    function onParentMouseDown(e: Konva.KonvaEventObject<MouseEvent>) {
+      if (e.target === stage) {
+        isClick = true;
+      }
+    }
+
+    function onParentMouseUp() {
+      if (isClick) {
+        onClick();
+      }
+      isClick = false;
+    }
+    stage.on("click.konva", onParentMouseUp);
+    stage.on("mousedown.konva", onParentMouseDown);
+    return () => {
+      stage.off("click.konva", onParentMouseUp);
+      stage.off("mousedown.konva", onParentMouseDown);
+    };
+  }, [node, onClick, ...refs]);
 }

@@ -26,6 +26,7 @@ import {
 } from "../../canvas";
 import * as Types from "@/protos/scene";
 import { useCampaignId } from "@/app/campaigns/hooks";
+import { useStageClick } from "@/utils";
 
 type Props = ILayerComponentProps<Types.AssetLayer>;
 const AssetLayer: React.FunctionComponent<Props> = ({
@@ -74,20 +75,15 @@ const AssetLayer: React.FunctionComponent<Props> = ({
     };
   }, [groupRef, layer.assets, isTable]);
 
-  useEffect(() => {
-    if (!groupRef.current?.parent) return;
-    const parent = groupRef.current.getStage()!;
-
-    function onParentClick() {
+  useStageClick(
+    groupRef.current,
+    () => {
       if (selectedAssetId) {
         setSelectedAssetId(null);
       }
-    }
-    parent.on("click.konva", onParentClick);
-    return () => {
-      parent.off("click.konva", onParentClick);
-    };
-  }, [groupRef, selectedAssetId]);
+    },
+    [selectedAssetId]
+  );
 
   // Reset selected asset when active layer changes
   useEffect(() => {

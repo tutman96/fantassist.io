@@ -14,9 +14,10 @@ import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 
 import AssetComponent from "../assetLayer/asset";
 import Konva from "konva";
-import { cloneMarker, markerStorage } from "../../marker/storage";
+import { cloneMarker } from "../../marker/storage";
 import MarkerList, { DROP_DATA_TYPE } from "../../marker/markerList";
 import LayerListTopperPortal from "../../canvas/layerListTopperProvider";
+import { useStageClick } from "@/utils";
 
 type Props = ILayerComponentProps<Types.MarkerLayer>;
 const MarkerLayer: React.FunctionComponent<Props> = ({
@@ -29,16 +30,13 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
   const campaignId = useCampaignId();
   const groupRef = useRef<Konva.Group>();
 
+  useStageClick(groupRef.current, () => {
+    setSelectedMarkerId(null);
+  });
+
   useEffect(() => {
     if (!groupRef.current || !campaignId || !layerActive) return;
     const parent = groupRef.current.getStage()!;
-
-    function onParentClick() {
-      if (selectedMarkerId) {
-        setSelectedMarkerId(null);
-      }
-    }
-    parent.on("click.konva", onParentClick);
 
     const container = parent.container();
 
@@ -72,7 +70,6 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
     container.addEventListener("drop", onDrop);
 
     return () => {
-      parent.off("click.konva", onParentClick);
       container.removeEventListener("drop", onDrop);
     };
   }, [layer, layerActive, campaignId, groupRef, selectedMarkerId, onUpdate]);
