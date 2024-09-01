@@ -79,16 +79,28 @@ function useExternalDisplay() {
 
   useEffect(() => {
     if (scene === undefined || tableFreeze === undefined) return;
-
-    if (connectionState !== ChannelState.CONNECTED) return;
     if (tableFreeze) return;
 
-    connection.request({
-      displaySceneRequest: {
-        scene: scene ?? undefined,
-      },
-    });
-  }, [scene, connection, connectionState, tableFreeze]);
+    if (connection.state === ChannelState.CONNECTED) {
+      connection.request({
+        displaySceneRequest: {
+          scene: scene ?? undefined,
+        },
+      });
+    }
+  }, [scene, connection, tableFreeze]);
+
+  useRequestHandler(async (req) => {
+    // Still respond even if tableFreeze is true to ensure the table has a scene
+    if (req.getCurrentSceneRequest && scene) {
+      return {
+        getCurrentSceneResponse: {
+          scene,
+        },
+      };
+    }
+    return null;
+  });
 }
 
 type Props = { id: string };

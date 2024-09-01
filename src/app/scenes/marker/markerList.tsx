@@ -91,6 +91,7 @@ const MarkerList: React.FC<Props> = ({ campaignId }) => {
         height: "100%",
         display: "flex",
         flexDirection: "column",
+        pointerEvents: "auto",
       }}
       onClick={() => setSelectedMarkerId(null)}
     >

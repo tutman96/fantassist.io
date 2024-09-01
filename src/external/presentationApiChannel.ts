@@ -12,13 +12,21 @@ export default class PresentationApiChannel extends AbstractChannel {
 
   get state(): ChannelState {
     if (
+      this._presentationConnection?.state === "closed" ||
+      this._presentationConnection?.state === "terminated"
+    ) {
+      return ChannelState.DISCONNECTED;
+    }
+
+    if (
       this._connected &&
       this._presentationConnection?.state === "connected"
     ) {
       return ChannelState.CONNECTED;
     }
 
-    if (this._presentationRequest) {
+    // When navigator.presentation.receiver is available, theres no PresentationRequest
+    if (this._presentationRequest || navigator.presentation.receiver) {
       return ChannelState.CONNECTING;
     }
 
@@ -122,9 +130,15 @@ export default class PresentationApiChannel extends AbstractChannel {
   }
 
   async sendOutgoingPacket(packet: Packet) {
-    if (this.state !== ChannelState.CONNECTED) {
+    if (
+      this.state !== ChannelState.CONNECTED &&
+      this.state !== ChannelState.CONNECTING // This case is needed to send a helloRequest
+    ) {
       this.notifyConnectionStateChange();
-      throw new Error("Not connected");
+      // no-op
+      console.warn("Tried to send a packet while disconnected");
+      this.logPacket("Sending", packet);
+      return;
     }
     const encodedPacket = Packet.encode(packet).finish();
     const buffer = encodedPacket.buffer.slice(

@@ -22,6 +22,9 @@ message Request {
 
     // Respond with GetTableConfigurationResponse
     GetTableConfigurationRequest getTableConfigurationRequest = 4;
+
+    // Respond with GetCurrentSceneResponse
+    GetCurrentSceneRequest getCurrentSceneRequest = 5;
   }
 }
 
@@ -30,6 +33,7 @@ message Response {
     AckResponse ackResponse = 1;
     GetAssetResponse getAssetResponse = 2;
     GetTableConfigurationResponse getTableConfigurationResponse = 3;
+    GetCurrentSceneResponse getCurrentSceneResponse = 4;
   }
 }
 
@@ -65,4 +69,10 @@ message GetTableConfigurationResponse {
   double size = 2;
 
   bool playAudioOnTable = 3;
+}
+
+message GetCurrentSceneRequest {}
+
+message GetCurrentSceneResponse {
+  Scene scene = 1;
 }

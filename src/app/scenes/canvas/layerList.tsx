@@ -55,6 +55,7 @@ const LayerList: React.FunctionComponent<Props> = ({
       sx={{
         ...BACKDROP_STYLE,
         flexShrink: 1,
+        pointerEvents: 'auto',
       }}
     >
       <List dense={true}>

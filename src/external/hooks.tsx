@@ -49,11 +49,11 @@ export function useConnection(): MultiChannel {
 }
 
 export function useConnectionState() {
-  const connection = useConnection();
-  const [state, setState] = useState(connection.state);
+  const connection = useConnection() as MultiChannel | null;
+  const [state, setState] = useState(connection?.state);
 
   useEffect(() => {
-    return connection.addConnectionStateChangeHandler(() => {
+    return connection?.addConnectionStateChangeHandler(() => {
       setState(connection.state);
     });
   }, [connection]);

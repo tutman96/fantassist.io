@@ -30,13 +30,18 @@ export interface Request {
     | GetAssetRequest
     | undefined;
   /** Respond with GetTableConfigurationResponse */
-  getTableConfigurationRequest?: GetTableConfigurationRequest | undefined;
+  getTableConfigurationRequest?:
+    | GetTableConfigurationRequest
+    | undefined;
+  /** Respond with GetCurrentSceneResponse */
+  getCurrentSceneRequest?: GetCurrentSceneRequest | undefined;
 }
 
 export interface Response {
   ackResponse?: AckResponse | undefined;
   getAssetResponse?: GetAssetResponse | undefined;
   getTableConfigurationResponse?: GetTableConfigurationResponse | undefined;
+  getCurrentSceneResponse?: GetCurrentSceneResponse | undefined;
 }
 
 export interface HelloRequest {
@@ -71,6 +76,13 @@ export interface GetTableConfigurationResponse {
 export interface GetTableConfigurationResponse_Resolution {
   width: number;
   height: number;
+}
+
+export interface GetCurrentSceneRequest {
+}
+
+export interface GetCurrentSceneResponse {
+  scene: Scene | undefined;
 }
 
 function createBasePacket(): Packet {
@@ -172,6 +184,7 @@ function createBaseRequest(): Request {
     displaySceneRequest: undefined,
     getAssetRequest: undefined,
     getTableConfigurationRequest: undefined,
+    getCurrentSceneRequest: undefined,
   };
 }
 
@@ -188,6 +201,9 @@ export const Request = {
     }
     if (message.getTableConfigurationRequest !== undefined) {
       GetTableConfigurationRequest.encode(message.getTableConfigurationRequest, writer.uint32(34).fork()).ldelim();
+    }
+    if (message.getCurrentSceneRequest !== undefined) {
+      GetCurrentSceneRequest.encode(message.getCurrentSceneRequest, writer.uint32(42).fork()).ldelim();
     }
     return writer;
   },
@@ -227,6 +243,13 @@ export const Request = {
 
           message.getTableConfigurationRequest = GetTableConfigurationRequest.decode(reader, reader.uint32());
           continue;
+        case 5:
+          if (tag !== 42) {
+            break;
+          }
+
+          message.getCurrentSceneRequest = GetCurrentSceneRequest.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -246,6 +269,9 @@ export const Request = {
       getTableConfigurationRequest: isSet(object.getTableConfigurationRequest)
         ? GetTableConfigurationRequest.fromJSON(object.getTableConfigurationRequest)
         : undefined,
+      getCurrentSceneRequest: isSet(object.getCurrentSceneRequest)
+        ? GetCurrentSceneRequest.fromJSON(object.getCurrentSceneRequest)
+        : undefined,
     };
   },
 
@@ -262,6 +288,9 @@ export const Request = {
     }
     if (message.getTableConfigurationRequest !== undefined) {
       obj.getTableConfigurationRequest = GetTableConfigurationRequest.toJSON(message.getTableConfigurationRequest);
+    }
+    if (message.getCurrentSceneRequest !== undefined) {
+      obj.getCurrentSceneRequest = GetCurrentSceneRequest.toJSON(message.getCurrentSceneRequest);
     }
     return obj;
   },
@@ -284,12 +313,21 @@ export const Request = {
       (object.getTableConfigurationRequest !== undefined && object.getTableConfigurationRequest !== null)
         ? GetTableConfigurationRequest.fromPartial(object.getTableConfigurationRequest)
         : undefined;
+    message.getCurrentSceneRequest =
+      (object.getCurrentSceneRequest !== undefined && object.getCurrentSceneRequest !== null)
+        ? GetCurrentSceneRequest.fromPartial(object.getCurrentSceneRequest)
+        : undefined;
     return message;
   },
 };
 
 function createBaseResponse(): Response {
-  return { ackResponse: undefined, getAssetResponse: undefined, getTableConfigurationResponse: undefined };
+  return {
+    ackResponse: undefined,
+    getAssetResponse: undefined,
+    getTableConfigurationResponse: undefined,
+    getCurrentSceneResponse: undefined,
+  };
 }
 
 export const Response = {
@@ -302,6 +340,9 @@ export const Response = {
     }
     if (message.getTableConfigurationResponse !== undefined) {
       GetTableConfigurationResponse.encode(message.getTableConfigurationResponse, writer.uint32(26).fork()).ldelim();
+    }
+    if (message.getCurrentSceneResponse !== undefined) {
+      GetCurrentSceneResponse.encode(message.getCurrentSceneResponse, writer.uint32(34).fork()).ldelim();
     }
     return writer;
   },
@@ -334,6 +375,13 @@ export const Response = {
 
           message.getTableConfigurationResponse = GetTableConfigurationResponse.decode(reader, reader.uint32());
           continue;
+        case 4:
+          if (tag !== 34) {
+            break;
+          }
+
+          message.getCurrentSceneResponse = GetCurrentSceneResponse.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -350,6 +398,9 @@ export const Response = {
       getTableConfigurationResponse: isSet(object.getTableConfigurationResponse)
         ? GetTableConfigurationResponse.fromJSON(object.getTableConfigurationResponse)
         : undefined,
+      getCurrentSceneResponse: isSet(object.getCurrentSceneResponse)
+        ? GetCurrentSceneResponse.fromJSON(object.getCurrentSceneResponse)
+        : undefined,
     };
   },
 
@@ -363,6 +414,9 @@ export const Response = {
     }
     if (message.getTableConfigurationResponse !== undefined) {
       obj.getTableConfigurationResponse = GetTableConfigurationResponse.toJSON(message.getTableConfigurationResponse);
+    }
+    if (message.getCurrentSceneResponse !== undefined) {
+      obj.getCurrentSceneResponse = GetCurrentSceneResponse.toJSON(message.getCurrentSceneResponse);
     }
     return obj;
   },
@@ -381,6 +435,10 @@ export const Response = {
     message.getTableConfigurationResponse =
       (object.getTableConfigurationResponse !== undefined && object.getTableConfigurationResponse !== null)
         ? GetTableConfigurationResponse.fromPartial(object.getTableConfigurationResponse)
+        : undefined;
+    message.getCurrentSceneResponse =
+      (object.getCurrentSceneResponse !== undefined && object.getCurrentSceneResponse !== null)
+        ? GetCurrentSceneResponse.fromPartial(object.getCurrentSceneResponse)
         : undefined;
     return message;
   },
@@ -887,6 +945,106 @@ export const GetTableConfigurationResponse_Resolution = {
     const message = createBaseGetTableConfigurationResponse_Resolution();
     message.width = object.width ?? 0;
     message.height = object.height ?? 0;
+    return message;
+  },
+};
+
+function createBaseGetCurrentSceneRequest(): GetCurrentSceneRequest {
+  return {};
+}
+
+export const GetCurrentSceneRequest = {
+  encode(_: GetCurrentSceneRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetCurrentSceneRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetCurrentSceneRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): GetCurrentSceneRequest {
+    return {};
+  },
+
+  toJSON(_: GetCurrentSceneRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetCurrentSceneRequest>, I>>(base?: I): GetCurrentSceneRequest {
+    return GetCurrentSceneRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetCurrentSceneRequest>, I>>(_: I): GetCurrentSceneRequest {
+    const message = createBaseGetCurrentSceneRequest();
+    return message;
+  },
+};
+
+function createBaseGetCurrentSceneResponse(): GetCurrentSceneResponse {
+  return { scene: undefined };
+}
+
+export const GetCurrentSceneResponse = {
+  encode(message: GetCurrentSceneResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.scene !== undefined) {
+      Scene.encode(message.scene, writer.uint32(10).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetCurrentSceneResponse {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetCurrentSceneResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.scene = Scene.decode(reader, reader.uint32());
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetCurrentSceneResponse {
+    return { scene: isSet(object.scene) ? Scene.fromJSON(object.scene) : undefined };
+  },
+
+  toJSON(message: GetCurrentSceneResponse): unknown {
+    const obj: any = {};
+    if (message.scene !== undefined) {
+      obj.scene = Scene.toJSON(message.scene);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetCurrentSceneResponse>, I>>(base?: I): GetCurrentSceneResponse {
+    return GetCurrentSceneResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetCurrentSceneResponse>, I>>(object: I): GetCurrentSceneResponse {
+    const message = createBaseGetCurrentSceneResponse();
+    message.scene = (object.scene !== undefined && object.scene !== null) ? Scene.fromPartial(object.scene) : undefined;
     return message;
   },
 };

@@ -161,6 +161,8 @@ const DraggableStage: React.FunctionComponent<
           if (e.evt.button === 1 || e.evt.button === 2) {
             stageRef.current?.startDrag(e);
             e.cancelBubble = true;
+          } else {
+            stageRef.current?.stopDrag(e);
           }
         }}
         onWheel={(e) => {

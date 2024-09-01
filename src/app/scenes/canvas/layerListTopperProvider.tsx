@@ -71,6 +71,7 @@ export const LayerListTopperProvider: React.FunctionComponent<
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
+          pointerEvents: "none",
         }}
       >
         <Box

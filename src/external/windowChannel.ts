@@ -100,7 +100,6 @@ export default class WindowChannel extends AbstractChannel {
       console.error("Window is not connected");
       return;
     }
-    console.debug("Sending packet", packet);
     const encodedPacket = Packet.encode(packet).finish();
     const buffer = encodedPacket.buffer.slice(
       encodedPacket.byteOffset,

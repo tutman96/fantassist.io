@@ -136,9 +136,9 @@ const FogLayer: React.FunctionComponent<Props> = ({
         setSelectedPolygon(null);
       }
     }
-    stage.on("click", onParentClick);
+    stage.on("click.konva", onParentClick);
     return () => {
-      stage.off("click", onParentClick);
+      stage.off("click.konva", onParentClick);
     };
   }, [groupRef, addingPolygon]);
 
@@ -373,6 +373,7 @@ const FogLayer: React.FunctionComponent<Props> = ({
               onSave={save}
               selected={selectedLight === i}
               onSelected={() => {
+                console.log("selected light", i);
                 setSelectedLight(i);
                 setSelectedPolygon(null);
               }}

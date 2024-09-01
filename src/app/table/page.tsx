@@ -23,18 +23,31 @@ import TableCanvas from "./canvas";
 function useDisplayedScene() {
   const [scene, setScene] = useState<Types.Scene | null>(null);
   const connection = useConnection();
+  const connectionState = useConnectionState();
+
+  function updateSceneToLatest(s: Types.Scene) {
+    if (!scene || s.version > scene.version) {
+      setScene(s);
+    }
+  }
+
   useEffect(() => {
     if (connection.hasCurrentChannel) {
-      connection
-        .connect()
-        .then(() => console.log("connected"))
-        .catch(console.warn);
+      connection.connect().catch(console.warn);
     }
   }, [connection]);
 
+  useEffect(() => {
+    if (connectionState === ChannelState.CONNECTED && !scene) {
+      connection.request({ getCurrentSceneRequest: {} }).then((res) => {
+        updateSceneToLatest(res.getCurrentSceneResponse!.scene!);
+      });
+    }
+  }, [scene, connection, connectionState]);
+
   useRequestHandler(async (request) => {
     if (request.displaySceneRequest) {
-      setScene(request.displaySceneRequest.scene!);
+      updateSceneToLatest(request.displaySceneRequest.scene!);
       return {
         ackResponse: {},
         getAssetResponse: undefined,

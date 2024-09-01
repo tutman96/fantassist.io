@@ -144,6 +144,7 @@ const FogOverlay: React.FC<FogOverlayProps> = ({ layer, ...imageConfig }) => {
             light.dimLightDistance!
           ),
           fillRadialGradientColorStops,
+          globalCompositeOperation: 'lighten'
         })
       );
     });
