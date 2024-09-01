@@ -70,7 +70,8 @@ export function useStageClick(
 ) {
   useEffect(() => {
     if (!node) return;
-    const stage = node.getStage()!;
+    const stage = node.getStage();
+    if (!stage) return;
 
     let isClick = false;
 
