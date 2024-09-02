@@ -17,7 +17,7 @@ import Konva from "konva";
 import { cloneMarker } from "../../marker/storage";
 import MarkerList, { DROP_DATA_TYPE } from "../../marker/markerList";
 import LayerListTopperPortal from "../../canvas/layerListTopperProvider";
-import { useStageClick } from "@/utils";
+import { useKeyPress, useStageClick } from "@/utils";
 
 type Props = ILayerComponentProps<Types.MarkerLayer>;
 const MarkerLayer: React.FunctionComponent<Props> = ({
@@ -55,24 +55,44 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
       // put the center of the marker at the pointer position
 
       marker.asset!.snapToGrid = true;
-      marker.asset!.transform!.x = Math.floor(
-        position.x - marker.asset!.transform!.width / 2
-      );
-      marker.asset!.transform!.y = Math.floor(
-        position.y - marker.asset!.transform!.height / 2
-      );
+      marker.asset!.transform!.x = Math.floor(position.x);
+      marker.asset!.transform!.y = Math.floor(position.y);
 
       layer.markers.push(marker);
       layer.markers = Array.from(layer.markers);
       setSelectedMarkerId(marker.id);
       onUpdate(layer);
     }
+
+    // This is to allow the drop
+    function onDragOver(e: DragEvent) {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+    }
+    container.addEventListener("dragover", onDragOver);
     container.addEventListener("drop", onDrop);
 
     return () => {
+      container.removeEventListener("dragover", onDragOver);
       container.removeEventListener("drop", onDrop);
     };
   }, [layer, layerActive, campaignId, groupRef, selectedMarkerId, onUpdate]);
+
+  function markerMover(key: string, dx: number, dy: number) {
+    const pressed = useKeyPress(key);
+    useEffect(() => {
+      if (!selectedMarkerId || !pressed) return;
+      const marker = layer.markers.find((m) => m.id === selectedMarkerId);
+      if (!marker) return;
+      marker.asset!.transform!.x += dx;
+      marker.asset!.transform!.y += dy;
+      onUpdate(layer);
+    }, [selectedMarkerId, pressed]);
+  }
+  markerMover("ArrowUp", 0, -1);
+  markerMover("ArrowRight", 1, 0);
+  markerMover("ArrowDown", 0, 1);
+  markerMover("ArrowLeft", -1, 0);
 
   const toolbar = useMemo(() => {
     const selectedAsset = selectedMarkerId
@@ -138,6 +158,9 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
                 onUpdate(layer);
               }}
               playAudio={false}
+              cornerRadius={m.asset!.transform!.width / 2}
+              shadowColor="rgba(0,0,0,1)"
+              shadowBlur={0.2}
             />
           );
         })}

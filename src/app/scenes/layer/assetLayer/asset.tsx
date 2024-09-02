@@ -13,13 +13,14 @@ type Props = {
   selected: boolean;
   onSelected: () => void;
   playAudio: boolean;
-};
+} & Omit<Konva.ImageConfig, "image">;
 const Asset: React.FunctionComponent<Props> = ({
   asset,
   onUpdate,
   selected,
   onSelected,
   playAudio,
+  ...rest
 }) => {
   const el = useAssetElement(asset);
   const imgRef = useRef<Konva.Image>();
@@ -68,6 +69,7 @@ const Asset: React.FunctionComponent<Props> = ({
         image={el}
         width={asset.transform!.width}
         height={asset.transform!.height}
+        {...rest}
       />
     </TransformableAsset>
   );

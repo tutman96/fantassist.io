@@ -40,6 +40,9 @@ const MarkerListItem: React.FC<{
         "&:not(.dragging):hover > .MuiBox-root": {
           display: "flex",
         },
+        borderRadius: '50%',
+        boxShadow: theme.shadows[5],
+        overflow: 'hidden',
       }}
       onDragStart={(e) => {
         e.dataTransfer!.effectAllowed = "copy";
