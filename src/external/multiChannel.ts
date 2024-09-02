@@ -8,6 +8,10 @@ import PresentationApiChannel from "./presentationApiChannel";
 
 const CHANNEL_PREFERENCES = ["presentationApi", "window"] as const;
 
+declare global {
+  var _channel: MultiChannel;
+}
+
 export default class MultiChannel extends AbstractChannel {
   private _channels = {
     window: new WindowChannel(),
@@ -44,6 +48,12 @@ export default class MultiChannel extends AbstractChannel {
 
   constructor() {
     super();
+    if (globalThis._channel) {
+      console.warn("Existing MultiChannel instance found, overwriting");
+      globalThis._channel.disconnect();
+    }
+    globalThis._channel = this;
+
     if (this._channels.window.isSupported && window.opener) {
       this.useChannel("window");
     } else if (this._channels.presentationApi.isSupported && navigator.presentation.receiver) {
@@ -52,9 +62,7 @@ export default class MultiChannel extends AbstractChannel {
   }
 
   async useChannel(type: keyof typeof this._channels) {
-    // console.debug(`Switching to channel ${type}`);
-
-    if (this.currentChannel) {
+    if (this.currentChannel && this.currentChannel !== this._channels[type]) {
       await this.currentChannel.disconnect();
     }
 

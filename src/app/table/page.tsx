@@ -29,7 +29,7 @@ function useDisplayedScene() {
     if (!s) {
       return setScene(null);
     }
-    if (!scene || s.version > scene.version) {
+    if (!scene || s.id !== scene.id || s.version > scene.version) {
       setScene(s);
     }
   }
