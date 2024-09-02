@@ -68,7 +68,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
       if (!isTable && now - previousUpdate < 100) return false;
       else previousUpdate = now;
       return true;
-    }, groupRef.current);
+    }, groupRef.current.getLayer());
     anim.start();
     return () => {
       anim.stop();
