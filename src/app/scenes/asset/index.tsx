@@ -96,7 +96,11 @@ export function useAssetElementSrc(asset: Types.AssetLayer_Asset) {
           },
         })
         .then((response) => {
-          setFile(new File([response.getAssetResponse!.payload], asset.id));
+          setFile(
+            new File([response.getAssetResponse!.payload], asset.id, {
+              type: response.getAssetResponse!.mediaType,
+            })
+          );
         });
     }
 
