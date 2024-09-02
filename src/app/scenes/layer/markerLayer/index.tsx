@@ -17,7 +17,7 @@ import Konva from "konva";
 import { cloneMarker } from "../../marker/storage";
 import MarkerList, { DROP_DATA_TYPE } from "../../marker/markerList";
 import LayerListTopperPortal from "../../canvas/layerListTopperProvider";
-import { useKeyPress, useStageClick } from "@/utils";
+import { useStageClick } from "@/utils";
 
 type Props = ILayerComponentProps<Types.MarkerLayer>;
 const MarkerLayer: React.FunctionComponent<Props> = ({
@@ -77,22 +77,6 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
       container.removeEventListener("drop", onDrop);
     };
   }, [layer, layerActive, campaignId, groupRef, selectedMarkerId, onUpdate]);
-
-  function markerMover(key: string, dx: number, dy: number) {
-    const pressed = useKeyPress(key);
-    useEffect(() => {
-      if (!selectedMarkerId || !pressed) return;
-      const marker = layer.markers.find((m) => m.id === selectedMarkerId);
-      if (!marker) return;
-      marker.asset!.transform!.x += dx;
-      marker.asset!.transform!.y += dy;
-      onUpdate(layer);
-    }, [selectedMarkerId, pressed]);
-  }
-  markerMover("ArrowUp", 0, -1);
-  markerMover("ArrowRight", 1, 0);
-  markerMover("ArrowDown", 0, 1);
-  markerMover("ArrowLeft", -1, 0);
 
   const toolbar = useMemo(() => {
     const selectedAsset = selectedMarkerId

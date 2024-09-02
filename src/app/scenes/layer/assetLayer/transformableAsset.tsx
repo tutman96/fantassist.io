@@ -5,6 +5,25 @@ import Konva from "konva";
 import theme from "@/theme";
 import * as Types from "@/protos/scene";
 
+const KEY_MAP = {
+  ArrowUp: {
+    y: -1,
+    x: 0,
+  },
+  ArrowRight: {
+    y: 0,
+    x: 1,
+  },
+  ArrowDown: {
+    y: 1,
+    x: 0,
+  },
+  ArrowLeft: {
+    y: 0,
+    x: -1,
+  },
+}
+
 type Props = {
   rectTransform: Types.AssetLayer_Asset_AssetTransform;
   onTransform: (newRect: Types.AssetLayer_Asset_AssetTransform) => void;
@@ -40,6 +59,33 @@ const TransformableAsset: React.FunctionComponent<
       trRef.current?.getLayer()?.batchDraw();
     }
   }, [isSelected]);
+
+  useEffect(() => {
+    if (!isSelected) return;
+
+    // If pressed key is our target key then set to true
+    function downHandler(e: KeyboardEvent) {
+      const { key, metaKey } = e;
+      const d = metaKey ? 0.25 : 1;
+
+      const k = KEY_MAP[key as keyof typeof KEY_MAP];
+      if (!k) return;
+
+      e.preventDefault();
+
+      const { x, y } = k;
+      onTransform({
+        ...rectTransform,
+        x: rectTransform.x + x * d,
+        y: rectTransform.y + y * d,
+      });
+    }
+
+    window.addEventListener("keydown", downHandler);
+    return () => {
+      window.removeEventListener("keydown", downHandler);
+    };
+  }, [isSelected, rectTransform]);
 
   return (
     <React.Fragment>
