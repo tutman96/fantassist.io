@@ -1,25 +1,26 @@
-import React, {useMemo, useRef, useEffect, useState} from 'react';
-import Konva from 'konva';
-import {Rect, Line, Group, Transformer} from 'react-konva';
+import React, { useMemo, useRef, useEffect, useState } from "react";
+import Konva from "konva";
+import { Rect, Line, Group, Transformer } from "react-konva";
 
-import {grey} from '@mui/material/colors';
+import { grey } from "@mui/material/colors";
 
-import AnchorOutlinedIcon from '@mui/icons-material/AnchorOutlined';
-import GridOnOutlined from '@mui/icons-material/GridOnOutlined';
-import GridOffOutlined from '@mui/icons-material/GridOffOutlined';
+import AnchorOutlinedIcon from "@mui/icons-material/AnchorOutlined";
+import GridOnOutlined from "@mui/icons-material/GridOnOutlined";
+import GridOffOutlined from "@mui/icons-material/GridOffOutlined";
 
-import {useTableDimensions} from '../../../settings';
-import ToolbarItem from '../toolbarItem';
-import ToolbarPortal from '../toolbarPortal';
-import ZoomToolbarItem from './zoomToolbarItem';
-import theme from '@/theme';
-import * as Types from '@/protos/scene';
+import { useTableDimensions } from "../../../settings";
+import ToolbarItem from "../toolbarItem";
+import ToolbarPortal from "../toolbarPortal";
+import ZoomToolbarItem from "./zoomToolbarItem";
+import theme from "@/theme";
+import * as Types from "@/protos/scene";
 
-export const TABLEVIEW_LAYER_ID = 'TABLE_VIEW';
+export const TABLEVIEW_LAYER_ID = "TABLE_VIEW";
 
 type Props = {
   options: Types.TableOptions;
   active: boolean;
+  isTable: boolean;
   showBorder: boolean;
   showGrid: boolean;
   onUpdate: (options: Types.TableOptions) => void;
@@ -27,6 +28,7 @@ type Props = {
 const TableViewOverlay: React.FunctionComponent<Props> = ({
   options,
   active,
+  isTable,
   showBorder,
   showGrid,
   onUpdate,
@@ -59,14 +61,14 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
           onClick={() => {
             onUpdate({
               ...options,
-              offset: {x: 0, y: 0},
+              offset: { x: 0, y: 0 },
               rotation: 0,
               scale: 1,
             });
           }}
         />
         <ToolbarItem
-          label={options.displayGrid ? 'Hide Grid' : 'Show Grid'}
+          label={options.displayGrid ? "Hide Grid" : "Show Grid"}
           icon={options.displayGrid ? <GridOffOutlined /> : <GridOnOutlined />}
           onClick={() => {
             onUpdate({
@@ -77,7 +79,7 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
         />
         <ZoomToolbarItem
           zoom={options.scale}
-          onUpdate={zoom => {
+          onUpdate={(zoom) => {
             onUpdate({
               ...options,
               scale: zoom,
@@ -98,53 +100,53 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
     const height = tableDimensions.height / localOptions.scale;
     const offset = localOptions.offset!;
 
-    const l = new Array<{start: Konva.Vector2d; end: Konva.Vector2d}>();
+    const l = new Array<{ start: Konva.Vector2d; end: Konva.Vector2d }>();
     if (showGrid) {
       const startX = Math.floor(offset.x);
       for (let xOffset = startX; xOffset <= offset.x + width; xOffset++) {
         l.push({
-          start: {x: xOffset, y: offset.y},
-          end: {x: xOffset, y: offset.y + height},
+          start: { x: xOffset, y: offset.y },
+          end: { x: xOffset, y: offset.y + height },
         });
       }
 
       const startY = Math.floor(offset.y);
       for (let yOffset = startY; yOffset <= offset.y + height; yOffset++) {
         l.push({
-          start: {x: offset.x, y: yOffset},
-          end: {x: offset.x + width, y: yOffset},
+          start: { x: offset.x, y: yOffset },
+          end: { x: offset.x + width, y: yOffset },
         });
+      }
+    }
+
+    let opacity = 1;
+    if (isTable) {
+      opacity = showGrid ? 1 : 0;
+    } else {
+      if (localOptions.displayGrid) {
+        opacity = active ? 1 : 0.75;
+      } else {
+        opacity = active ? 0.5 : 0.25;
       }
     }
 
     return (
       <Group
-        clipFunc={ctx => {
+        clipFunc={(ctx) => {
           ctx.beginPath();
           ctx.rect(offset.x, offset.y, width, height);
           ctx.rotate(localOptions.rotation);
           ctx.closePath();
         }}
-        opacity={
-          localOptions.displayGrid ? (active ? 1 : 0.75) : active ? 0.5 : 0
-        }
+        opacity={opacity}
+        globalCompositeOperation="difference"
       >
         {l.map((line, i) => (
           <React.Fragment key={i}>
             <Line
-              key={`l${i}`}
+              key={i}
               points={[line.start.x, line.start.y, line.end.x, line.end.y]}
-              stroke={grey[100]}
-              dash={[1, 1]}
-              strokeWidth={1}
-              strokeScaleEnabled={false}
-            />
-            <Line
-              key={`d${i}`}
-              points={[line.start.x, line.start.y, line.end.x, line.end.y]}
-              stroke={grey[900]}
-              dash={[1, 1]}
-              dashOffset={1}
+              stroke={`rgba(200,200,200,0.3)`}
               strokeWidth={1}
               strokeScaleEnabled={false}
             />
@@ -176,13 +178,13 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
             scaleX={1 / localOptions.scale}
             scaleY={1 / localOptions.scale}
             rotation={localOptions.rotation}
-            onMouseDown={e => {
+            onMouseDown={(e) => {
               if (e.evt.button === 0 && active) {
                 groupRef.current?.startDrag(e);
                 e.cancelBubble = true;
               }
             }}
-            onDragMove={e => {
+            onDragMove={(e) => {
               const node = groupRef.current!;
               const rotation = node.rotation();
               setLocalOptions({
@@ -213,7 +215,7 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
               });
             }}
             onTransformEnd={() => {
-              onUpdate({...localOptions});
+              onUpdate({ ...localOptions });
             }}
           >
             <Rect
@@ -231,10 +233,10 @@ const TableViewOverlay: React.FunctionComponent<Props> = ({
               rotateEnabled={false}
               resizeEnabled={true}
               enabledAnchors={[
-                'top-left',
-                'top-right',
-                'bottom-left',
-                'bottom-right',
+                "top-left",
+                "top-right",
+                "bottom-left",
+                "bottom-right",
               ]}
               ref={trRef as any}
               borderStrokeWidth={0}

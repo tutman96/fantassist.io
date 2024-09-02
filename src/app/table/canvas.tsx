@@ -66,6 +66,7 @@ const TableCanvas: React.FunctionComponent<{
                 })}
                 <TableViewOverlay
                   options={tableScene.table!}
+                  isTable={true}
                   active={false}
                   onUpdate={() => {}}
                   showBorder={false}

@@ -138,6 +138,7 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
         })}
         <TableViewOverlay
           options={scene.table!}
+          isTable={false}
           active={activeLayerId === TABLEVIEW_LAYER_ID}
           onUpdate={(options) => {
             scene.table = options;
