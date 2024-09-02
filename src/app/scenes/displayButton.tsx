@@ -18,7 +18,7 @@ import AcUnitOutlinedIcon from "@mui/icons-material/AcUnitOutlined";
 import TvIcon from "@mui/icons-material/Tv";
 import CancelPresentation from "@mui/icons-material/CancelPresentation";
 import PresentToAll from "@mui/icons-material/PresentToAll";
-import TvOffIcon from "@mui/icons-material/TvOff";
+import ConnectedTvIcon from '@mui/icons-material/ConnectedTv';
 
 import { Settings, settingsDatabase } from "../settings";
 import { Scene } from "@/protos/scene";
@@ -104,7 +104,7 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
                 <TvIcon />
               )
             ) : (
-              <TvOffIcon />
+              <ConnectedTvIcon />
             )
           }
         >
@@ -114,7 +114,7 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
                 ? "FROZEN"
                 : "LIVE"
               : "DISPLAY"
-            : "DISCONNECTED"}
+            : "CONNECT"}
         </Button>
       </Tooltip>
       <Menu

@@ -41,7 +41,7 @@ function useDisplayedScene() {
   }, [connection]);
 
   useEffect(() => {
-    if (connectionState === ChannelState.CONNECTED && !scene) {
+    if (connectionState === ChannelState.CONNECTED && scene === undefined) {
       connection.request({ getCurrentSceneRequest: {} }).then((res) => {
         updateSceneToLatest(res.getCurrentSceneResponse!.scene);
       });

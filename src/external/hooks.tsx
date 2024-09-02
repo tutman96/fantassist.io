@@ -9,6 +9,7 @@ import {
 import { Request, Response } from "../protos/external";
 import MultiChannel from "./multiChannel";
 import { useDisplayPreference } from "@/app/settings";
+import AbstractChannel from "./abstractChannel";
 
 const init = new MultiChannel();
 const DisplayChannelContext = createContext<MultiChannel | null>(init);
@@ -40,25 +41,28 @@ export function useConnection(): MultiChannel {
   return useContext(DisplayChannelContext)!;
 }
 
-export function useConnectionState() {
-  const connection = useConnection() as MultiChannel | null;
-  const [state, setState] = useState(connection?.state);
+export function useConnectionState(connection?: AbstractChannel) {
+  const contextConnection = useConnection() as AbstractChannel | null;
+  const ctx = connection ?? contextConnection;
+  const [state, setState] = useState(ctx?.state);
 
   useEffect(() => {
-    return connection?.addConnectionStateChangeHandler(() => {
-      setState(connection.state);
+    return ctx?.addConnectionStateChangeHandler(() => {
+      setState(ctx.state);
     });
-  }, [connection]);
+  }, [ctx]);
 
   return state;
 }
 
 export function useRequestHandler(
-  handler: (request: Request) => Promise<Partial<Response> | null>
+  handler: (request: Request) => Promise<Partial<Response> | null>,
+  connection?: AbstractChannel
 ) {
-  const connection = useConnection();
+  const contextConnection = useConnection();
+  const ctx = connection ?? contextConnection;
 
   useEffect(() => {
-    return connection.addRequestHandler(handler);
-  }, [connection, handler]);
+    return ctx.addRequestHandler(handler);
+  }, [ctx, handler]);
 }

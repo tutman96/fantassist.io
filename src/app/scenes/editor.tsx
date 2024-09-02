@@ -78,6 +78,7 @@ function useExternalDisplay() {
   useRequestHandlers();
 
   useEffect(() => {
+    console.log({tableFreeze})
     if (scene === undefined || tableFreeze === undefined) return;
     if (tableFreeze) return;
 

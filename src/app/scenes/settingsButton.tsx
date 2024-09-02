@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { lighten } from "@mui/material/styles";
 
 import Tooltip from "@mui/material/Tooltip";
@@ -15,11 +15,12 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import CloseIcon from "@mui/icons-material/Close";
 import theme from "@/theme";
 import DisplaySettings from "../settings/DisplaySettings";
+import TrackerSettings from "../settings/TrackerSettings";
 
 enum SETTINGS_TABS {
   DISPLAY = "Display",
   AUDIO = "Audio",
-  DEVICES = "Devices",
+  TRACKER = "Fantassist Tracker",
   ABOUT = "About",
 }
 
@@ -27,6 +28,12 @@ type Props = {};
 const SettingsButton: React.FC<Props> = ({}) => {
   const [showSettings, setShowSettings] = useState(false);
   const [selectedTab, setSelectedTab] = useState(SETTINGS_TABS.DISPLAY);
+
+  useEffect(() => {
+    if (!showSettings) {
+      setSelectedTab(SETTINGS_TABS.DISPLAY);
+    }
+  }, [showSettings])
 
   return (
     <>
@@ -92,6 +99,8 @@ const SettingsButton: React.FC<Props> = ({}) => {
               switch (selectedTab) {
                 case SETTINGS_TABS.DISPLAY:
                   return <DisplaySettings />;
+                case SETTINGS_TABS.TRACKER:
+                  return <TrackerSettings />;
                 default:
                   return (
                     <Typography variant="overline" color="secondary.main">

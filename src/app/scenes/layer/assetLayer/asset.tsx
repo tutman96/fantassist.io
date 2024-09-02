@@ -38,10 +38,10 @@ const Asset: React.FunctionComponent<Props> = ({
   useEffect(() => {
     if (el && imgRef.current) {
       el.onload = () => {
-        imgRef.current!.getLayer()?.batchDraw();
+        imgRef.current?.getLayer()?.batchDraw();
       };
       if (el.width) {
-        imgRef.current!.getLayer()?.batchDraw();
+        imgRef.current?.getLayer()?.batchDraw();
       }
     }
   }, [el, imgRef]);

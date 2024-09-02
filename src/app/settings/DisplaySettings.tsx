@@ -50,7 +50,7 @@ const ChannelSelector: React.FunctionComponent = () => {
   );
 };
 
-const DisplayButton: React.FunctionComponent = () => {
+export const DisplayButton: React.FunctionComponent = () => {
   const connection = useConnection();
   const connectionState = useConnectionState();
 
