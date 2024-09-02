@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 
+import { alpha } from "@mui/material/styles";
 import Button from "@mui/material/Button";
 import ButtonGroup from "@mui/material/ButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
@@ -8,16 +9,22 @@ import MenuList from "@mui/material/MenuList";
 import MenuItem from "@mui/material/MenuItem";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
+import Divider from "@mui/material/Divider";
 
 import UploadIcon from "@mui/icons-material/Upload";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import AcUnitOutlinedIcon from "@mui/icons-material/AcUnitOutlined";
 import TvIcon from "@mui/icons-material/Tv";
+import CancelPresentation from "@mui/icons-material/CancelPresentation";
+import PresentToAll from "@mui/icons-material/PresentToAll";
+import TvOffIcon from "@mui/icons-material/TvOff";
 
 import { Settings, settingsDatabase } from "../settings";
 import { Scene } from "@/protos/scene";
 import theme from "@/theme";
+import { useConnection, useConnectionState } from "@/external/hooks";
+import { ChannelState } from "@/external/abstractChannel";
 
 const { useOneValue: useOneSettingValue } = settingsDatabase();
 
@@ -32,14 +39,20 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
   );
   const [showMenu, setShowMenu] = useState(false);
   const anchorEl = useRef<HTMLElement>();
+  const connection = useConnection();
+  const connectionState = useConnectionState();
+
+  const connected = connectionState === ChannelState.CONNECTED;
 
   const currentSceneDisplayed = displayedScene === scene.id;
 
-  const buttonColor = currentSceneDisplayed
-    ? tableFreeze
-      ? "lightblue"
-      : theme.palette.success.main
-    : "white";
+  const buttonColor = connected
+    ? currentSceneDisplayed
+      ? tableFreeze
+        ? "lightblue"
+        : theme.palette.success.main
+      : "white"
+    : "secondary.main";
 
   return (
     <>
@@ -51,9 +64,10 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
           sx={{
             color: buttonColor,
             marginRight: theme.spacing(1),
-            animation: currentSceneDisplayed
-              ? `pulse-${tableFreeze ? "freeze" : "play"} 2s infinite`
-              : "none",
+            animation:
+              currentSceneDisplayed && connected
+                ? `pulse-${tableFreeze ? "freeze" : "play"} 2s infinite`
+                : "none",
             "@keyframes pulse-freeze": {
               "0%": {
                 boxShadow: "0 0 0px 1px lightblue",
@@ -79,22 +93,28 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
           }}
           onClick={() => setShowMenu(true)}
           endIcon={
-            currentSceneDisplayed ? (
-              tableFreeze ? (
-                <AcUnitOutlinedIcon />
+            connected ? (
+              currentSceneDisplayed ? (
+                tableFreeze ? (
+                  <AcUnitOutlinedIcon />
+                ) : (
+                  <PlayArrowIcon />
+                )
               ) : (
-                <PlayArrowIcon />
+                <TvIcon />
               )
             ) : (
-              <TvIcon />
+              <TvOffIcon />
             )
           }
         >
-          {currentSceneDisplayed
-            ? tableFreeze
-              ? "FROZEN"
-              : "LIVE"
-            : "DISPLAY"}
+          {connected
+            ? currentSceneDisplayed
+              ? tableFreeze
+                ? "FROZEN"
+                : "LIVE"
+              : "DISPLAY"
+            : "DISCONNECTED"}
         </Button>
       </Tooltip>
       <Menu
@@ -105,8 +125,14 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
         transformOrigin={{ vertical: "top", horizontal: "right" }}
         elevation={7}
       >
-        <MenuList dense>
+        <MenuList
+          dense
+          sx={{
+            width: 250,
+          }}
+        >
           <MenuItem
+            disabled={!connected}
             onClick={() => {
               updateDisplayedScene(!currentSceneDisplayed ? scene.id : null);
               updateTableFreeze(false);
@@ -123,8 +149,7 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
             />
           </MenuItem>
           <MenuItem
-            color="primary"
-            disabled={!currentSceneDisplayed}
+            disabled={!connected || !currentSceneDisplayed}
             onClick={() => {
               updateTableFreeze(!tableFreeze);
               setShowMenu(false);
@@ -134,7 +159,45 @@ const TableDisplayButton: React.FunctionComponent<{ scene: Scene }> = ({
               <AcUnitOutlinedIcon />
             </ListItemIcon>
             <ListItemText
-              primary={tableFreeze ? "Unfreeze Table" : "Freeze Table"}
+              primary={tableFreeze ? "Unfreeze Display" : "Freeze Display"}
+            />
+          </MenuItem>
+          <Divider />
+          <MenuItem
+            onClick={async () => {
+              if (connected) {
+                await connection.disconnect();
+              } else {
+                await connection.connect();
+              }
+              setShowMenu(false);
+            }}
+            disabled={
+              connectionState === ChannelState.CONNECTING ||
+              connectionState === ChannelState.DISCONNECTING
+            }
+            sx={{
+              color: connected ? "warning.main" : "initial",
+              '&:hover': connected ? {
+                backgroundColor: alpha(theme.palette.warning.main, 0.1),
+              } : undefined
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                color: connected ? "warning.main" : "initial",
+              }}
+            >
+              {connected ? <CancelPresentation /> : <PresentToAll />}
+            </ListItemIcon>
+            <ListItemText
+              primary={
+                connectionState === ChannelState.DISCONNECTED
+                  ? "Launch Display"
+                  : connectionState === ChannelState.CONNECTING
+                  ? "Connecting to Display..."
+                  : "Close Display"
+              }
             />
           </MenuItem>
         </MenuList>
