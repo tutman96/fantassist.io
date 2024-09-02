@@ -8,7 +8,7 @@ export default class WindowChannel extends AbstractChannel {
   private _onDisconnectHandlers = new Array<() => void>();
 
   get isSupported() {
-    return true;
+    return typeof window !== "undefined";
   }
 
   private get isTable() {

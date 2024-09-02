@@ -7,7 +7,10 @@ export default class PresentationApiChannel extends AbstractChannel {
   private _connected = false;
 
   get isSupported() {
-    return "PresentationRequest" in window || "presentation" in navigator;
+    return (
+      typeof window !== "undefined" &&
+      ("PresentationRequest" in window || "presentation" in navigator)
+    );
   }
 
   get state(): ChannelState {
@@ -36,8 +39,10 @@ export default class PresentationApiChannel extends AbstractChannel {
   constructor() {
     super();
 
-    const beforeunload = this.disconnect.bind(this);
-    window.addEventListener("beforeunload", beforeunload);
+    if (typeof window !== "undefined") {
+      const beforeunload = this.disconnect.bind(this);
+      window.addEventListener("beforeunload", beforeunload);
+    }
   }
 
   async connect() {

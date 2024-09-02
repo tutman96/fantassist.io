@@ -92,10 +92,10 @@ function useExternalDisplay() {
 
   useRequestHandler(async (req) => {
     // Still respond even if tableFreeze is true to ensure the table has a scene
-    if (req.getCurrentSceneRequest && scene) {
+    if (req.getCurrentSceneRequest) {
       return {
         getCurrentSceneResponse: {
-          scene,
+          scene: displayedScene ? scene! : undefined,
         },
       };
     }

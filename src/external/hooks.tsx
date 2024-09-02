@@ -10,35 +10,27 @@ import { Request, Response } from "../protos/external";
 import MultiChannel from "./multiChannel";
 import { useDisplayPreference } from "@/app/settings";
 
-const DisplayChannelContext = createContext<MultiChannel | null>(null);
+const init = new MultiChannel();
+const DisplayChannelContext = createContext<MultiChannel | null>(init);
 
 export const DisplayChannelContextProvider: React.FC<
   PropsWithChildren & { autoSelect?: boolean }
 > = ({ children, autoSelect }) => {
   const [displayPreference] = useDisplayPreference();
-  const init = useRef<MultiChannel | null>();
 
   useEffect(() => {
-    if (!init.current) {
-      init.current = new MultiChannel();
-    }
-
-    if (!autoSelect) {
-      const channelPreference = displayPreference ?? init.current.supportedChannels[0];
+    if (!autoSelect && !init.hasCurrentChannel) {
+      const channelPreference = displayPreference ?? init.supportedChannels[0];
       if (channelPreference) {
-        init.current.useChannel(channelPreference);
+        init.useChannel(channelPreference);
       } else {
         console.warn("No supported display channels available");
       }
     }
   }, [autoSelect, displayPreference]);
 
-  if (!init.current) {
-    return null;
-  }
-
   return (
-    <DisplayChannelContext.Provider value={init.current}>
+    <DisplayChannelContext.Provider value={init}>
       {children}
     </DisplayChannelContext.Provider>
   );

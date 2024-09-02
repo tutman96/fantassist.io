@@ -21,11 +21,14 @@ import {
 import TableCanvas from "./canvas";
 
 function useDisplayedScene() {
-  const [scene, setScene] = useState<Types.Scene | null>(null);
+  const [scene, setScene] = useState<Types.Scene | null | undefined>(undefined);
   const connection = useConnection();
   const connectionState = useConnectionState();
 
-  function updateSceneToLatest(s: Types.Scene) {
+  function updateSceneToLatest(s: Types.Scene | undefined) {
+    if (!s) {
+      return setScene(null);
+    }
     if (!scene || s.version > scene.version) {
       setScene(s);
     }
@@ -40,17 +43,16 @@ function useDisplayedScene() {
   useEffect(() => {
     if (connectionState === ChannelState.CONNECTED && !scene) {
       connection.request({ getCurrentSceneRequest: {} }).then((res) => {
-        updateSceneToLatest(res.getCurrentSceneResponse!.scene!);
+        updateSceneToLatest(res.getCurrentSceneResponse!.scene);
       });
     }
   }, [scene, connection, connectionState]);
 
   useRequestHandler(async (request) => {
     if (request.displaySceneRequest) {
-      updateSceneToLatest(request.displaySceneRequest.scene!);
+      updateSceneToLatest(request.displaySceneRequest.scene);
       return {
         ackResponse: {},
-        getAssetResponse: undefined,
       };
     }
     return null;
@@ -101,7 +103,7 @@ const PresentationPage: React.FunctionComponent<Props> = () => {
   const tableConfiguration = useTableConfiguration();
   const tableScene = useDisplayedScene();
 
-  if (!tableConfiguration) {
+  if (!tableConfiguration || tableScene === undefined) {
     return (
       <Box
         sx={{
