@@ -127,8 +127,9 @@ const DraggableStage: React.FunctionComponent<
       stageRef.current.scale({ x: initialZoom, y: initialZoom });
       stageRef.current.batchDraw();
     }
-  }, [stageRef, initialZoom, initialOffset]);
+  }, [initialZoom, initialOffset]);
 
+  // Set initial zoom and offset during first component mount and never again
   useEffect(() => {
     if (stageRef.current) {
       stageRef.current.position({
@@ -138,7 +139,8 @@ const DraggableStage: React.FunctionComponent<
       stageRef.current.scale({ x: initialZoom, y: initialZoom });
       stageRef.current.batchDraw();
     }
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Box
