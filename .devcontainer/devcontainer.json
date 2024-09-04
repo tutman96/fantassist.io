@@ -1,0 +1,21 @@
+{
+	"name": "table-camera",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/go:1": {
+			"version": "latest"
+		}
+	},
+	"postCreateCommand": "cd tracker && make install_deps",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode.cpptools",
+				"ms-vscode.cpptools-extension-pack"
+			]
+		}
+	},
+	"forwardPorts": ["3000:3000"]
+}
