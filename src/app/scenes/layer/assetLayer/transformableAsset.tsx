@@ -85,7 +85,7 @@ const TransformableAsset: React.FunctionComponent<
     return () => {
       window.removeEventListener("keydown", downHandler);
     };
-  }, [isSelected, rectTransform]);
+  }, [isSelected, rectTransform, onTransform]);
 
   return (
     <React.Fragment>

@@ -54,7 +54,7 @@ export const LayerListTopperProvider: React.FunctionComponent<
         }
       }
     };
-  }, [rootRef.current]);
+  }, []);
 
   return (
     <>

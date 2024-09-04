@@ -140,7 +140,7 @@ const EditablePolygon: React.FunctionComponent<
       };
     }
     return () => {};
-  }, [groupRef, adding, polygon.verticies, polygon, closed]);
+  }, [groupRef, adding, polygon.verticies, polygon, closed, onAdded, onUpdate, onSave]);
 
   const isEscapePressed = useKeyPress("Escape");
   const isEnterPressed = useKeyPress("Enter");

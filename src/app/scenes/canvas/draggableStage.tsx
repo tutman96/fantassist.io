@@ -138,7 +138,7 @@ const DraggableStage: React.FunctionComponent<
       stageRef.current.scale({ x: initialZoom, y: initialZoom });
       stageRef.current.batchDraw();
     }
-  }, []);
+  });
 
   return (
     <Box

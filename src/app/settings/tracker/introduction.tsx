@@ -26,7 +26,7 @@ const IntroductionStep: React.FC<Props> = ({ onNext }) => {
       </Typography>
       <br />
       <Typography gutterBottom>
-        Once you click the "Next" button, the display will show a series of
+        Once you click the &quot;Next&quot; button, the display will show a series of
         patterns that the camera will use to calibrate itself.
       </Typography>
       <Box

@@ -149,7 +149,8 @@ const Canvas: React.FunctionComponent<Props> = ({ scene, onUpdate }) => {
         />
       </>
     );
-  }, [scene.version, activeLayerId, tableDimensions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene.version, onUpdate, updateLayer, activeLayerId, tableDimensions]);
 
   const initialZoom = tableDimensions
     ? Math.min(

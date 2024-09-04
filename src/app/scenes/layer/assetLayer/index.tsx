@@ -155,7 +155,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
         />
       </>
     );
-  }, [layer, groupRef, selectedAssetId, onUpdate, deleteSelectedAsset]);
+  }, [campaignId, layer, groupRef, selectedAssetId, onUpdate, deleteSelectedAsset]);
 
   return (
     <>
