@@ -13,10 +13,11 @@ export default function Home() {
         alignItems: "center",
         justifyContent: "center",
         height: "100vh",
+        textAlign: "center",
       }}
     >
-      <Image src={icon} width={100} height={100} alt="logo" priority/>
-      <Typography variant="h2">Coming Soon</Typography>
+      <Image src={icon} width={200} height={200} alt="logo" priority/>
+      <Typography variant="h1">Coming Soon</Typography>
     </Box>
   );
 }

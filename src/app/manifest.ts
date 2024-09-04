@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
-import android192 from './icons/android-chrome-192x192.png';
-import android512 from './icons/android-chrome-512x512.png';
+import icon from "@/app/icon.png";
+import { DEEP_SPACE_BLUE } from "@/colors";
 
 const env = process.env.NEXT_PUBLIC_VERCEL_ENV;
 
@@ -15,16 +15,11 @@ export default function manifest(): MetadataRoute.Manifest {
       "Fantassist is a web app built to allow creation and presentation of table-top roleplay map for in person sessions",
     start_url: "/",
     display: "standalone",
-    theme_color: "#071019", // theme.pallette.background.default
-    background_color: "#071019", // theme.pallette.background.default
+    theme_color: DEEP_SPACE_BLUE,
+    background_color: DEEP_SPACE_BLUE,
     icons: [
       {
-        src: android192.src,
-        sizes: "192x192",
-        type: "image/png",
-      },
-      {
-        src: android512.src,
+        src: icon.src,
         sizes: "512x512",
         type: "image/png",
       },
@@ -34,7 +29,7 @@ export default function manifest(): MetadataRoute.Manifest {
         name: "Campaigns",
         short_name: "Campaigns",
         url: "/campaigns",
-      }
-    ]
+      },
+    ],
   };
 }
