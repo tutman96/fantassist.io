@@ -17,29 +17,15 @@ const CampaignSelector: React.FC<Props> = ({
 }) => {
   const allCampaigns = campaignDatabase.useAllValues();
 
-  if (!allCampaigns) {
-    return (
-      <Select
-        disabled={true}
-        value="loading"
-        size="small"
-        sx={{
-          minWidth: 200,
-        }}
-        startAdornment={<CollectionsBookmarkOutlinedIcon />}
-      >
-        <MenuItem value="loading">Loading...</MenuItem>
-      </Select>
-    );
-  }
-
-  const sortedCampaigns = Array.from(allCampaigns.values()).sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  const sortedCampaigns = allCampaigns
+    ? Array.from(allCampaigns.values()).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+    : undefined;
 
   return (
     <Select
-      value={selectedCampaignId}
+      value={sortedCampaigns ? selectedCampaignId : "loading"}
       onChange={(e) => onSelectCampaign(e.target.value as string)}
       size="small"
       sx={{
@@ -55,8 +41,10 @@ const CampaignSelector: React.FC<Props> = ({
           sx={{ marginRight: 1 }}
         />
       }
+      disabled={!sortedCampaigns}
     >
-      {sortedCampaigns.map((campaign) => (
+      {!allCampaigns && <MenuItem value="loading">Loading...</MenuItem>}
+      {sortedCampaigns?.map((campaign) => (
         <MenuItem key={campaign.id} value={campaign.id}>
           {campaign.name}
         </MenuItem>

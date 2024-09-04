@@ -27,10 +27,6 @@ const Page: React.FC<Props> = ({ params }) => {
   );
   const [showEditDialog, setShowEditDialog] = useState(false);
 
-  if (campaign === undefined) {
-    return <Layout loadingText="Loading campaign..." />;
-  }
-
   if (campaign === null) {
     return redirect("/campaigns");
   }
@@ -47,73 +43,79 @@ const Page: React.FC<Props> = ({ params }) => {
       }
       loadingText={campaign === undefined ? "Loading campaign..." : null}
     >
-      <Box
-        sx={{
-          maxWidth: 1000,
-          width: "100%",
-          flex: 2,
-          alignSelf: "center",
-        }}
-      >
-        <Paper
-          sx={{
-            paddingY: theme.spacing(3),
-            paddingX: theme.spacing(3),
-          }}
-          elevation={1}
-        >
+      {campaign && (
+        <>
           <Box
             sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignContent: "center",
+              maxWidth: 1000,
+              width: "100%",
+              flex: 2,
+              alignSelf: "center",
             }}
           >
-            <Typography variant="h5" gutterBottom>
-              {campaign.name}
-            </Typography>
-            <Box>
-              <IconButton
-                size="small"
-                color="secondary"
-                onClick={() => setShowEditDialog(true)}
-              >
-                <EditOutlinedIcon />
-              </IconButton>
-            </Box>
-            <Box sx={{ flex: 2 }} />
-            <Button
-              variant="outlined"
-              color="primary"
-              startIcon={<DownloadOutlinedIcon />}
-              size="small"
-              sx={{ height: theme.spacing(4) }}
-              onClick={() => {
-                exportAllScenes(params.campaignId, campaign.name);
+            <Paper
+              sx={{
+                paddingY: theme.spacing(3),
+                paddingX: theme.spacing(3),
               }}
+              elevation={1}
             >
-              Download Campaign
-            </Button>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignContent: "center",
+                }}
+              >
+                <Typography variant="h5" gutterBottom>
+                  {campaign.name}
+                </Typography>
+                <Box>
+                  <IconButton
+                    size="small"
+                    color="secondary"
+                    onClick={() => setShowEditDialog(true)}
+                  >
+                    <EditOutlinedIcon />
+                  </IconButton>
+                </Box>
+                <Box sx={{ flex: 2 }} />
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<DownloadOutlinedIcon />}
+                  size="small"
+                  sx={{ height: theme.spacing(4) }}
+                  onClick={() => {
+                    exportAllScenes(params.campaignId, campaign.name);
+                  }}
+                >
+                  Download Campaign
+                </Button>
+              </Box>
+              <SceneList
+                campaignId={params.campaignId}
+                selectedSceneId={null}
+                onSceneSelect={(s) => {
+                  const [, sceneId] = s.id.split("/");
+                  router.push(
+                    `/campaigns/${params.campaignId}/scenes/${sceneId}`
+                  );
+                }}
+              />
+            </Paper>
           </Box>
-          <SceneList
-            campaignId={params.campaignId}
-            selectedSceneId={null}
-            onSceneSelect={(s) => {
-              const [, sceneId] = s.id.split("/");
-              router.push(`/campaigns/${params.campaignId}/scenes/${sceneId}`);
+          <CampaignRenameDialog
+            name={campaign.name}
+            open={showEditDialog}
+            onCancel={() => setShowEditDialog(false)}
+            onConfirm={(name) => {
+              updateCampaign({ ...campaign, name });
+              setShowEditDialog(false);
             }}
           />
-        </Paper>
-      </Box>
-      <CampaignRenameDialog
-        name={campaign.name}
-        open={showEditDialog}
-        onCancel={() => setShowEditDialog(false)}
-        onConfirm={(name) => {
-          updateCampaign({ ...campaign, name });
-          setShowEditDialog(false);
-        }}
-      />
+        </>
+      )}
     </Layout>
   );
 };

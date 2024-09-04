@@ -1,5 +1,8 @@
 import type { MetadataRoute } from "next";
 
+import android192 from './icons/android-chrome-192x192.png';
+import android512 from './icons/android-chrome-512x512.png';
+
 const env = process.env.NEXT_PUBLIC_VERCEL_ENV;
 
 const name = env === "local" ? `Fantassist - Dev` : "Fantassist";
@@ -16,15 +19,22 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#071019", // theme.pallette.background.default
     icons: [
       {
-        src: "/android-chrome-192x192.png",
+        src: android192.src,
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/android-chrome-512x512.png",
+        src: android512.src,
         sizes: "512x512",
         type: "image/png",
       },
     ],
+    shortcuts: [
+      {
+        name: "Campaigns",
+        short_name: "Campaigns",
+        url: "/campaigns",
+      }
+    ]
   };
 }

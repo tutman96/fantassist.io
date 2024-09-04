@@ -1,13 +1,14 @@
 import { PropsWithChildren } from "react";
-import Box from "@mui/material/Box";
+import Link from "next/link";
 import Image from "next/image";
-import theme from "@/theme";
 
+import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
-import { padding } from "@mui/system";
-import CampaignSelector from "./campaignSelector";
-import Link from "next/link";
+
+import theme from "@/theme";
+
+import iconHorizontal from './icon-horizontal.png';
 
 type Props = {
   loadingText?: string | null;
@@ -41,10 +42,10 @@ const Layout: React.FC<Props> = ({
         <Box sx={{ paddingRight: theme.spacing(2) }}>
           <Link href="/campaigns" passHref>
             <Image
-              src="/icon-horizontal.png"
+              src={iconHorizontal}
               height={64 / 2}
-              width={385 / 2}
               alt="Fantassist Icon"
+              priority
             />
           </Link>
         </Box>

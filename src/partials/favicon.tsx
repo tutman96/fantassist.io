@@ -1,8 +1,9 @@
 import React from "react";
+import Image from "next/image";
 
 import type { SxProps } from "@mui/material";
 
-import Image from "next/image";
+import icon from '@/app/icon.png';
 
 const FAVICON_SIZE = 32;
 
@@ -12,7 +13,7 @@ const Favicon: React.FunctionComponent<Props> = ({ active, sx }) => {
     <Image
       width={FAVICON_SIZE}
       height={FAVICON_SIZE}
-      src="/icon.png"
+      src={icon}
       alt="home icon"
     />
   );
