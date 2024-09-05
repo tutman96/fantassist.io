@@ -6,7 +6,7 @@
 
 /* eslint-disable */
 import _m0 from "protobufjs/minimal";
-import { Scene } from "./scene";
+import { Scene, Vector2d } from "./scene";
 
 export const protobufPackage = "";
 
@@ -34,14 +34,44 @@ export interface Request {
     | GetTableConfigurationRequest
     | undefined;
   /** Respond with GetCurrentSceneResponse */
-  getCurrentSceneRequest?: GetCurrentSceneRequest | undefined;
+  getCurrentSceneRequest?:
+    | GetCurrentSceneRequest
+    | undefined;
+  /** Respond with TrackerGetStatusResponse */
+  trackerGetStatusRequest?:
+    | TrackerGetStatusRequest
+    | undefined;
+  /** Respond with AckResponse */
+  trackerSetIdleRequest?:
+    | TrackerSetIdleRequest
+    | undefined;
+  /** Respond with AckResponse */
+  trackerStartCalibrationRequest?:
+    | TrackerStartCalibrationRequest
+    | undefined;
+  /** Respond with TrackerGetCalibrationResponse */
+  trackerGetCalibrationRequest?:
+    | TrackerGetCalibrationRequest
+    | undefined;
+  /** Respond with AckResponse */
+  trackerStartTrackingRequest?:
+    | TrackerStartTrackingRequest
+    | undefined;
+  /** Respond with TrackerGetMarkerLocationResponse */
+  trackerGetMarkerLocationRequest?: TrackerGetMarkerLocationRequest | undefined;
 }
 
 export interface Response {
   ackResponse?: AckResponse | undefined;
   getAssetResponse?: GetAssetResponse | undefined;
   getTableConfigurationResponse?: GetTableConfigurationResponse | undefined;
-  getCurrentSceneResponse?: GetCurrentSceneResponse | undefined;
+  getCurrentSceneResponse?:
+    | GetCurrentSceneResponse
+    | undefined;
+  /** ------- Tracker ------- // */
+  trackerGetStatusResponse?: TrackerGetStatusResponse | undefined;
+  trackerGetCalibrationResponse?: TrackerGetCalibrationResponse | undefined;
+  trackerGetMarkerLocationResponse?: TrackerGetMarkerLocationResponse | undefined;
 }
 
 export interface HelloRequest {
@@ -83,6 +113,88 @@ export interface GetCurrentSceneRequest {
 
 export interface GetCurrentSceneResponse {
   scene: Scene | undefined;
+}
+
+export interface TrackerGetStatusRequest {
+}
+
+export interface TrackerGetStatusResponse {
+  uuid: string;
+  version: string;
+  state: TrackerGetStatusResponse_TrackerState;
+}
+
+export enum TrackerGetStatusResponse_TrackerState {
+  IDLE = 0,
+  CALIBRATING = 1,
+  TRACKING = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function trackerGetStatusResponse_TrackerStateFromJSON(object: any): TrackerGetStatusResponse_TrackerState {
+  switch (object) {
+    case 0:
+    case "IDLE":
+      return TrackerGetStatusResponse_TrackerState.IDLE;
+    case 1:
+    case "CALIBRATING":
+      return TrackerGetStatusResponse_TrackerState.CALIBRATING;
+    case 2:
+    case "TRACKING":
+      return TrackerGetStatusResponse_TrackerState.TRACKING;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return TrackerGetStatusResponse_TrackerState.UNRECOGNIZED;
+  }
+}
+
+export function trackerGetStatusResponse_TrackerStateToJSON(object: TrackerGetStatusResponse_TrackerState): string {
+  switch (object) {
+    case TrackerGetStatusResponse_TrackerState.IDLE:
+      return "IDLE";
+    case TrackerGetStatusResponse_TrackerState.CALIBRATING:
+      return "CALIBRATING";
+    case TrackerGetStatusResponse_TrackerState.TRACKING:
+      return "TRACKING";
+    case TrackerGetStatusResponse_TrackerState.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export interface TrackerSetIdleRequest {
+}
+
+export interface TrackerStartCalibrationRequest {
+  corners: Vector2d[];
+}
+
+export interface TrackerGetCalibrationRequest {
+}
+
+export interface TrackerGetCalibrationResponse {
+  foundCorners: number[];
+  cornerLocations: Vector2d[];
+}
+
+/**
+ * TODO: figure out how to have unsolicited notifications and switch to that instead of req/res
+ * double updateRateMs = 1;
+ */
+export interface TrackerStartTrackingRequest {
+}
+
+export interface TrackerGetMarkerLocationRequest {
+}
+
+export interface TrackerGetMarkerLocationResponse {
+  markerLocations: { [key: number]: Vector2d };
+}
+
+export interface TrackerGetMarkerLocationResponse_MarkerLocationsEntry {
+  key: number;
+  value: Vector2d | undefined;
 }
 
 function createBasePacket(): Packet {
@@ -185,6 +297,12 @@ function createBaseRequest(): Request {
     getAssetRequest: undefined,
     getTableConfigurationRequest: undefined,
     getCurrentSceneRequest: undefined,
+    trackerGetStatusRequest: undefined,
+    trackerSetIdleRequest: undefined,
+    trackerStartCalibrationRequest: undefined,
+    trackerGetCalibrationRequest: undefined,
+    trackerStartTrackingRequest: undefined,
+    trackerGetMarkerLocationRequest: undefined,
   };
 }
 
@@ -204,6 +322,25 @@ export const Request = {
     }
     if (message.getCurrentSceneRequest !== undefined) {
       GetCurrentSceneRequest.encode(message.getCurrentSceneRequest, writer.uint32(42).fork()).ldelim();
+    }
+    if (message.trackerGetStatusRequest !== undefined) {
+      TrackerGetStatusRequest.encode(message.trackerGetStatusRequest, writer.uint32(82).fork()).ldelim();
+    }
+    if (message.trackerSetIdleRequest !== undefined) {
+      TrackerSetIdleRequest.encode(message.trackerSetIdleRequest, writer.uint32(90).fork()).ldelim();
+    }
+    if (message.trackerStartCalibrationRequest !== undefined) {
+      TrackerStartCalibrationRequest.encode(message.trackerStartCalibrationRequest, writer.uint32(98).fork()).ldelim();
+    }
+    if (message.trackerGetCalibrationRequest !== undefined) {
+      TrackerGetCalibrationRequest.encode(message.trackerGetCalibrationRequest, writer.uint32(106).fork()).ldelim();
+    }
+    if (message.trackerStartTrackingRequest !== undefined) {
+      TrackerStartTrackingRequest.encode(message.trackerStartTrackingRequest, writer.uint32(114).fork()).ldelim();
+    }
+    if (message.trackerGetMarkerLocationRequest !== undefined) {
+      TrackerGetMarkerLocationRequest.encode(message.trackerGetMarkerLocationRequest, writer.uint32(122).fork())
+        .ldelim();
     }
     return writer;
   },
@@ -250,6 +387,48 @@ export const Request = {
 
           message.getCurrentSceneRequest = GetCurrentSceneRequest.decode(reader, reader.uint32());
           continue;
+        case 10:
+          if (tag !== 82) {
+            break;
+          }
+
+          message.trackerGetStatusRequest = TrackerGetStatusRequest.decode(reader, reader.uint32());
+          continue;
+        case 11:
+          if (tag !== 90) {
+            break;
+          }
+
+          message.trackerSetIdleRequest = TrackerSetIdleRequest.decode(reader, reader.uint32());
+          continue;
+        case 12:
+          if (tag !== 98) {
+            break;
+          }
+
+          message.trackerStartCalibrationRequest = TrackerStartCalibrationRequest.decode(reader, reader.uint32());
+          continue;
+        case 13:
+          if (tag !== 106) {
+            break;
+          }
+
+          message.trackerGetCalibrationRequest = TrackerGetCalibrationRequest.decode(reader, reader.uint32());
+          continue;
+        case 14:
+          if (tag !== 114) {
+            break;
+          }
+
+          message.trackerStartTrackingRequest = TrackerStartTrackingRequest.decode(reader, reader.uint32());
+          continue;
+        case 15:
+          if (tag !== 122) {
+            break;
+          }
+
+          message.trackerGetMarkerLocationRequest = TrackerGetMarkerLocationRequest.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -272,6 +451,24 @@ export const Request = {
       getCurrentSceneRequest: isSet(object.getCurrentSceneRequest)
         ? GetCurrentSceneRequest.fromJSON(object.getCurrentSceneRequest)
         : undefined,
+      trackerGetStatusRequest: isSet(object.trackerGetStatusRequest)
+        ? TrackerGetStatusRequest.fromJSON(object.trackerGetStatusRequest)
+        : undefined,
+      trackerSetIdleRequest: isSet(object.trackerSetIdleRequest)
+        ? TrackerSetIdleRequest.fromJSON(object.trackerSetIdleRequest)
+        : undefined,
+      trackerStartCalibrationRequest: isSet(object.trackerStartCalibrationRequest)
+        ? TrackerStartCalibrationRequest.fromJSON(object.trackerStartCalibrationRequest)
+        : undefined,
+      trackerGetCalibrationRequest: isSet(object.trackerGetCalibrationRequest)
+        ? TrackerGetCalibrationRequest.fromJSON(object.trackerGetCalibrationRequest)
+        : undefined,
+      trackerStartTrackingRequest: isSet(object.trackerStartTrackingRequest)
+        ? TrackerStartTrackingRequest.fromJSON(object.trackerStartTrackingRequest)
+        : undefined,
+      trackerGetMarkerLocationRequest: isSet(object.trackerGetMarkerLocationRequest)
+        ? TrackerGetMarkerLocationRequest.fromJSON(object.trackerGetMarkerLocationRequest)
+        : undefined,
     };
   },
 
@@ -291,6 +488,28 @@ export const Request = {
     }
     if (message.getCurrentSceneRequest !== undefined) {
       obj.getCurrentSceneRequest = GetCurrentSceneRequest.toJSON(message.getCurrentSceneRequest);
+    }
+    if (message.trackerGetStatusRequest !== undefined) {
+      obj.trackerGetStatusRequest = TrackerGetStatusRequest.toJSON(message.trackerGetStatusRequest);
+    }
+    if (message.trackerSetIdleRequest !== undefined) {
+      obj.trackerSetIdleRequest = TrackerSetIdleRequest.toJSON(message.trackerSetIdleRequest);
+    }
+    if (message.trackerStartCalibrationRequest !== undefined) {
+      obj.trackerStartCalibrationRequest = TrackerStartCalibrationRequest.toJSON(
+        message.trackerStartCalibrationRequest,
+      );
+    }
+    if (message.trackerGetCalibrationRequest !== undefined) {
+      obj.trackerGetCalibrationRequest = TrackerGetCalibrationRequest.toJSON(message.trackerGetCalibrationRequest);
+    }
+    if (message.trackerStartTrackingRequest !== undefined) {
+      obj.trackerStartTrackingRequest = TrackerStartTrackingRequest.toJSON(message.trackerStartTrackingRequest);
+    }
+    if (message.trackerGetMarkerLocationRequest !== undefined) {
+      obj.trackerGetMarkerLocationRequest = TrackerGetMarkerLocationRequest.toJSON(
+        message.trackerGetMarkerLocationRequest,
+      );
     }
     return obj;
   },
@@ -317,6 +536,30 @@ export const Request = {
       (object.getCurrentSceneRequest !== undefined && object.getCurrentSceneRequest !== null)
         ? GetCurrentSceneRequest.fromPartial(object.getCurrentSceneRequest)
         : undefined;
+    message.trackerGetStatusRequest =
+      (object.trackerGetStatusRequest !== undefined && object.trackerGetStatusRequest !== null)
+        ? TrackerGetStatusRequest.fromPartial(object.trackerGetStatusRequest)
+        : undefined;
+    message.trackerSetIdleRequest =
+      (object.trackerSetIdleRequest !== undefined && object.trackerSetIdleRequest !== null)
+        ? TrackerSetIdleRequest.fromPartial(object.trackerSetIdleRequest)
+        : undefined;
+    message.trackerStartCalibrationRequest =
+      (object.trackerStartCalibrationRequest !== undefined && object.trackerStartCalibrationRequest !== null)
+        ? TrackerStartCalibrationRequest.fromPartial(object.trackerStartCalibrationRequest)
+        : undefined;
+    message.trackerGetCalibrationRequest =
+      (object.trackerGetCalibrationRequest !== undefined && object.trackerGetCalibrationRequest !== null)
+        ? TrackerGetCalibrationRequest.fromPartial(object.trackerGetCalibrationRequest)
+        : undefined;
+    message.trackerStartTrackingRequest =
+      (object.trackerStartTrackingRequest !== undefined && object.trackerStartTrackingRequest !== null)
+        ? TrackerStartTrackingRequest.fromPartial(object.trackerStartTrackingRequest)
+        : undefined;
+    message.trackerGetMarkerLocationRequest =
+      (object.trackerGetMarkerLocationRequest !== undefined && object.trackerGetMarkerLocationRequest !== null)
+        ? TrackerGetMarkerLocationRequest.fromPartial(object.trackerGetMarkerLocationRequest)
+        : undefined;
     return message;
   },
 };
@@ -327,6 +570,9 @@ function createBaseResponse(): Response {
     getAssetResponse: undefined,
     getTableConfigurationResponse: undefined,
     getCurrentSceneResponse: undefined,
+    trackerGetStatusResponse: undefined,
+    trackerGetCalibrationResponse: undefined,
+    trackerGetMarkerLocationResponse: undefined,
   };
 }
 
@@ -343,6 +589,16 @@ export const Response = {
     }
     if (message.getCurrentSceneResponse !== undefined) {
       GetCurrentSceneResponse.encode(message.getCurrentSceneResponse, writer.uint32(34).fork()).ldelim();
+    }
+    if (message.trackerGetStatusResponse !== undefined) {
+      TrackerGetStatusResponse.encode(message.trackerGetStatusResponse, writer.uint32(82).fork()).ldelim();
+    }
+    if (message.trackerGetCalibrationResponse !== undefined) {
+      TrackerGetCalibrationResponse.encode(message.trackerGetCalibrationResponse, writer.uint32(90).fork()).ldelim();
+    }
+    if (message.trackerGetMarkerLocationResponse !== undefined) {
+      TrackerGetMarkerLocationResponse.encode(message.trackerGetMarkerLocationResponse, writer.uint32(98).fork())
+        .ldelim();
     }
     return writer;
   },
@@ -382,6 +638,27 @@ export const Response = {
 
           message.getCurrentSceneResponse = GetCurrentSceneResponse.decode(reader, reader.uint32());
           continue;
+        case 10:
+          if (tag !== 82) {
+            break;
+          }
+
+          message.trackerGetStatusResponse = TrackerGetStatusResponse.decode(reader, reader.uint32());
+          continue;
+        case 11:
+          if (tag !== 90) {
+            break;
+          }
+
+          message.trackerGetCalibrationResponse = TrackerGetCalibrationResponse.decode(reader, reader.uint32());
+          continue;
+        case 12:
+          if (tag !== 98) {
+            break;
+          }
+
+          message.trackerGetMarkerLocationResponse = TrackerGetMarkerLocationResponse.decode(reader, reader.uint32());
+          continue;
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -401,6 +678,15 @@ export const Response = {
       getCurrentSceneResponse: isSet(object.getCurrentSceneResponse)
         ? GetCurrentSceneResponse.fromJSON(object.getCurrentSceneResponse)
         : undefined,
+      trackerGetStatusResponse: isSet(object.trackerGetStatusResponse)
+        ? TrackerGetStatusResponse.fromJSON(object.trackerGetStatusResponse)
+        : undefined,
+      trackerGetCalibrationResponse: isSet(object.trackerGetCalibrationResponse)
+        ? TrackerGetCalibrationResponse.fromJSON(object.trackerGetCalibrationResponse)
+        : undefined,
+      trackerGetMarkerLocationResponse: isSet(object.trackerGetMarkerLocationResponse)
+        ? TrackerGetMarkerLocationResponse.fromJSON(object.trackerGetMarkerLocationResponse)
+        : undefined,
     };
   },
 
@@ -417,6 +703,17 @@ export const Response = {
     }
     if (message.getCurrentSceneResponse !== undefined) {
       obj.getCurrentSceneResponse = GetCurrentSceneResponse.toJSON(message.getCurrentSceneResponse);
+    }
+    if (message.trackerGetStatusResponse !== undefined) {
+      obj.trackerGetStatusResponse = TrackerGetStatusResponse.toJSON(message.trackerGetStatusResponse);
+    }
+    if (message.trackerGetCalibrationResponse !== undefined) {
+      obj.trackerGetCalibrationResponse = TrackerGetCalibrationResponse.toJSON(message.trackerGetCalibrationResponse);
+    }
+    if (message.trackerGetMarkerLocationResponse !== undefined) {
+      obj.trackerGetMarkerLocationResponse = TrackerGetMarkerLocationResponse.toJSON(
+        message.trackerGetMarkerLocationResponse,
+      );
     }
     return obj;
   },
@@ -439,6 +736,18 @@ export const Response = {
     message.getCurrentSceneResponse =
       (object.getCurrentSceneResponse !== undefined && object.getCurrentSceneResponse !== null)
         ? GetCurrentSceneResponse.fromPartial(object.getCurrentSceneResponse)
+        : undefined;
+    message.trackerGetStatusResponse =
+      (object.trackerGetStatusResponse !== undefined && object.trackerGetStatusResponse !== null)
+        ? TrackerGetStatusResponse.fromPartial(object.trackerGetStatusResponse)
+        : undefined;
+    message.trackerGetCalibrationResponse =
+      (object.trackerGetCalibrationResponse !== undefined && object.trackerGetCalibrationResponse !== null)
+        ? TrackerGetCalibrationResponse.fromPartial(object.trackerGetCalibrationResponse)
+        : undefined;
+    message.trackerGetMarkerLocationResponse =
+      (object.trackerGetMarkerLocationResponse !== undefined && object.trackerGetMarkerLocationResponse !== null)
+        ? TrackerGetMarkerLocationResponse.fromPartial(object.trackerGetMarkerLocationResponse)
         : undefined;
     return message;
   },
@@ -1049,6 +1358,632 @@ export const GetCurrentSceneResponse = {
   },
 };
 
+function createBaseTrackerGetStatusRequest(): TrackerGetStatusRequest {
+  return {};
+}
+
+export const TrackerGetStatusRequest = {
+  encode(_: TrackerGetStatusRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerGetStatusRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerGetStatusRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): TrackerGetStatusRequest {
+    return {};
+  },
+
+  toJSON(_: TrackerGetStatusRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerGetStatusRequest>, I>>(base?: I): TrackerGetStatusRequest {
+    return TrackerGetStatusRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerGetStatusRequest>, I>>(_: I): TrackerGetStatusRequest {
+    const message = createBaseTrackerGetStatusRequest();
+    return message;
+  },
+};
+
+function createBaseTrackerGetStatusResponse(): TrackerGetStatusResponse {
+  return { uuid: "", version: "", state: 0 };
+}
+
+export const TrackerGetStatusResponse = {
+  encode(message: TrackerGetStatusResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.uuid !== "") {
+      writer.uint32(10).string(message.uuid);
+    }
+    if (message.version !== "") {
+      writer.uint32(18).string(message.version);
+    }
+    if (message.state !== 0) {
+      writer.uint32(40).int32(message.state);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerGetStatusResponse {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerGetStatusResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.uuid = reader.string();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.version = reader.string();
+          continue;
+        case 5:
+          if (tag !== 40) {
+            break;
+          }
+
+          message.state = reader.int32() as any;
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TrackerGetStatusResponse {
+    return {
+      uuid: isSet(object.uuid) ? globalThis.String(object.uuid) : "",
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      state: isSet(object.state) ? trackerGetStatusResponse_TrackerStateFromJSON(object.state) : 0,
+    };
+  },
+
+  toJSON(message: TrackerGetStatusResponse): unknown {
+    const obj: any = {};
+    if (message.uuid !== "") {
+      obj.uuid = message.uuid;
+    }
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.state !== 0) {
+      obj.state = trackerGetStatusResponse_TrackerStateToJSON(message.state);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerGetStatusResponse>, I>>(base?: I): TrackerGetStatusResponse {
+    return TrackerGetStatusResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerGetStatusResponse>, I>>(object: I): TrackerGetStatusResponse {
+    const message = createBaseTrackerGetStatusResponse();
+    message.uuid = object.uuid ?? "";
+    message.version = object.version ?? "";
+    message.state = object.state ?? 0;
+    return message;
+  },
+};
+
+function createBaseTrackerSetIdleRequest(): TrackerSetIdleRequest {
+  return {};
+}
+
+export const TrackerSetIdleRequest = {
+  encode(_: TrackerSetIdleRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerSetIdleRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerSetIdleRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): TrackerSetIdleRequest {
+    return {};
+  },
+
+  toJSON(_: TrackerSetIdleRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerSetIdleRequest>, I>>(base?: I): TrackerSetIdleRequest {
+    return TrackerSetIdleRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerSetIdleRequest>, I>>(_: I): TrackerSetIdleRequest {
+    const message = createBaseTrackerSetIdleRequest();
+    return message;
+  },
+};
+
+function createBaseTrackerStartCalibrationRequest(): TrackerStartCalibrationRequest {
+  return { corners: [] };
+}
+
+export const TrackerStartCalibrationRequest = {
+  encode(message: TrackerStartCalibrationRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    for (const v of message.corners) {
+      Vector2d.encode(v!, writer.uint32(10).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerStartCalibrationRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerStartCalibrationRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          message.corners.push(Vector2d.decode(reader, reader.uint32()));
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TrackerStartCalibrationRequest {
+    return {
+      corners: globalThis.Array.isArray(object?.corners) ? object.corners.map((e: any) => Vector2d.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: TrackerStartCalibrationRequest): unknown {
+    const obj: any = {};
+    if (message.corners?.length) {
+      obj.corners = message.corners.map((e) => Vector2d.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerStartCalibrationRequest>, I>>(base?: I): TrackerStartCalibrationRequest {
+    return TrackerStartCalibrationRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerStartCalibrationRequest>, I>>(
+    object: I,
+  ): TrackerStartCalibrationRequest {
+    const message = createBaseTrackerStartCalibrationRequest();
+    message.corners = object.corners?.map((e) => Vector2d.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseTrackerGetCalibrationRequest(): TrackerGetCalibrationRequest {
+  return {};
+}
+
+export const TrackerGetCalibrationRequest = {
+  encode(_: TrackerGetCalibrationRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerGetCalibrationRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerGetCalibrationRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): TrackerGetCalibrationRequest {
+    return {};
+  },
+
+  toJSON(_: TrackerGetCalibrationRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerGetCalibrationRequest>, I>>(base?: I): TrackerGetCalibrationRequest {
+    return TrackerGetCalibrationRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerGetCalibrationRequest>, I>>(_: I): TrackerGetCalibrationRequest {
+    const message = createBaseTrackerGetCalibrationRequest();
+    return message;
+  },
+};
+
+function createBaseTrackerGetCalibrationResponse(): TrackerGetCalibrationResponse {
+  return { foundCorners: [], cornerLocations: [] };
+}
+
+export const TrackerGetCalibrationResponse = {
+  encode(message: TrackerGetCalibrationResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    writer.uint32(10).fork();
+    for (const v of message.foundCorners) {
+      writer.int32(v);
+    }
+    writer.ldelim();
+    for (const v of message.cornerLocations) {
+      Vector2d.encode(v!, writer.uint32(18).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerGetCalibrationResponse {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerGetCalibrationResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag === 8) {
+            message.foundCorners.push(reader.int32());
+
+            continue;
+          }
+
+          if (tag === 10) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.foundCorners.push(reader.int32());
+            }
+
+            continue;
+          }
+
+          break;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.cornerLocations.push(Vector2d.decode(reader, reader.uint32()));
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TrackerGetCalibrationResponse {
+    return {
+      foundCorners: globalThis.Array.isArray(object?.foundCorners)
+        ? object.foundCorners.map((e: any) => globalThis.Number(e))
+        : [],
+      cornerLocations: globalThis.Array.isArray(object?.cornerLocations)
+        ? object.cornerLocations.map((e: any) => Vector2d.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: TrackerGetCalibrationResponse): unknown {
+    const obj: any = {};
+    if (message.foundCorners?.length) {
+      obj.foundCorners = message.foundCorners.map((e) => Math.round(e));
+    }
+    if (message.cornerLocations?.length) {
+      obj.cornerLocations = message.cornerLocations.map((e) => Vector2d.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerGetCalibrationResponse>, I>>(base?: I): TrackerGetCalibrationResponse {
+    return TrackerGetCalibrationResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerGetCalibrationResponse>, I>>(
+    object: I,
+  ): TrackerGetCalibrationResponse {
+    const message = createBaseTrackerGetCalibrationResponse();
+    message.foundCorners = object.foundCorners?.map((e) => e) || [];
+    message.cornerLocations = object.cornerLocations?.map((e) => Vector2d.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseTrackerStartTrackingRequest(): TrackerStartTrackingRequest {
+  return {};
+}
+
+export const TrackerStartTrackingRequest = {
+  encode(_: TrackerStartTrackingRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerStartTrackingRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerStartTrackingRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): TrackerStartTrackingRequest {
+    return {};
+  },
+
+  toJSON(_: TrackerStartTrackingRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerStartTrackingRequest>, I>>(base?: I): TrackerStartTrackingRequest {
+    return TrackerStartTrackingRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerStartTrackingRequest>, I>>(_: I): TrackerStartTrackingRequest {
+    const message = createBaseTrackerStartTrackingRequest();
+    return message;
+  },
+};
+
+function createBaseTrackerGetMarkerLocationRequest(): TrackerGetMarkerLocationRequest {
+  return {};
+}
+
+export const TrackerGetMarkerLocationRequest = {
+  encode(_: TrackerGetMarkerLocationRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerGetMarkerLocationRequest {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerGetMarkerLocationRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): TrackerGetMarkerLocationRequest {
+    return {};
+  },
+
+  toJSON(_: TrackerGetMarkerLocationRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerGetMarkerLocationRequest>, I>>(base?: I): TrackerGetMarkerLocationRequest {
+    return TrackerGetMarkerLocationRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerGetMarkerLocationRequest>, I>>(_: I): TrackerGetMarkerLocationRequest {
+    const message = createBaseTrackerGetMarkerLocationRequest();
+    return message;
+  },
+};
+
+function createBaseTrackerGetMarkerLocationResponse(): TrackerGetMarkerLocationResponse {
+  return { markerLocations: {} };
+}
+
+export const TrackerGetMarkerLocationResponse = {
+  encode(message: TrackerGetMarkerLocationResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    Object.entries(message.markerLocations).forEach(([key, value]) => {
+      TrackerGetMarkerLocationResponse_MarkerLocationsEntry.encode({ key: key as any, value }, writer.uint32(10).fork())
+        .ldelim();
+    });
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerGetMarkerLocationResponse {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerGetMarkerLocationResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 10) {
+            break;
+          }
+
+          const entry1 = TrackerGetMarkerLocationResponse_MarkerLocationsEntry.decode(reader, reader.uint32());
+          if (entry1.value !== undefined) {
+            message.markerLocations[entry1.key] = entry1.value;
+          }
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TrackerGetMarkerLocationResponse {
+    return {
+      markerLocations: isObject(object.markerLocations)
+        ? Object.entries(object.markerLocations).reduce<{ [key: number]: Vector2d }>((acc, [key, value]) => {
+          acc[globalThis.Number(key)] = Vector2d.fromJSON(value);
+          return acc;
+        }, {})
+        : {},
+    };
+  },
+
+  toJSON(message: TrackerGetMarkerLocationResponse): unknown {
+    const obj: any = {};
+    if (message.markerLocations) {
+      const entries = Object.entries(message.markerLocations);
+      if (entries.length > 0) {
+        obj.markerLocations = {};
+        entries.forEach(([k, v]) => {
+          obj.markerLocations[k] = Vector2d.toJSON(v);
+        });
+      }
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerGetMarkerLocationResponse>, I>>(
+    base?: I,
+  ): TrackerGetMarkerLocationResponse {
+    return TrackerGetMarkerLocationResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerGetMarkerLocationResponse>, I>>(
+    object: I,
+  ): TrackerGetMarkerLocationResponse {
+    const message = createBaseTrackerGetMarkerLocationResponse();
+    message.markerLocations = Object.entries(object.markerLocations ?? {}).reduce<{ [key: number]: Vector2d }>(
+      (acc, [key, value]) => {
+        if (value !== undefined) {
+          acc[globalThis.Number(key)] = Vector2d.fromPartial(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    return message;
+  },
+};
+
+function createBaseTrackerGetMarkerLocationResponse_MarkerLocationsEntry(): TrackerGetMarkerLocationResponse_MarkerLocationsEntry {
+  return { key: 0, value: undefined };
+}
+
+export const TrackerGetMarkerLocationResponse_MarkerLocationsEntry = {
+  encode(
+    message: TrackerGetMarkerLocationResponse_MarkerLocationsEntry,
+    writer: _m0.Writer = _m0.Writer.create(),
+  ): _m0.Writer {
+    if (message.key !== 0) {
+      writer.uint32(8).int32(message.key);
+    }
+    if (message.value !== undefined) {
+      Vector2d.encode(message.value, writer.uint32(18).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): TrackerGetMarkerLocationResponse_MarkerLocationsEntry {
+    const reader = input instanceof _m0.Reader ? input : _m0.Reader.create(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTrackerGetMarkerLocationResponse_MarkerLocationsEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          if (tag !== 8) {
+            break;
+          }
+
+          message.key = reader.int32();
+          continue;
+        case 2:
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = Vector2d.decode(reader, reader.uint32());
+          continue;
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skipType(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TrackerGetMarkerLocationResponse_MarkerLocationsEntry {
+    return {
+      key: isSet(object.key) ? globalThis.Number(object.key) : 0,
+      value: isSet(object.value) ? Vector2d.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: TrackerGetMarkerLocationResponse_MarkerLocationsEntry): unknown {
+    const obj: any = {};
+    if (message.key !== 0) {
+      obj.key = Math.round(message.key);
+    }
+    if (message.value !== undefined) {
+      obj.value = Vector2d.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TrackerGetMarkerLocationResponse_MarkerLocationsEntry>, I>>(
+    base?: I,
+  ): TrackerGetMarkerLocationResponse_MarkerLocationsEntry {
+    return TrackerGetMarkerLocationResponse_MarkerLocationsEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TrackerGetMarkerLocationResponse_MarkerLocationsEntry>, I>>(
+    object: I,
+  ): TrackerGetMarkerLocationResponse_MarkerLocationsEntry {
+    const message = createBaseTrackerGetMarkerLocationResponse_MarkerLocationsEntry();
+    message.key = object.key ?? 0;
+    message.value = (object.value !== undefined && object.value !== null)
+      ? Vector2d.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
 function bytesFromBase64(b64: string): Uint8Array {
   if ((globalThis as any).Buffer) {
     return Uint8Array.from(globalThis.Buffer.from(b64, "base64"));
@@ -1085,6 +2020,10 @@ export type DeepPartial<T> = T extends Builtin ? T
 type KeysOfUnion<T> = T extends T ? keyof T : never;
 export type Exact<P, I extends P> = P extends Builtin ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
+
+function isObject(value: any): boolean {
+  return typeof value === "object" && value !== null;
+}
 
 function isSet(value: any): boolean {
   return value !== null && value !== undefined;

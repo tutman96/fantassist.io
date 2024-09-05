@@ -78,6 +78,7 @@ export class TrackerChannel extends AbstractChannel {
       await this._readChar.startNotifications();
       this.notifyConnectionStateChange();
     } catch (e) {
+      this._connecting = false;
       console.warn("Failed to connect to Tracker", e);
       await this.disconnect();
     }
@@ -87,20 +88,19 @@ export class TrackerChannel extends AbstractChannel {
     if (this._device) {
       if (this._device.gatt?.connected) {
         this._device.gatt.disconnect();
-        this._device = null;
-      } else {
-        this._device = null;
-        this.notifyConnectionStateChange();
       }
 
+      this._device = null;
       this._writeChar = null;
       this._readChar = null;
     }
+    this.notifyConnectionStateChange();
   }
 
   async sendOutgoingPacket(packet: Packet) {
     if (!this._writeChar) {
-      throw new Error("No device connected");
+      console.warn("Failed to send packet. Tracker device is not connected");
+      return;
     }
 
     await this._writeChar.writeValueWithoutResponse(Packet.encode(packet).finish());

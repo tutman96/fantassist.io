@@ -10,7 +10,7 @@ import ErrorIcon from "@mui/icons-material/Error";
 import { useConnection, useRequestHandler } from "@/external/hooks";
 import { Settings, settingsDatabase } from "..";
 import { generateArucoMarker } from "@/utils";
-import useCalibrationScene from "./calibrationScene";
+import useCalibrationScene, { useCornerLocations } from "./calibrationScene";
 
 const CornerMarker = ({
   id,
@@ -48,8 +48,9 @@ const AlignmentStep: React.FC<Props> = ({ onNext, onPrevious }) => {
   const connection = useConnection();
   const overwroteFreezeSetting = useRef<boolean | null>(null);
   const [displayingCalibration, setDisplayingCalibration] = useState(false);
-  const highligtedCorners: Array<number> = [1, 2, 3, 4]; // TODO: Get this from the tracker
+  const [highligtedCorners, setHighlightedCorners] = useState<Array<number>>([]);
   const calibrationScene = useCalibrationScene(highligtedCorners);
+  const cornerLocations = useCornerLocations();
 
   useRequestHandler(async (req) => {
     if (req.getAssetRequest) {
@@ -107,6 +108,32 @@ const AlignmentStep: React.FC<Props> = ({ onNext, onPrevious }) => {
       },
     });
   }, [calibrationScene?.version, displayingCalibration]);
+
+  useEffect(() => {
+    if (!displayingCalibration || !cornerLocations) return;
+
+    connection.trackerChannel.request({
+      trackerStartCalibrationRequest: {
+        corners: cornerLocations,
+      },
+    })
+
+    const interval = setInterval(async () => {
+      const resp = await connection.trackerChannel.request({
+        trackerGetCalibrationRequest: {},
+      });
+      const { foundCorners } = resp.trackerGetCalibrationResponse!;
+      setHighlightedCorners(foundCorners);
+    }, 100);
+    return () => {
+      clearInterval(interval)
+
+      // TODO: pull state on mount and restore it on unmount
+      connection.trackerChannel.request({
+        trackerSetIdleRequest: {},
+      })
+    };
+  }, [displayingCalibration])
 
   return (
     <>

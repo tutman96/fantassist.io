@@ -5,14 +5,26 @@ import {
 } from "@/protos/scene";
 import { useTableDimensions } from "..";
 
-const PADDING = 0.1;
+export const useCornerLocations = (padding = 0.1) => {
+  const dims = useTableDimensions();
+  if (!dims) {
+    return undefined;
+  }
+
+  return [
+    { x: padding, y: padding },
+    { x: dims.width - padding, y: padding },
+    { x: dims.width - padding, y: dims.height - padding },
+    { x: padding, y: dims.height - padding },
+  ];
+}
 
 const useCalibrationScene = (
   highligtedCorners: Array<number>
 ): Scene | undefined => {
-  const dims = useTableDimensions();
+  const corners = useCornerLocations();
 
-  if (!dims) {
+  if (!corners) {
     return undefined;
   }
 
@@ -51,8 +63,7 @@ const useCalibrationScene = (
                 height: 1,
               },
               transform: {
-                x: PADDING,
-                y: PADDING,
+                ...corners[0],
                 height: 1,
                 width: 1,
                 rotation: 0,
@@ -66,8 +77,7 @@ const useCalibrationScene = (
                 height: 1,
               },
               transform: {
-                x: dims?.width - PADDING,
-                y: PADDING,
+                ...corners[1],
                 height: 1,
                 width: 1,
                 rotation: 90,
@@ -81,8 +91,7 @@ const useCalibrationScene = (
                 height: 1,
               },
               transform: {
-                x: dims.width - PADDING,
-                y: dims.height - PADDING,
+                ...corners[2],
                 height: 1,
                 width: 1,
                 rotation: 180,
@@ -96,8 +105,7 @@ const useCalibrationScene = (
                 height: 1,
               },
               transform: {
-                x: PADDING,
-                y: dims.height - PADDING,
+                ...corners[3],
                 height: 1,
                 width: 1,
                 rotation: 270,

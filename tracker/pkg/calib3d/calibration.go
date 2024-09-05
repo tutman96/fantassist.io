@@ -18,6 +18,7 @@ var (
 )
 
 type PoseCalibration struct {
+	FoundCorners []int32
 	Corners      gocv.Point2fVector
 	CameraMatrix gocv.Mat
 	DistCoeffs   gocv.Mat

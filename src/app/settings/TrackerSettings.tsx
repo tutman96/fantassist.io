@@ -15,6 +15,47 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import TrackerCalibrationDialog from "./tracker/calibrationDialog";
 
+export const TrackerConnectButton: React.FunctionComponent = () => {
+  const contextConnection = useConnection();
+  const tracker = contextConnection.trackerChannel;
+  const connectionState = useConnectionState(tracker);
+
+  return (
+    <Button
+      onClick={() => {
+        if (connectionState === "CONNECTED") {
+          tracker.disconnect();
+        } else {
+          tracker.connect();
+        }
+      }}
+      fullWidth
+      size="large"
+      startIcon={
+        connectionState === ChannelState.CONNECTED ? (
+          <BluetoothDisabledIcon />
+        ) : connectionState === ChannelState.CONNECTING ? (
+          <BluetoothSearchingIcon />
+        ) : (
+          <BluetoothConnectedIcon />
+        )
+      }
+      variant="contained"
+      color={
+        connectionState === ChannelState.CONNECTED ? "warning" : "primary"
+      }
+      disabled={
+        !tracker.isSupported || connectionState === ChannelState.CONNECTING
+      }
+    >
+      {connectionState === ChannelState.CONNECTING && "Connecting..."}
+      {connectionState === ChannelState.DISCONNECTED && "Connect to Tracker"}
+      {connectionState === ChannelState.CONNECTED &&
+        "Disconnect from Tracker"}
+    </Button>
+  )
+}
+
 const TrackerSettings: React.FunctionComponent = () => {
   const contextConnection = useConnection();
   const tracker = contextConnection.trackerChannel;
@@ -44,38 +85,7 @@ const TrackerSettings: React.FunctionComponent = () => {
 
   return (
     <>
-      <Button
-        onClick={() => {
-          if (connectionState === "CONNECTED") {
-            tracker.disconnect();
-          } else {
-            tracker.connect();
-          }
-        }}
-        fullWidth
-        size="large"
-        startIcon={
-          connectionState === ChannelState.CONNECTED ? (
-            <BluetoothDisabledIcon />
-          ) : connectionState === ChannelState.CONNECTING ? (
-            <BluetoothSearchingIcon />
-          ) : (
-            <BluetoothConnectedIcon />
-          )
-        }
-        variant="contained"
-        color={
-          connectionState === ChannelState.CONNECTED ? "warning" : "primary"
-        }
-        disabled={
-          !tracker.isSupported || connectionState === ChannelState.CONNECTING
-        }
-      >
-        {connectionState === ChannelState.CONNECTING && "Connecting..."}
-        {connectionState === ChannelState.DISCONNECTED && "Connect to Tracker"}
-        {connectionState === ChannelState.CONNECTED &&
-          "Disconnect from Tracker"}
-      </Button>
+      <TrackerConnectButton />
       <Divider
         sx={{
           marginY: 2,

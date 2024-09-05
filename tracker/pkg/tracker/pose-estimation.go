@@ -2,28 +2,13 @@ package tracker
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/tutman96/fantassist.io/tracker/pkg/calib3d"
 	"gocv.io/x/gocv"
 )
 
-var (
-	objectPoints = gocv.NewPoint3fVectorFromPoints([]gocv.Point3f{
-		gocv.NewPoint3f(0, 0, 0),
-		gocv.NewPoint3f(1, 0, 0),
-		gocv.NewPoint3f(0, 1, 0),
-		gocv.NewPoint3f(1, 1, 0),
-	})
-	axisMarkers = []gocv.Point3f{
-		gocv.NewPoint3f(0, 0, 0),
-		gocv.NewPoint3f(1, 0, 0),
-		gocv.NewPoint3f(0, 1, 0),
-		gocv.NewPoint3f(0, 0, 1),
-	}
-)
-
-func (t *Tracker) EstimatePose(ctx context.Context, loopRate time.Duration, poseCalibration *calib3d.PoseCalibration) {
+func (t *Tracker) EstimatePose(ctx context.Context, cornersReal gocv.Point3fVector, loopRate time.Duration) {
 	corners := gocv.NewMat()
 	defer corners.Close()
 
@@ -34,7 +19,7 @@ func (t *Tracker) EstimatePose(ctx context.Context, loopRate time.Duration, pose
 
 	params := gocv.NewArucoDetectorParameters()
 	params.SetAdaptiveThreshConstant(5)
-	dict := gocv.GetPredefinedDictionary(gocv.ArucoDict4x4_50)
+	dict := gocv.GetPredefinedDictionary(gocv.ArucoDictArucoOriginal)
 	detector := gocv.NewArucoDetectorWithParams(dict, params)
 	defer detector.Close()
 
@@ -50,24 +35,30 @@ func (t *Tracker) EstimatePose(ctx context.Context, loopRate time.Duration, pose
 		case <-ticker.C:
 			t.SetExposure(15000)
 			imgs := gocv.Split(t.frame)
-			gocv.BitwiseNot(imgs[1], &invert)
+			gocv.BitwiseNot(imgs[0], &invert)
 			for _, img := range imgs {
 				img.Close()
 			}
 
 			corners, markerIds, _ := detector.DetectMarkers(invert)
 
+			foundCorners := make([]int32, len(markerIds))
 			for i, id := range markerIds {
-				markers[id] = corners[i][0]
+				markers[id-1] = corners[i][0]
+				foundCorners[i] = int32(id)
 			}
+
+			fmt.Println("foundCorners", foundCorners)
+			fmt.Println("markers", markers)
+
+			t.PoseCalibration.FoundCorners = foundCorners
 
 			// If all corners are found
 			if len(markers) == 4 && markers[0].X > 0 && markers[1].X > 0 && markers[2].X > 0 && markers[3].X > 0 {
 				// Calculate the pose of the marker
 				imagePoints := gocv.NewPoint2fVectorFromPoints([]gocv.Point2f{markers[0], markers[1], markers[2], markers[3]})
-				poseCalibration.Corners = imagePoints
-				gocv.SolvePnP(objectPoints, imagePoints, poseCalibration.CameraMatrix, poseCalibration.DistCoeffs, &poseCalibration.RVecs, &poseCalibration.TVecs, false, 0)
-				return
+				t.PoseCalibration.Corners = imagePoints
+				gocv.SolvePnP(cornersReal, imagePoints, t.PoseCalibration.CameraMatrix, t.PoseCalibration.DistCoeffs, &t.PoseCalibration.RVecs, &t.PoseCalibration.TVecs, false, 0)
 			}
 
 			invert.CopyTo(&output)

@@ -19,7 +19,7 @@ type Tracker struct {
 	frame           gocv.Mat
 	frameListeners  []chan gocv.Mat
 	frameDuration   time.Duration
-	poseCalibration *calib3d.PoseCalibration
+	PoseCalibration *calib3d.PoseCalibration
 
 	markerListeners []chan []*Marker
 	markers         *MarkerSet
@@ -28,12 +28,21 @@ type Tracker struct {
 }
 
 func NewTracker(resolution image.Point, poseCalibration *calib3d.PoseCalibration) (*Tracker, error) {
+	if poseCalibration == nil {
+		poseCalibration = &calib3d.PoseCalibration{
+			CameraMatrix: gocv.Eye(3, 3, gocv.MatTypeCV64F),
+			DistCoeffs:   gocv.NewMat(),
+			RVecs:        gocv.NewMat(),
+			TVecs:        gocv.NewMat(),
+		}
+	}
+
 	t := &Tracker{
 		resolution:      resolution,
 		framesChan:      make(chan libcamera.Frame),
 		markers:         NewMarkerSet(255),
 		debugFrames:     make(map[string]gocv.Mat),
-		poseCalibration: poseCalibration,
+		PoseCalibration: poseCalibration,
 	}
 
 	c, err := libcamera.Open(t.resolution, t.framesChan)
@@ -80,7 +89,7 @@ func (t *Tracker) GetMarkers() []*Marker {
 }
 
 func (t *Tracker) ConvertPixelTo3D(pixel image.Point) gocv.Point3f {
-	return t.poseCalibration.PixelTo3D(pixel, 0) // TODO: configure height offset
+	return t.PoseCalibration.PixelTo3D(pixel, 0) // TODO: configure height offset
 }
 
 func (t *Tracker) HandleMJPEG(w http.ResponseWriter, r *http.Request) {

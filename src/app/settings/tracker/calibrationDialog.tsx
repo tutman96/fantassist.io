@@ -12,13 +12,14 @@ import StepLabel from "@mui/material/StepLabel";
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
 
-import { useConnectionState } from "@/external/hooks";
+import { useConnection, useConnectionState } from "@/external/hooks";
 import { ChannelState } from "@/external/abstractChannel";
 import { DisplayButton } from "../DisplaySettings";
 
 import CloseIcon from "@mui/icons-material/Close";
 import IntroductionStep from "./introduction";
 import AlignmentStep from "./alignment";
+import { TrackerConnectButton } from "../TrackerSettings";
 
 type Props = {
   open: boolean;
@@ -43,7 +44,9 @@ const TrackerCalibrationDialog: React.FC<Props> = ({ open, onClose }) => {
     }
   }, [open]);
 
+  const channel = useConnection();
   const displayConnectionState = useConnectionState();
+  const trackerConnectionState = useConnectionState(channel.trackerChannel);
 
   const content = (() => {
     if (displayConnectionState !== ChannelState.CONNECTED) {
@@ -59,6 +62,23 @@ const TrackerCalibrationDialog: React.FC<Props> = ({ open, onClose }) => {
             Please connect the display before proceeding.
           </Alert>
           <DisplayButton />
+        </>
+      );
+    }
+
+    if (trackerConnectionState !== ChannelState.CONNECTED) {
+      return (
+        <>
+          <Alert
+            severity="warning"
+            sx={{
+              marginBottom: 2,
+            }}
+          >
+            <AlertTitle>Tracker not connected</AlertTitle>
+            Please connect the tracker before proceeding.
+          </Alert>
+          <TrackerConnectButton />
         </>
       );
     }

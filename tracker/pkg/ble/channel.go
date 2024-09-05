@@ -18,7 +18,8 @@ type BleChannel struct {
 	readChar  *service.Char
 	writeChar *service.Char
 
-	Connected bool
+	Connected                     bool
+	connectionStateChangeChannels []chan bool
 
 	outboundPacketChannel chan *protos.Packet
 	requestHandlers       []func(*protos.Request) *protos.Response
@@ -115,7 +116,8 @@ func NewBleChannel() (*BleChannel, error) {
 		readChar:  readChar,
 		writeChar: writeChar,
 
-		Connected: false,
+		Connected:                     false,
+		connectionStateChangeChannels: []chan bool{},
 
 		outboundPacketChannel: make(chan *protos.Packet),
 		requestHandlers:       make([]func(*protos.Request) *protos.Response, 0),
@@ -148,6 +150,12 @@ func (manager *BleChannel) Start(ctx context.Context) error {
 	return nil
 }
 
+func (manager *BleChannel) OnConnectionStateChange() <-chan bool {
+	c := make(chan bool)
+	manager.connectionStateChangeChannels = append(manager.connectionStateChangeChannels, c)
+	return c
+}
+
 func (manager *BleChannel) AddRequestHandler(handler func(req *protos.Request) *protos.Response) {
 	manager.requestHandlers = append(manager.requestHandlers, handler)
 }
@@ -173,7 +181,12 @@ func (manager *BleChannel) sendPacket(packet *protos.Packet) {
 }
 
 func (manager *BleChannel) onNotify(_ *service.Char, notify bool) error {
-	manager.Connected = notify
+	if notify != manager.Connected {
+		manager.Connected = notify
+		for _, c := range manager.connectionStateChangeChannels {
+			c <- notify
+		}
+	}
 
 	fmt.Println("Notify", notify)
 

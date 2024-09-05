@@ -20,15 +20,15 @@ export const DisplayChannelContextProvider: React.FC<
   const [displayPreference] = useDisplayPreference();
 
   useEffect(() => {
-    if (!autoSelect) {
-      const channelPreference = displayPreference ?? init.supportedChannels[0];
-      if (channelPreference) {
+    const channelPreference = displayPreference ?? init.supportedChannels[0];
+    if (channelPreference) {
+      if (!init.hasCurrentChannel) {
         init.useChannel(channelPreference);
-      } else {
-        console.warn("No supported display channels available");
       }
+    } else {
+      console.warn("No supported display channels available");
     }
-  }, [autoSelect, displayPreference]);
+  }, [displayPreference]);
 
   return (
     <DisplayChannelContext.Provider value={init}>
