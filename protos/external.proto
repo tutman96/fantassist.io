@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = "github.com/tutman96/fantassist.io/tracker";
+option go_package = "github.com/tutman96/fantassist.io/tracker/protos";
 import "protos/scene.proto";
 
 message Packet {

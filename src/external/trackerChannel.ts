@@ -7,17 +7,19 @@ const CONFIG = {
       services: [0x12342233],
     },
     {
-      namePrefix: "table-camera", // TODO: change this to the actual name
+      namePrefix: "raspberrypi-zero", // TODO: change this to the actual name
     },
   ] as BluetoothLEScanFilter[],
   serviceUUID: 0x12342233,
-  charUUID: 0x12343344, // TODO: change this to the actual UUID
+  writeCharUUID: 0x12343344, // TODO: change this to the actual UUID
+  readCharUUID: 0x12343345, // TODO: change this to the actual UUID
 };
 
 export class TrackerChannel extends AbstractChannel {
   private _connecting = false;
   private _device: BluetoothDevice | null = null;
-  private _char: BluetoothRemoteGATTCharacteristic | null = null;
+  private _writeChar: BluetoothRemoteGATTCharacteristic | null = null;
+  private _readChar: BluetoothRemoteGATTCharacteristic | null = null;
 
   get state(): ChannelState {
     if (this._connecting) {
@@ -49,7 +51,6 @@ export class TrackerChannel extends AbstractChannel {
 
       this._device.addEventListener("gattserverdisconnected", async () => {
         await this.disconnect();
-        this.notifyConnectionStateChange();
       });
 
       const server = await this._device.gatt?.connect();
@@ -58,10 +59,10 @@ export class TrackerChannel extends AbstractChannel {
       }
       const service = await server.getPrimaryService(CONFIG.serviceUUID);
 
-      this._char = await service.getCharacteristic(CONFIG.charUUID);
-      this._char.startNotifications();
-      this._char.addEventListener("characteristicvaluechanged", async (e) => {
-        const d = this._char?.value;
+      this._writeChar = await service.getCharacteristic(CONFIG.writeCharUUID);
+      this._readChar = await service.getCharacteristic(CONFIG.readCharUUID);
+      this._readChar.addEventListener("characteristicvaluechanged", async (e) => {
+        const d = this._readChar?.value;
         if (!d) {
           return;
         }
@@ -74,13 +75,11 @@ export class TrackerChannel extends AbstractChannel {
           console.warn("Failed to process incoming packet", e);
         }
       });
+      await this._readChar.startNotifications();
       this.notifyConnectionStateChange();
     } catch (e) {
       console.warn("Failed to connect to Tracker", e);
-      this._connecting = false;
-      this._device = null;
-      this._char = null;
-      this.notifyConnectionStateChange();
+      await this.disconnect();
     }
   }
 
@@ -88,19 +87,22 @@ export class TrackerChannel extends AbstractChannel {
     if (this._device) {
       if (this._device.gatt?.connected) {
         this._device.gatt.disconnect();
+        this._device = null;
+      } else {
+        this._device = null;
+        this.notifyConnectionStateChange();
       }
 
-      this._device = null;
-      this._char = null;
+      this._writeChar = null;
+      this._readChar = null;
     }
-    this.notifyConnectionStateChange();
   }
 
   async sendOutgoingPacket(packet: Packet) {
-    if (!this._char) {
+    if (!this._writeChar) {
       throw new Error("No device connected");
     }
 
-    await this._char.writeValueWithoutResponse(Packet.encode(packet).finish());
+    await this._writeChar.writeValueWithoutResponse(Packet.encode(packet).finish());
   }
 }

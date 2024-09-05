@@ -12,7 +12,7 @@ import (
 
 type TrackerService struct {
 	*service.Service
-	manager *BleManager
+	manager *BleChannel
 	tracker *tracker.Tracker
 
 	markerCharacteristic *service.Char
@@ -22,18 +22,13 @@ type TrackerService struct {
 	notifyCancel   context.CancelFunc
 }
 
-const (
-	trackerServiceUUID       = "2233"
-	markerCharacteristicUUID = "3344"
-)
-
-func NewTrackerService(manager *BleManager, tracker *tracker.Tracker, updateInterval time.Duration) (*TrackerService, error) {
+func NewTrackerService(manager *BleChannel, tracker *tracker.Tracker, updateInterval time.Duration) (*TrackerService, error) {
 	service, err := manager.app.NewService(trackerServiceUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	markerCharacteristic, err := service.NewChar(markerCharacteristicUUID)
+	markerCharacteristic, err := service.NewChar(channelWriteCharacteristicUUID)
 	if err != nil {
 		return nil, err
 	}

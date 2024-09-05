@@ -3,6 +3,7 @@ module github.com/tutman96/fantassist.io/tracker
 go 1.22.4
 
 require (
+	github.com/google/uuid v1.1.1
 	github.com/muka/go-bluetooth v0.0.0-20240115085408-dfdf79b8f61d
 	go.einride.tech/pid v0.1.2
 	gocv.io/x/gocv v0.37.0
