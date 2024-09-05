@@ -7,7 +7,7 @@ import (
 	"github.com/muka/go-bluetooth/api/service"
 	"github.com/muka/go-bluetooth/bluez/profile/agent"
 	"github.com/muka/go-bluetooth/hw"
-	"github.com/tutman96/table-camera/pkg/tracker"
+	"github.com/tutman96/fantassist.io/tracker/pkg/tracker"
 )
 
 type BleManager struct {

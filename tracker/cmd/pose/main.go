@@ -11,8 +11,8 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/tutman96/table-camera/pkg/calib3d"
-	"github.com/tutman96/table-camera/pkg/tracker"
+	"github.com/tutman96/fantassist.io/tracker/pkg/calib3d"
+	"github.com/tutman96/fantassist.io/tracker/pkg/tracker"
 	"gocv.io/x/gocv"
 )
 

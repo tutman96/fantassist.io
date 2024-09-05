@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/tutman96/table-camera/pkg/calib3d"
+	"github.com/tutman96/fantassist.io/tracker/pkg/calib3d"
 	"gocv.io/x/gocv"
 )
 

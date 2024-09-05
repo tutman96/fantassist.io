@@ -1,4 +1,4 @@
-module github.com/tutman96/table-camera
+module github.com/tutman96/fantassist.io/tracker
 
 go 1.22.4
 
@@ -6,6 +6,7 @@ require (
 	github.com/muka/go-bluetooth v0.0.0-20240115085408-dfdf79b8f61d
 	go.einride.tech/pid v0.1.2
 	gocv.io/x/gocv v0.37.0
+	google.golang.org/protobuf v1.34.2
 )
 
 require (

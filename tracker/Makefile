@@ -5,7 +5,8 @@ include .env
 
 install_build_utils:
 	sudo apt-get update
-	sudo apt-get install -y pkg-config meson ninja-build cmake sudo ssh rsync
+	sudo apt-get install -y pkg-config meson ninja-build cmake sudo ssh rsync protobuf-compiler
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 
 install_libcamera:
 	sudo apt-get install -y libcamera-dev
