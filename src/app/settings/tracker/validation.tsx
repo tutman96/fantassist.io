@@ -119,12 +119,12 @@ const ValidationStep: React.FC<Props> = ({ onNext, onPrevious }) => {
   return (
     <>
       <Typography gutterBottom>
-        Finally we're going to validate that the calibration process worked correctly.
+        Finally we are going to validate that the calibration process worked correctly.
       </Typography>
       <br />
       {overrideActive && <Typography gutterBottom>
         The display will have gone blank with just a grid shown. Place one or many markers on the grid and validate that they are tracked correctly.
-        Once you are happy with the results, click "Finish" to save the calibration.
+        Once you are happy with the results, click &quot;Finish&quot; to save the calibration.
       </Typography>}
 
       <Box
