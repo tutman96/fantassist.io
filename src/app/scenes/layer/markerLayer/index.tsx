@@ -18,6 +18,9 @@ import { cloneMarker } from "../../marker/storage";
 import MarkerList, { DROP_DATA_TYPE } from "../../marker/markerList";
 import LayerListTopperPortal from "../../canvas/layerListTopperProvider";
 import { useStageClick } from "@/utils";
+import { useConnection, useConnectionState, useTrackerMarkerLocations } from "@/external/hooks";
+import { ChannelState } from "@/external/abstractChannel";
+import MarkerPlaceholder from "./markerPlaceholder";
 
 type Props = ILayerComponentProps<Types.MarkerLayer>;
 const MarkerLayer: React.FunctionComponent<Props> = ({
@@ -29,6 +32,8 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const campaignId = useCampaignId();
   const groupRef = useRef<Konva.Group>();
+  const connection = useConnection();
+  const trackerConnectionState = useConnectionState(connection.trackerChannel);
 
   useStageClick(groupRef.current, () => {
     setSelectedMarkerId(null);
@@ -77,6 +82,24 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
       container.removeEventListener("drop", onDrop);
     };
   }, [layer, layerActive, campaignId, groupRef, selectedMarkerId, onUpdate]);
+
+  useEffect(() => {
+    if (trackerConnectionState !== ChannelState.CONNECTED) return;
+
+    connection.trackerChannel.request({
+      trackerStartTrackingRequest: {
+        updateRateMs: 1000 / 10,
+      },
+    });
+
+    return () => {
+      connection.trackerChannel.request({
+        trackerSetIdleRequest: {},
+      })
+    };
+  }, [trackerConnectionState])
+
+  const trackerMarkerLocations = useTrackerMarkerLocations();
 
   const toolbar = useMemo(() => {
     const selectedAsset = selectedMarkerId
@@ -148,6 +171,16 @@ const MarkerLayer: React.FunctionComponent<Props> = ({
             />
           );
         })}
+        {trackerConnectionState === ChannelState.CONNECTED && Object.entries(trackerMarkerLocations).map(([id, markerLocation]) => {
+          return (
+            <MarkerPlaceholder
+              key={id}
+              id={+id}
+              location={markerLocation}
+            />
+          );
+        })
+        }
       </Group>
     </>
   );

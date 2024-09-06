@@ -44,7 +44,7 @@ const ValidationStep: React.FC<Props> = ({ onNext, onPrevious }) => {
   const markers = Object.entries(markerLocations).map(([id, markerLocation]) => ({
     id,
     asset: {
-      id: `//marker/${id}`,
+      id: `//marker`,
       size: {
         width: 1,
         height: 1,
@@ -66,7 +66,7 @@ const ValidationStep: React.FC<Props> = ({ onNext, onPrevious }) => {
   useRequestHandler(async (req) => {
     if (req.getAssetRequest) {
       const id = req.getAssetRequest.id;
-      if (!id.startsWith("//marker/")) {
+      if (!id.startsWith("//marker")) {
         return null;
       }
 

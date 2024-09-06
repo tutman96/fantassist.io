@@ -69,7 +69,7 @@ export function useRequestHandler(
 
 export function useTrackerMarkerLocations() {
   const [locations, setLocations] = useState<{ [key: number]: TrackerVector2d }>({});
-const connection = useConnection();
+  const connection = useConnection();
 
   useRequestHandler(async (req) => {
     if (req.trackerUpdateMarkerLocationRequest) {
