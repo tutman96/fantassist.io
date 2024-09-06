@@ -4,9 +4,8 @@ import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import { useCalibrationSceneOverride } from "./hooks";
 import { AssetLayer_Asset_AssetType, Layer_LayerType, Marker, Scene } from "@/protos/scene";
-import { useConnection, useRequestHandler } from "@/external/hooks";
+import { useConnection, useRequestHandler, useTrackerMarkerLocations } from "@/external/hooks";
 import { useEffect, useState } from "react";
-import { useTableDimensions } from "..";
 
 function useValidationScene(markers: Marker[]): Scene | undefined {
   return {
@@ -40,7 +39,27 @@ type Props = {
 };
 const ValidationStep: React.FC<Props> = ({ onNext, onPrevious }) => {
   const connection = useConnection();
-  const [markers, setMarkers] = useState<Array<Marker>>([]);
+  const markerLocations = useTrackerMarkerLocations();
+
+  const markers = Object.entries(markerLocations).map(([id, markerLocation]) => ({
+    id,
+    asset: {
+      id: `//marker/${id}`,
+      size: {
+        width: 1,
+        height: 1,
+      },
+      transform: {
+        height: 1,
+        width: 1,
+        x: markerLocation.x - 0.5,
+        y: markerLocation.y - 0.5,
+        rotation: 0,
+      },
+      type: AssetLayer_Asset_AssetType.IMAGE,
+    },
+  }));
+
   const validationScene = useValidationScene(markers);
   const overrideActive = useCalibrationSceneOverride(validationScene);
 
@@ -51,7 +70,7 @@ const ValidationStep: React.FC<Props> = ({ onNext, onPrevious }) => {
         return null;
       }
 
-      // const [, , , markerId] = id.split("/"); // TODO: do something with markerId
+      // TODO: do something with markerId
 
       // Material Radio Button Checked Icon
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="white"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/><circle cx="12" cy="12" r="5"/></svg>`
@@ -70,45 +89,13 @@ const ValidationStep: React.FC<Props> = ({ onNext, onPrevious }) => {
   useEffect(() => {
     if (!overrideActive) return;
 
-    let running = true;
-
-    (async () => {
-      await connection.trackerChannel.request({
-        trackerStartTrackingRequest: {
-        },
-      });
-
-      while (running) {
-        const resp = await connection.trackerChannel.request({
-          trackerGetMarkerLocationRequest: {},
-        });
-        const { markerLocations } = resp.trackerGetMarkerLocationResponse!;
-
-        setMarkers(Array.from(Object.entries(markerLocations)).map(([id, markerLocation]) => ({
-          id,
-          asset: {
-            id: `//marker/${id}`,
-            size: {
-              width: 1,
-              height: 1,
-            },
-            transform: {
-              height: 1,
-              width: 1,
-              x: markerLocation.x - 0.5,
-              y: markerLocation.y - 0.5,
-              rotation: 0,
-            },
-            type: AssetLayer_Asset_AssetType.IMAGE,
-          },
-        })));
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    })()
+    connection.trackerChannel.request({
+      trackerStartTrackingRequest: {
+        updateRateMs: 1000 / 20,
+      },
+    });
 
     return () => {
-      running = false;
-
       // TODO: pull state on mount and restore it on unmount
       connection.trackerChannel.request({
         trackerSetIdleRequest: {},

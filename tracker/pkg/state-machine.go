@@ -130,7 +130,7 @@ func (sm *StateMachine) registerRequestHandlers() {
 				Message: &protos.Response_TrackerGetCalibrationResponse{
 					TrackerGetCalibrationResponse: &protos.TrackerGetCalibrationResponse{
 						FoundCorners: sm.tracker.PoseCalibration.FoundCorners,
-						CornerLocations: []*protos.Vector2D{ // TODO: make these the actual corners
+						CornerLocations: []*protos.TrackerVector2D{ // TODO: make these the actual corners
 							{X: 0, Y: 0},
 							{X: 0, Y: 720},
 							{X: 1280, Y: 720},
@@ -147,24 +147,7 @@ func (sm *StateMachine) registerRequestHandlers() {
 			}
 
 		case *protos.Request_TrackerGetMarkerLocationRequest:
-			markers := sm.tracker.GetMarkers()
-
-			vectors := make(map[int32]*protos.Vector2D)
-			for _, marker := range markers {
-				if marker.LastSeen.Sub(marker.FirstSeen) < 100*time.Millisecond {
-					fmt.Println("Marker", marker.Identifier, "is too young")
-					continue
-				}
-
-				location := sm.tracker.ConvertPixelTo3D(marker.Position)
-
-				fmt.Println("Marker", marker.Identifier, "at", location)
-
-				vectors[int32(marker.Identifier)] = &protos.Vector2D{
-					X: float64(location.X),
-					Y: float64(location.Y),
-				}
-			}
+			vectors := sm.getMarkerVectors()
 
 			return &protos.Response{
 				Message: &protos.Response_TrackerGetMarkerLocationResponse{
@@ -232,7 +215,7 @@ func (sm *StateMachine) stopCalibration() {
 	sm.state = protos.TrackerGetStatusResponse_IDLE
 }
 
-func (sm *StateMachine) startTracking(_ *protos.Request_TrackerStartTrackingRequest) {
+func (sm *StateMachine) startTracking(req *protos.Request_TrackerStartTrackingRequest) {
 	if sm.state == protos.TrackerGetStatusResponse_TRACKING {
 		return
 	} else if sm.state == protos.TrackerGetStatusResponse_CALIBRATING {
@@ -250,6 +233,37 @@ func (sm *StateMachine) startTracking(_ *protos.Request_TrackerStartTrackingRequ
 		sm.tracker.DetectMarkers(ctx)
 	}()
 
+	if req.TrackerStartTrackingRequest.UpdateRateMs > 0 {
+		sm.currentWaitGroup.Add(1)
+		go func() {
+			defer sm.currentWaitGroup.Done()
+
+			ticker := time.NewTicker(time.Duration(req.TrackerStartTrackingRequest.UpdateRateMs) * time.Millisecond)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					vectors := sm.getMarkerVectors()
+					markerUpdate := &protos.TrackerUpdateMarkerLocationRequest{
+						MarkerLocations: vectors,
+					}
+
+					// Leave RequestID empty to indicate that this is a broadcast
+					sm.bleChannel.SendPacket(&protos.Packet{
+						Message: &protos.Packet_Request{
+							Request: &protos.Request{
+								Message: &protos.Request_TrackerUpdateMarkerLocationRequest{
+									TrackerUpdateMarkerLocationRequest: markerUpdate,
+								},
+							},
+						},
+					})
+				}
+			}
+		}()
+	}
+
 	sm.state = protos.TrackerGetStatusResponse_TRACKING
 }
 
@@ -262,4 +276,31 @@ func (sm *StateMachine) stopTracking() {
 	sm.currentStateCancel()
 	sm.currentWaitGroup.Wait()
 	sm.state = protos.TrackerGetStatusResponse_IDLE
+}
+
+func (sm *StateMachine) getMarkerVectors() map[int32]*protos.TrackerVector2D {
+	markers := sm.tracker.GetMarkers()
+
+	vectors := make(map[int32]*protos.TrackerVector2D)
+	for _, marker := range markers {
+		if marker.LastSeen.Sub(marker.FirstSeen) < 100*time.Millisecond {
+			fmt.Println("Marker", marker.Identifier, "is too young")
+			continue
+		}
+
+		if len(vectors) >= 30 {
+			fmt.Println("More than 30 markers detected, omitting those from the packet")
+			break
+		}
+
+		location := sm.tracker.ConvertPixelTo3D(marker.Position)
+
+		fmt.Println("Marker", marker.Identifier, "at", location)
+
+		vectors[int32(marker.Identifier)] = &protos.TrackerVector2D{
+			X: location.X,
+			Y: location.Y,
+		}
+	}
+	return vectors
 }

@@ -44,8 +44,7 @@ export default abstract class AbstractChannel {
       p.request ?? p.response ?? {}
     ).find(([, value]) => value !== undefined) as [string, string];
     console.debug(
-      `%c ${this.constructor.name} - ${direction} ${
-        p.request ? "Request" : "Response"
+      `%c ${this.constructor.name} - ${direction} ${p.request ? "Request" : "Response"
       } (${p.requestId})`,
       p.request ? "color: lightblue" : "color: lightgreen",
       messageType,
@@ -114,13 +113,15 @@ export default abstract class AbstractChannel {
     } else if (packet.request) {
       const response = await this.handleRequest(packet.request);
 
-      const responsePacket = {
-        requestId: packet.requestId,
-        request: undefined,
-        response,
-      };
-      this.logPacket("Sending", responsePacket);
-      await this.sendOutgoingPacket(responsePacket);
+      if (packet.requestId.length > 0) {
+        const responsePacket = {
+          requestId: packet.requestId,
+          request: undefined,
+          response,
+        };
+        this.logPacket("Sending", responsePacket);
+        await this.sendOutgoingPacket(responsePacket);
+      }
     }
   }
 }

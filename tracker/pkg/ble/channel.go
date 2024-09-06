@@ -30,6 +30,7 @@ const (
 	trackerServiceUUID             = "2233"
 	channelWriteCharacteristicUUID = "3344"
 	channelReadCharacteristicUUID  = "3345"
+	markerCharacteristicUUID       = "3346"
 )
 
 func setupAdapter() error {
@@ -172,11 +173,11 @@ func (manager *BleChannel) Request(req *protos.Request) *protos.Response {
 	response := make(chan *protos.Response)
 	manager.requestChannels[id.String()] = response
 
-	manager.sendPacket(packet)
+	manager.SendPacket(packet)
 	return <-response
 }
 
-func (manager *BleChannel) sendPacket(packet *protos.Packet) {
+func (manager *BleChannel) SendPacket(packet *protos.Packet) {
 	manager.outboundPacketChannel <- packet
 }
 
@@ -229,7 +230,7 @@ func (manager *BleChannel) onWrite(_ *service.Char, value []byte) ([]byte, error
 		for _, handler := range manager.requestHandlers {
 			response := handler(req)
 			if response != nil {
-				manager.sendPacket(&protos.Packet{
+				manager.SendPacket(&protos.Packet{
 					RequestId: packet.RequestId,
 					Message: &protos.Packet_Response{
 						Response: response,

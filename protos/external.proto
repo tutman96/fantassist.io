@@ -47,6 +47,9 @@ message Request {
 
     // Respond with TrackerGetMarkerLocationResponse
     TrackerGetMarkerLocationRequest trackerGetMarkerLocationRequest = 15;
+
+    // Don't respond
+    TrackerUpdateMarkerLocationRequest trackerUpdateMarkerLocationRequest = 16;
   }
 }
 
@@ -110,6 +113,11 @@ message TrackerGetStatusRequest {
 
 }
 
+message TrackerVector2d {
+  float x = 1;
+  float y = 2;
+}
+
 message TrackerGetStatusResponse {
   string uuid = 1;
   string version = 2;
@@ -125,22 +133,25 @@ message TrackerGetStatusResponse {
 message TrackerSetIdleRequest {}
 
 message TrackerStartCalibrationRequest {
-  repeated Vector2d corners = 1;
+  repeated TrackerVector2d corners = 1;
 }
 
 message TrackerGetCalibrationRequest {}
 message TrackerGetCalibrationResponse {
   repeated int32 foundCorners = 1;
-  repeated Vector2d cornerLocations = 2;
+  repeated TrackerVector2d cornerLocations = 2;
 }
 
 message TrackerStartTrackingRequest {
-  // TODO: figure out how to have unsolicited notifications and switch to that instead of req/res
-  // double updateRateMs = 1;
+  float updateRateMs = 1;
 }
 
 message TrackerGetMarkerLocationRequest {}
 
 message TrackerGetMarkerLocationResponse {
-  map<int32, Vector2d> markerLocations = 1;
+  map<int32, TrackerVector2d> markerLocations = 1;
+}
+
+message TrackerUpdateMarkerLocationRequest {
+  map<int32, TrackerVector2d> markerLocations = 1;
 }

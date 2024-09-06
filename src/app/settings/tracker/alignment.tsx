@@ -8,7 +8,6 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 
 import { useConnection, useRequestHandler } from "@/external/hooks";
-import { Settings, settingsDatabase } from "..";
 import { generateArucoMarker } from "@/utils";
 import useCalibrationScene, { useCornerLocations } from "./calibrationScene";
 import { useCalibrationSceneOverride } from "./hooks";

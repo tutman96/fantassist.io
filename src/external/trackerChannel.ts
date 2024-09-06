@@ -1,5 +1,5 @@
 import AbstractChannel, { ChannelState } from "./abstractChannel";
-import { Packet } from "@/protos/external";
+import { Packet, TrackerGetMarkerLocationResponse } from "@/protos/external";
 
 const CONFIG = {
   filters: [
