@@ -20,6 +20,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import IntroductionStep from "./introduction";
 import AlignmentStep from "./alignment";
 import { TrackerConnectButton } from "../TrackerSettings";
+import ValidationStep from "./validation";
+import AdjustmentStep from "./adjustment";
 
 type Props = {
   open: boolean;
@@ -91,6 +93,20 @@ const TrackerCalibrationDialog: React.FC<Props> = ({ open, onClose }) => {
           <AlignmentStep
             onNext={() => setActiveStep(2)}
             onPrevious={() => setActiveStep(0)}
+          />
+        );
+      case 2:
+        return (
+          <AdjustmentStep
+            onNext={() => setActiveStep(3)}
+            onPrevious={() => setActiveStep(1)}
+          />
+        )
+      case 3:
+        return (
+          <ValidationStep
+            onNext={() => onClose()}
+            onPrevious={() => setActiveStep(2)}
           />
         );
       default:

@@ -2,9 +2,11 @@ package pkg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"image"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +20,7 @@ type StateMachine struct {
 	ctx                context.Context
 	state              protos.TrackerGetStatusResponse_TrackerState
 	currentStateCancel context.CancelFunc
+	currentWaitGroup   sync.WaitGroup
 
 	bleChannel *ble.BleChannel
 	tracker    *tracker.Tracker
@@ -38,10 +41,11 @@ func NewStateMachine() (*StateMachine, error) {
 	}
 
 	sm := &StateMachine{
-		ctx:        context.TODO(),
-		state:      protos.TrackerGetStatusResponse_IDLE,
-		bleChannel: bleChannel,
-		tracker:    tracker,
+		ctx:                context.TODO(),
+		state:              protos.TrackerGetStatusResponse_IDLE,
+		bleChannel:         bleChannel,
+		tracker:            tracker,
+		currentStateCancel: func() {},
 	}
 
 	return sm, nil
@@ -75,6 +79,10 @@ func (sm *StateMachine) Start(ctx context.Context) error {
 	go func() {
 		sm.tracker.StartCapture()
 		<-ctx.Done()
+
+		sm.currentStateCancel()
+		sm.currentWaitGroup.Wait()
+
 		sm.tracker.StopCapture()
 	}()
 
@@ -154,7 +162,7 @@ func (sm *StateMachine) registerRequestHandlers() {
 
 				vectors[int32(marker.Identifier)] = &protos.Vector2D{
 					X: float64(location.X),
-					Y: float64(location.X),
+					Y: float64(location.Y),
 				}
 			}
 
@@ -192,15 +200,22 @@ func (sm *StateMachine) startCalibration(req *protos.Request_TrackerStartCalibra
 		)
 	}
 
+	sm.currentWaitGroup.Add(1)
 	go func() {
-		time.Sleep(1 * time.Second) // TODO: do we need this?
+		defer sm.currentWaitGroup.Done()
+
 		sm.tracker.EstimatePose(
 			ctx,
-			gocv.NewPoint3fVectorFromPoints(
-				realCorners,
-			),
+			realCorners,
 			50*time.Millisecond,
 		)
+
+		output, err := json.Marshal(sm.tracker.PoseCalibration)
+		if err != nil {
+			fmt.Println("Error marshalling calibration data:", err)
+			return
+		}
+		fmt.Println("Calibration data:", string(output))
 	}()
 
 	sm.state = protos.TrackerGetStatusResponse_CALIBRATING
@@ -213,6 +228,7 @@ func (sm *StateMachine) stopCalibration() {
 
 	fmt.Println("Stopping calibration")
 	sm.currentStateCancel()
+	sm.currentWaitGroup.Wait()
 	sm.state = protos.TrackerGetStatusResponse_IDLE
 }
 
@@ -227,7 +243,10 @@ func (sm *StateMachine) startTracking(_ *protos.Request_TrackerStartTrackingRequ
 	ctx, cancel := context.WithCancel(sm.ctx)
 	sm.currentStateCancel = cancel
 
+	sm.currentWaitGroup.Add(1)
 	go func() {
+		defer sm.currentWaitGroup.Done()
+
 		sm.tracker.DetectMarkers(ctx)
 	}()
 
@@ -241,5 +260,6 @@ func (sm *StateMachine) stopTracking() {
 
 	fmt.Println("Stopping tracking")
 	sm.currentStateCancel()
+	sm.currentWaitGroup.Wait()
 	sm.state = protos.TrackerGetStatusResponse_IDLE
 }

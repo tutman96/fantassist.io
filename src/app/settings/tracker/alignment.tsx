@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import Typograph from "@mui/material/Typography";
+import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 
@@ -11,6 +11,7 @@ import { useConnection, useRequestHandler } from "@/external/hooks";
 import { Settings, settingsDatabase } from "..";
 import { generateArucoMarker } from "@/utils";
 import useCalibrationScene, { useCornerLocations } from "./calibrationScene";
+import { useCalibrationSceneOverride } from "./hooks";
 
 const CornerMarker = ({
   id,
@@ -46,11 +47,26 @@ type Props = {
 };
 const AlignmentStep: React.FC<Props> = ({ onNext, onPrevious }) => {
   const connection = useConnection();
-  const overwroteFreezeSetting = useRef<boolean | null>(null);
-  const [displayingCalibration, setDisplayingCalibration] = useState(false);
   const [highligtedCorners, setHighlightedCorners] = useState<Array<number>>([]);
-  const calibrationScene = useCalibrationScene(highligtedCorners);
   const cornerLocations = useCornerLocations();
+
+  const calibrationScene = useCalibrationScene(highligtedCorners);
+  const overrideActive = useCalibrationSceneOverride(calibrationScene);
+
+  const wrapWaiting = (fn: () => void) => {
+    return () => {
+      if (overrideActive) {
+        connection.trackerChannel.request({
+          trackerSetIdleRequest: {},
+        }).then(fn);
+      } else {
+        fn()
+      }
+    }
+  }
+
+  const waitingNext = wrapWaiting(onNext);
+  const waitingPrevious = wrapWaiting(onPrevious);
 
   useRequestHandler(async (req) => {
     if (req.getAssetRequest) {
@@ -77,71 +93,40 @@ const AlignmentStep: React.FC<Props> = ({ onNext, onPrevious }) => {
     return null;
   });
 
-  // Freeze the table display while the calibration scene is active, then restore the previous setting once done
   useEffect(() => {
-    if (!calibrationScene) return;
+    if (!overrideActive || !cornerLocations) return;
 
-    settingsDatabase()
-      .storage.getItem<boolean>(Settings.TABLE_FREEZE)
-      .then((freeze) => {
-        overwroteFreezeSetting.current = freeze;
-        return settingsDatabase().storage.setItem(Settings.TABLE_FREEZE, true);
-      })
-      .then(() => {
-        setDisplayingCalibration(true);
+    let running = true;
+
+    (async () => {
+      await connection.trackerChannel.request({
+        trackerStartCalibrationRequest: {
+          corners: cornerLocations,
+        },
       });
+
+      while (running) {
+        const resp = await connection.trackerChannel.request({
+          trackerGetCalibrationRequest: {},
+        });
+        const { foundCorners } = resp.trackerGetCalibrationResponse!;
+        setHighlightedCorners(foundCorners);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    })()
+
     return () => {
-      settingsDatabase().storage.setItem(
-        Settings.TABLE_FREEZE,
-        overwroteFreezeSetting.current ?? false
-      );
-      setDisplayingCalibration(false);
+      running = false;
     };
-  }, [calibrationScene?.id]);
-
-  useEffect(() => {
-    if (!calibrationScene || !displayingCalibration) return;
-
-    connection.request({
-      displaySceneRequest: {
-        scene: calibrationScene,
-      },
-    });
-  }, [calibrationScene?.version, displayingCalibration]);
-
-  useEffect(() => {
-    if (!displayingCalibration || !cornerLocations) return;
-
-    connection.trackerChannel.request({
-      trackerStartCalibrationRequest: {
-        corners: cornerLocations,
-      },
-    })
-
-    const interval = setInterval(async () => {
-      const resp = await connection.trackerChannel.request({
-        trackerGetCalibrationRequest: {},
-      });
-      const { foundCorners } = resp.trackerGetCalibrationResponse!;
-      setHighlightedCorners(foundCorners);
-    }, 100);
-    return () => {
-      clearInterval(interval)
-
-      // TODO: pull state on mount and restore it on unmount
-      connection.trackerChannel.request({
-        trackerSetIdleRequest: {},
-      })
-    };
-  }, [displayingCalibration])
+  }, [overrideActive])
 
   return (
     <>
-      <Typograph gutterBottom>
+      <Typography gutterBottom>
         The next step is to align the camera with the table display. There are 4
         markers on the table, each with a unique ID. Please ensure that the
         markers are visible in the camera feed.
-      </Typograph>
+      </Typography>
 
       <Box
         sx={{
@@ -186,13 +171,13 @@ const AlignmentStep: React.FC<Props> = ({ onNext, onPrevious }) => {
         <Button
           variant="text"
           color="secondary"
-          onClick={onPrevious}
+          onClick={waitingPrevious}
         >
           Previous
         </Button>
         <Button
           variant="contained"
-          onClick={onNext}
+          onClick={waitingNext}
           disabled={highligtedCorners.length < 4}
         >
           Next

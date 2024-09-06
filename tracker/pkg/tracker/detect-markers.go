@@ -25,6 +25,9 @@ func (t *Tracker) DetectMarkers(ctx context.Context) {
 			deregister()
 			return
 		case f := <-frameListener:
+			if t.camera.GetExposure() != 1000 {
+				t.SetExposure(1000)
+			}
 			frameTime := time.Now()
 			gocv.ExtractChannel(f, &red, 2)
 			gocv.Threshold(red, &red, thresholdMinimum, 255, gocv.ThresholdBinary)

@@ -29,12 +29,7 @@ type Tracker struct {
 
 func NewTracker(resolution image.Point, poseCalibration *calib3d.PoseCalibration) (*Tracker, error) {
 	if poseCalibration == nil {
-		poseCalibration = &calib3d.PoseCalibration{
-			CameraMatrix: gocv.Eye(3, 3, gocv.MatTypeCV64F),
-			DistCoeffs:   gocv.NewMat(),
-			RVecs:        gocv.NewMat(),
-			TVecs:        gocv.NewMat(),
-		}
+		poseCalibration = calib3d.NewPoseCalibration()
 	}
 
 	t := &Tracker{

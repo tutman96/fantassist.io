@@ -8,7 +8,7 @@ import (
 	"gocv.io/x/gocv"
 )
 
-func (t *Tracker) EstimatePose(ctx context.Context, cornersReal gocv.Point3fVector, loopRate time.Duration) {
+func (t *Tracker) EstimatePose(ctx context.Context, cornersReal []gocv.Point3f, loopRate time.Duration) {
 	corners := gocv.NewMat()
 	defer corners.Close()
 
@@ -23,14 +23,39 @@ func (t *Tracker) EstimatePose(ctx context.Context, cornersReal gocv.Point3fVect
 	detector := gocv.NewArucoDetectorWithParams(dict, params)
 	defer detector.Close()
 
-	ticker := time.NewTicker(loopRate)
-
 	markers := make(map[int]gocv.Point2f)
+	ticker := time.NewTicker(loopRate)
 
 	for {
 		select {
 		case <-ctx.Done():
 			ticker.Stop()
+
+			if len(t.PoseCalibration.FoundCorners) < 4 {
+				fmt.Println("Not enough corners found", t.PoseCalibration.FoundCorners)
+				return
+			}
+
+			imagePoints := []gocv.Point2f{markers[0], markers[1], markers[2], markers[3]}
+			imageMat := gocv.NewMatWithSize(len(imagePoints), 1, gocv.MatTypeCV32FC2)
+			defer imageMat.Close()
+
+			for i, pt := range imagePoints {
+				imageMat.SetFloatAt(i, 0, pt.X)
+				imageMat.SetFloatAt(i, 1, pt.Y)
+			}
+
+			cornersMat := gocv.NewMatWithSize(4, 1, gocv.MatTypeCV32FC2)
+			defer cornersMat.Close()
+
+			for i, pt := range cornersReal {
+				cornersMat.SetFloatAt(i, 0, pt.X)
+				cornersMat.SetFloatAt(i, 1, pt.Y)
+			}
+
+			mask := gocv.NewMat()
+			homography := gocv.FindHomography(imageMat, &cornersMat, gocv.HomograpyMethodRANSAC, 3.0, &mask, 2000, 0.995)
+			t.PoseCalibration.HomographyMat = homography
 			return
 		case <-ticker.C:
 			t.SetExposure(15000)
@@ -52,15 +77,6 @@ func (t *Tracker) EstimatePose(ctx context.Context, cornersReal gocv.Point3fVect
 			fmt.Println("markers", markers)
 
 			t.PoseCalibration.FoundCorners = foundCorners
-
-			// If all corners are found
-			if len(markers) == 4 && markers[0].X > 0 && markers[1].X > 0 && markers[2].X > 0 && markers[3].X > 0 {
-				// Calculate the pose of the marker
-				imagePoints := gocv.NewPoint2fVectorFromPoints([]gocv.Point2f{markers[0], markers[1], markers[2], markers[3]})
-				t.PoseCalibration.Corners = imagePoints
-				gocv.SolvePnP(cornersReal, imagePoints, t.PoseCalibration.CameraMatrix, t.PoseCalibration.DistCoeffs, &t.PoseCalibration.RVecs, &t.PoseCalibration.TVecs, false, 0)
-			}
-
 			invert.CopyTo(&output)
 		}
 	}

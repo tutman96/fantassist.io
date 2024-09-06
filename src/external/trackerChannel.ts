@@ -103,6 +103,12 @@ export class TrackerChannel extends AbstractChannel {
       return;
     }
 
-    await this._writeChar.writeValueWithoutResponse(Packet.encode(packet).finish());
+    try {
+      await this._writeChar.writeValueWithoutResponse(Packet.encode(packet).finish());
+    }
+    catch (e) {
+      console.error("Failed to send packet", e);
+      await this.disconnect();
+    }
   }
 }

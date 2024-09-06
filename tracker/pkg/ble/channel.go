@@ -193,12 +193,12 @@ func (manager *BleChannel) onNotify(_ *service.Char, notify bool) error {
 	if notify {
 		go func() {
 			for packet := range manager.outboundPacketChannel {
-				fmt.Println("-> Sending packet", packet)
 				bytes, err := proto.Marshal(packet)
 				if err != nil {
 					fmt.Println("Error marshalling packet:", err)
 					continue
 				}
+				fmt.Println("-> Sending packet", packet, len(bytes))
 				manager.readChar.WriteValue(bytes, map[string]interface{}{
 					"device": "server",
 					"link":   "server",
