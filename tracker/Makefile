@@ -34,9 +34,9 @@ build:
 	GOOS=linux GOARCH=arm64 go build -o bin/camera cmd/tracker/main.go
 
 push:
-	rsync -avz --progress bin/camera pi@$(TRACKER_HOSTNAME):~/camera
+	rsync -avz --progress bin/camera pi@$(TRACKER_HOSTNAME):/tmp/camera
 
 run-remote:
-	ssh pi@$(TRACKER_HOSTNAME) -t "./camera"
+	ssh pi@$(TRACKER_HOSTNAME) -t "/tmp/camera"
 
 dev: build push run-remote
