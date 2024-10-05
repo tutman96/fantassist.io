@@ -6,6 +6,7 @@ import globalStorage from "@/storage";
 import { createNewLayer, unflattenLayer } from "./layer";
 import { deleteAsset, fileStorage } from "./asset";
 import * as Types from "@/protos/scene";
+import config from "../config";
 
 const storage = globalStorage<Types.Scene, Uint8Array>(
   "scene_2",
@@ -34,7 +35,7 @@ export const sceneDatabase = {
 export default sceneDatabase;
 
 export function createNewScene(campaignId: string): Types.Scene {
-  return {
+  const scene = {
     id: `${campaignId}/${v4()}`,
     name: "Untitled",
     version: 0,
@@ -53,12 +54,17 @@ export function createNewScene(campaignId: string): Types.Scene {
         ...createNewLayer(Types.Layer_LayerType.FOG),
         name: "Fog",
       }),
-      unflattenLayer({
-        ...createNewLayer(Types.Layer_LayerType.MARKERS),
-        name: "Markers",
-      }),
     ],
-  };
+  } as Types.Scene;
+
+  if (config.enable_markers) {
+    scene.layers.push(unflattenLayer({
+      ...createNewLayer(Types.Layer_LayerType.MARKERS),
+      name: "Markers",
+    }))
+  }
+
+  return scene;
 }
 
 async function sceneToSceneExport(scene: Types.Scene): Promise<Uint8Array> {

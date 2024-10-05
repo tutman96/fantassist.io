@@ -14,6 +14,7 @@ import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
 import ScatterPlotOutlinedIcon from '@mui/icons-material/ScatterPlotOutlined';
 
 import { Layer_LayerType } from "@/protos/scene";
+import config from "@/app/config";
 
 type Props = { onAdd: (type: Layer_LayerType) => void };
 const AddLayerButton: React.FunctionComponent<Props> = ({ onAdd }) => {
@@ -55,12 +56,12 @@ const AddLayerButton: React.FunctionComponent<Props> = ({ onAdd }) => {
             </ListItemIcon>
             <ListItemText primary="Fog Layer" />
           </MenuItem>
-          <MenuItem onClick={addLayer(Layer_LayerType.MARKERS)}>
+          {config.enable_markers ? <MenuItem onClick={addLayer(Layer_LayerType.MARKERS)}>
             <ListItemIcon>
               <ScatterPlotOutlinedIcon />
             </ListItemIcon>
             <ListItemText primary="Marker Layer" />
-          </MenuItem>
+          </MenuItem> : null}
         </MenuList>
       </Menu>
     </>
