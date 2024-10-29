@@ -1,11 +1,11 @@
 /* eslint-disable jsx-a11y/alt-text */
 import React, { useEffect, useRef } from "react";
 import { Image } from "react-konva";
+import Konva from "konva";
 
 import { useAssetElement } from "../../asset";
 import TransformableAsset from "./transformableAsset";
 import * as Types from "@/protos/scene";
-import Konva from "konva";
 
 type Props = {
   asset: Types.AssetLayer_Asset;
@@ -27,13 +27,14 @@ const Asset: React.FunctionComponent<Props> = ({
 
   useEffect(() => {
     if (asset.type === Types.AssetLayer_Asset_AssetType.VIDEO && el) {
-      (el as HTMLVideoElement).muted = !playAudio;
+      const videoEl = el as HTMLVideoElement;
+      videoEl.volume = asset.volume ?? 1;
+      videoEl.muted = !playAudio;
       return () => {
-        (el as HTMLVideoElement).muted = true;
-      };
+        videoEl.muted = true;
+      }
     }
-    return () => {};
-  }, [asset, playAudio, el]);
+  }, [el, asset.type, playAudio, asset.volume])
 
   useEffect(() => {
     if (el && imgRef.current) {

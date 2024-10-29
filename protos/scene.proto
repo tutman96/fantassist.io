@@ -75,6 +75,7 @@ message AssetLayer {
     }
 
     optional bool snapToGrid = 6;
+    optional float volume = 7;
   }
 }
 

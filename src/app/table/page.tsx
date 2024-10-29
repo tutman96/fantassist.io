@@ -14,7 +14,6 @@ import {
 } from "@/external/hooks";
 import { ChannelState } from "@/external/abstractChannel";
 import {
-  usePlayAudioOnTable,
   useTableResolution,
   useTableSize,
 } from "@/app/settings";
@@ -68,7 +67,6 @@ function useTableConfiguration():
   const connectionState = useConnectionState();
   const [, setStoredTableResolution] = useTableResolution();
   const [, setStoredTableSize] = useTableSize();
-  const [, setPlayAudioOnTable] = usePlayAudioOnTable();
   const [tableConfiguration, setTableConfiguration] =
     useState<ExternalTypes.GetTableConfigurationResponse>();
 
@@ -81,9 +79,6 @@ function useTableConfiguration():
           res.getTableConfigurationResponse!.resolution!
         );
         setStoredTableSize(res.getTableConfigurationResponse!.size);
-        setPlayAudioOnTable(
-          res.getTableConfigurationResponse!.playAudioOnTable
-        );
       });
     }
   }, [
@@ -92,7 +87,6 @@ function useTableConfiguration():
     tableConfiguration,
     setStoredTableResolution,
     setStoredTableSize,
-    setPlayAudioOnTable,
   ]);
 
   return tableConfiguration;

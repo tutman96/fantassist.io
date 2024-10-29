@@ -65,14 +65,6 @@ export function useTableDimensions() {
   };
 }
 
-export function usePlayAudioOnTable(): [
-  boolean | undefined,
-  (newValue: boolean) => Promise<void>
-] {
-  // TODO: reimplement once display connection stuff is reworked
-  return [false, async () => {}];
-}
-
 export async function tablePPI() {
   let [resolution, size] = await Promise.all([
     storage.storage.getItem<{ width: number; height: number }>(

@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import Toolbar from "@mui/material/Toolbar";
@@ -14,7 +14,6 @@ import {
   Settings,
   useTableResolution,
   useTableSize,
-  usePlayAudioOnTable,
 } from "../settings";
 import theme, { BACKDROP_STYLE } from "@/theme";
 import {
@@ -28,6 +27,8 @@ import { ToolbarPortalProvider } from "./layer/toolbarPortal";
 import { TINT2 } from "./canvas/draggableStage";
 import TableDisplayButton from "./displayButton";
 import SettingsButton from "./settingsButton";
+import AudioButton from "./audioButton";
+import { Scene } from "@/protos/scene";
 
 const { useOneValue } = sceneDatabase;
 const { useOneValue: useOneSettingValue } = settingsDatabase();
@@ -35,7 +36,6 @@ const { useOneValue: useOneSettingValue } = settingsDatabase();
 function useRequestHandlers() {
   const [tableResolution] = useTableResolution();
   const [tableSize] = useTableSize();
-  const [playAudioOnTable] = usePlayAudioOnTable();
 
   useRequestHandler(async (req) => {
     if (req.getAssetRequest) {
@@ -59,8 +59,7 @@ function useRequestHandlers() {
       return {
         getTableConfigurationResponse: {
           resolution: tableResolution,
-          size: tableSize,
-          playAudioOnTable: playAudioOnTable ?? false,
+          size: tableSize
         },
       };
     }
@@ -105,10 +104,16 @@ function useExternalDisplay() {
 
 type Props = { id: string };
 const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
-  const [scene, updateScene] = useOneValue(id);
+  const [scene, _updateScene] = useOneValue(id);
   const router = useRouter();
 
   useExternalDisplay();
+
+  const updateScene = useCallback((s: Scene) => {
+    s.version++;
+    console.log("updating scene", s);
+    _updateScene(s);
+  }, [_updateScene]);
 
   if (scene === null) {
     router.push("/scenes");
@@ -171,7 +176,12 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
         </Typography>
         <Box />
         <Box>
-          {scene && <TableDisplayButton scene={scene} />}
+          {scene && (
+            <>
+              <TableDisplayButton scene={scene} />
+              <AudioButton scene={scene} onUpdate={updateScene} />
+            </>
+          )}
           <SettingsButton />
         </Box>
       </Toolbar>
@@ -180,11 +190,7 @@ const SceneEditor: React.FunctionComponent<Props> = ({ id }) => {
         {scene && (
           <Canvas
             scene={scene}
-            onUpdate={(s) => {
-              s.version++;
-              console.log("updating scene", s);
-              updateScene(s);
-            }}
+            onUpdate={updateScene}
           />
         )}
       </ToolbarPortalProvider>

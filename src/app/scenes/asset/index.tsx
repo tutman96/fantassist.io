@@ -75,13 +75,11 @@ export async function deleteAsset(asset: Types.AssetLayer_Asset) {
   await fileStorage.removeItem(asset.id);
 }
 
-export function useAssetElementSrc(asset: Types.AssetLayer_Asset) {
+export function useAssetElementFile(asset: Types.AssetLayer_Asset) {
   const [file, setFile] = useOneValue(asset.id);
 
   const connection = useConnection();
   const connectionState = useConnectionState();
-
-  const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (
@@ -103,14 +101,24 @@ export function useAssetElementSrc(asset: Types.AssetLayer_Asset) {
           );
         });
     }
+  }, [connection, connectionState, file, asset.id, setFile]);
 
+  return file;
+}
+
+
+export function useAssetElementSrc(asset: Types.AssetLayer_Asset) {
+  const file = useAssetElementFile(asset);
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
     if (file && !src) {
       setSrc(URL.createObjectURL(file));
       return () => {
         URL.revokeObjectURL(src!);
       };
     }
-  }, [connection, connectionState, file, asset.id, src, setFile]);
+  }, [file, src]);
 
   return src;
 }
@@ -130,8 +138,6 @@ export function useAssetElement(asset: Types.AssetLayer_Asset) {
       if (asset.type === Types.AssetLayer_Asset_AssetType.VIDEO) {
         const video = elementRef.current as HTMLVideoElement;
         video.loop = true;
-        video.muted = true;
-        video.autoplay = true;
         video.play();
       }
     }

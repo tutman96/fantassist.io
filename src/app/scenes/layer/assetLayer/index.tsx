@@ -19,7 +19,6 @@ import { deleteAsset, getNewAssets } from "../../asset";
 import ToolbarItem, { ToolbarSeparator } from "../toolbarItem";
 import ToolbarPortal from "../toolbarPortal";
 import AssetSizer, { calculateCalibratedTransform } from "./assetSizer";
-import { usePlayAudioOnTable } from "../../../settings";
 import {
   calculateViewportCenter,
   calculateViewportDimensions,
@@ -38,7 +37,6 @@ const AssetLayer: React.FunctionComponent<Props> = ({
   const campaignId = useCampaignId();
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const groupRef = useRef<Konva.Group>();
-  const [playAudioOnTable] = usePlayAudioOnTable();
 
   const deleteSelectedAsset = useCallback(async () => {
     if (selectedAssetId && layer.assets[selectedAssetId]) {
@@ -172,7 +170,7 @@ const AssetLayer: React.FunctionComponent<Props> = ({
                 layer.assets[updatedAsset.id] = updatedAsset;
                 onUpdate(layer);
               }}
-              playAudio={isTable && !!playAudioOnTable}
+              playAudio={isTable}
             />
           );
         })}

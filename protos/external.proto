@@ -97,8 +97,6 @@ message GetTableConfigurationResponse {
   }
 
   double size = 2;
-
-  bool playAudioOnTable = 3;
 }
 
 message GetCurrentSceneRequest {}
