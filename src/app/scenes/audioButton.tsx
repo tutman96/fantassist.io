@@ -43,14 +43,14 @@ const AudioItemAvatar: React.FC<{ assetFile: File | null }> = ({ assetFile }) =>
 
   if (!thumbnailUrl) {
     return (
-      <Avatar>
+      <Avatar variant="rounded">
         <VolumeUp />
       </Avatar>
     )
   }
 
   return (
-    <Avatar src={thumbnailUrl} />
+    <Avatar src={thumbnailUrl} variant="rounded"/>
   );
 }
 
