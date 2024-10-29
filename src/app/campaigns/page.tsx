@@ -16,7 +16,7 @@ const CampaignsPage: React.FC = () => {
   if (lastCampaign && campaigns.has(lastCampaign)) {
     return redirect(`/campaigns/${lastCampaign}`);
   } else if (campaigns.size > 0) {
-    return redirect(`/campaigns/${campaigns.values().next().value.id}`);
+    return redirect(`/campaigns/${campaigns.values().next().value!.id}`);
   } else {
     return redirect("/campaigns/new");
   }
