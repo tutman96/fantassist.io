@@ -6,18 +6,24 @@ import globalStorage from "@/storage";
 import { createNewLayer, unflattenLayer } from "./layer";
 import { deleteAsset, fileStorage } from "./asset";
 import * as Types from "@/protos/scene";
+import {
+  decodeScene,
+  decodeSceneExport,
+  encodeScene,
+  encodeSceneExport,
+} from "@/compat/v1/scene";
 
 const storage = globalStorage<Types.Scene, Uint8Array>(
   "scene_2",
-  (s) => Types.Scene.encode(s).finish(),
-  Types.Scene.decode
+  encodeScene,
+  decodeScene
 );
 export const sceneDatabase = {
   ...storage,
   deleteItem: async (key: string) => {
     const sceneRaw = await storage.storage.getItem(key);
     if (!sceneRaw) return;
-    const scene = Types.Scene.decode(sceneRaw);
+    const scene = decodeScene(sceneRaw);
     for (const layer of scene.layers) {
       if (!layer.assetLayer) continue;
 
@@ -82,7 +88,7 @@ async function sceneToSceneExport(scene: Types.Scene): Promise<Uint8Array> {
     });
   }
 
-  return Types.SceneExport.encode({ scene, files }).finish();
+  return encodeSceneExport({ scene, files });
 }
 
 export async function exportScene(scene: Types.Scene) {
@@ -109,7 +115,7 @@ export async function exportAllScenes(
     }
     const sceneRaw = await storage.storage.getItem(sceneId);
     if (!sceneRaw) continue;
-    const scene = Types.Scene.decode(sceneRaw);
+    const scene = decodeScene(sceneRaw);
     const exp = await sceneToSceneExport(scene);
     tar.addFile(scene.name + ".scene", exp);
   }
@@ -151,7 +157,7 @@ export async function importScene(campaignId: string) {
     fr.readAsArrayBuffer(file);
   });
 
-  const exp = Types.SceneExport.decode(new Uint8Array(exportBinary));
+  const exp = decodeSceneExport(new Uint8Array(exportBinary));
   const scene = exp.scene!;
   scene.id = `${campaignId}/${v4()}`;
 
@@ -159,7 +165,7 @@ export async function importScene(campaignId: string) {
     await Promise.all(
       (await storage.storage.keys()).map((k) => storage.storage.getItem(k))
     )
-  ).map((b) => Types.Scene.decode(b!));
+  ).map((b) => decodeScene(b!));
 
   let nameCollisions = 1;
   const originalName = scene.name;
@@ -183,13 +189,14 @@ export async function importScene(campaignId: string) {
   }
 
   for (const file of exp.files) {
-    const newAssetId = assetMap.get(file.id)!;
+    const newAssetId = assetMap.get(file.id);
+    if (!newAssetId) continue;
     await fileStorage.setItem(
       newAssetId,
       new File([file.payload], newAssetId, { type: file.mediaType })
     );
   }
 
-  await storage.storage.setItem(scene.id, Types.Scene.encode(scene).finish());
+  await storage.storage.setItem(scene.id, encodeScene(scene));
   return scene;
 }

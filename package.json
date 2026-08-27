@@ -2,11 +2,19 @@
   "name": "fantassist.io",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "npm@11.8.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "npm run test:compile && node --test \".test-dist/tests/**/*.test.js\"",
+    "test:compile": "tsc --project tsconfig.tests.json",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run test && npm run build",
     "gen-proto": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/ --ts_proto_opt=esModuleInterop=true ./protos/*"
   },
   "dependencies": {
@@ -20,7 +28,7 @@
     "@mui/material-nextjs": "^6.0.1",
     "@mui/system": "^5.2.5",
     "@rehooks/component-size": "^1.0.3",
-    "canvas": "^2.11.2",
+    "canvas": "^3.2.3",
     "konva": "^9.3.11",
     "localforage": "^1.10.0",
     "lru-cache": "^6.0.0",
@@ -36,7 +44,7 @@
   },
   "devDependencies": {
     "@types/lru-cache": "^5.1.0",
-    "@types/node": "^20",
+    "@types/node": "^24",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/uuid": "^8.0.0",
