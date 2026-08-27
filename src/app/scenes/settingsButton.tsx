@@ -15,12 +15,10 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import CloseIcon from "@mui/icons-material/Close";
 import theme from "@/theme";
 import DisplaySettings from "../settings/DisplaySettings";
-import TrackerSettings from "../settings/TrackerSettings";
 
 enum SETTINGS_TABS {
   DISPLAY = "Display",
   AUDIO = "Audio",
-  TRACKER = "Fantassist Tracker",
   ABOUT = "About",
 }
 
@@ -99,8 +97,6 @@ const SettingsButton: React.FC<Props> = ({}) => {
               switch (selectedTab) {
                 case SETTINGS_TABS.DISPLAY:
                   return <DisplaySettings />;
-                case SETTINGS_TABS.TRACKER:
-                  return <TrackerSettings />;
                 default:
                   return (
                     <Typography variant="overline" color="secondary.main">

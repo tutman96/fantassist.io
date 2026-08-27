@@ -5,7 +5,6 @@ export enum Settings {
   TABLE_FREEZE = "table_freeze",
   TABLE_RESOLUTION = "table_resolution",
   TABLE_SIZE = "table_size",
-  PLAY_AUDIO_ON_TABLE = "play_audio_on_table",
   LAST_CAMPAIGN = "last_campaign",
   DISPLAY_PREFERENCE = "display_preference",
 }

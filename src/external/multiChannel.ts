@@ -5,7 +5,6 @@ import AbstractChannel, {
 } from "./abstractChannel";
 import WindowChannel from "./windowChannel";
 import PresentationApiChannel from "./presentationApiChannel";
-import { TrackerChannel } from "./trackerChannel";
 
 const CHANNEL_PREFERENCES = ["presentationApi", "window"] as const;
 
@@ -47,16 +46,11 @@ export default class MultiChannel extends AbstractChannel {
     });
   }
 
-  public readonly trackerChannel = new TrackerChannel();
-
   constructor() {
     super();
     if (globalThis._channel) {
       console.warn("Existing MultiChannel instance found, overwriting");
       globalThis._channel.disconnect();
-      if (globalThis._channel.trackerChannel.state !== ChannelState.DISCONNECTED) {
-        globalThis._channel.trackerChannel.disconnect();
-      }
     }
     globalThis._channel = this;
 

@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Request, Response, TrackerGetMarkerLocationResponse, TrackerGetMarkerLocationResponse_MarkerLocationsEntry, TrackerVector2d } from "../protos/external";
+import { Request, Response } from "../protos/external";
 import MultiChannel from "./multiChannel";
 import { useDisplayPreference } from "@/app/settings";
 import AbstractChannel, { ChannelState } from "./abstractChannel";
@@ -65,21 +65,4 @@ export function useRequestHandler(
   useEffect(() => {
     return ctx.addRequestHandler(handler);
   }, [ctx, handler]);
-}
-
-export function useTrackerMarkerLocations() {
-  const [locations, setLocations] = useState<{ [key: number]: TrackerVector2d }>({});
-  const connection = useConnection();
-
-  useRequestHandler(async (req) => {
-    if (req.trackerUpdateMarkerLocationRequest) {
-      setLocations(req.trackerUpdateMarkerLocationRequest.markerLocations);
-      return {
-        ackResponse: {},
-      };
-    }
-
-    return null;
-  }, connection.trackerChannel);
-  return locations;
 }

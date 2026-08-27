@@ -5,9 +5,8 @@ import { deleteAsset } from "../asset";
 
 import AssetLayer from "./assetLayer";
 import FogLayer from "./fogLayer";
-import MarkerLayer from "./markerLayer";
 
-export type ILayer = Types.AssetLayer | Types.FogLayer | Types.MarkerLayer;
+export type ILayer = Types.AssetLayer | Types.FogLayer;
 
 export interface ILayerComponentProps<T extends ILayer = ILayer> {
   layer: T;
@@ -19,7 +18,6 @@ export interface ILayerComponentProps<T extends ILayer = ILayer> {
 export const LayerTypeToComponent = {
   [Types.Layer_LayerType.ASSETS]: AssetLayer,
   [Types.Layer_LayerType.FOG]: FogLayer,
-  [Types.Layer_LayerType.MARKERS]: MarkerLayer,
 } as { [type: string]: React.FunctionComponent<ILayerComponentProps<any>> };
 
 export function createNewLayer(type: Types.Layer_LayerType): ILayer {
@@ -42,11 +40,6 @@ export function createNewLayer(type: Types.Layer_LayerType): ILayer {
       fogPolygons: [],
       fogClearPolygons: [],
     } as Types.FogLayer;
-  } else if (type === Types.Layer_LayerType.MARKERS) {
-    return {
-      ...layer,
-      markers: [],
-    } as Types.MarkerLayer;
   } else {
     throw new Error("Invalid Argument");
   }
@@ -66,7 +59,7 @@ export async function deleteLayer(scene: Types.Scene, layer: ILayer) {
 }
 
 export function flattenLayer(layer: Types.Layer): ILayer {
-  return layer.assetLayer ?? layer.fogLayer ?? layer.markerLayer!;
+  return layer.assetLayer ?? layer.fogLayer!;
 }
 
 export function unflattenLayer(layer: ILayer): Types.Layer {
@@ -79,8 +72,6 @@ export function unflattenLayer(layer: ILayer): Types.Layer {
       fogLayer: layer as Types.FogLayer,
     };
   } else {
-    return {
-      markerLayer: layer as Types.MarkerLayer,
-    };
+    throw new Error("Invalid layer type");
   }
 }

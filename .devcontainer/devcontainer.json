@@ -8,13 +8,9 @@
 			"version": "latest"
 		}
 	},
-	"postCreateCommand": "cd tracker && make install_deps",
 	"customizations": {
 		"vscode": {
-			"extensions": [
-				"ms-vscode.cpptools",
-				"ms-vscode.cpptools-extension-pack"
-			]
+			"extensions": []
 		}
 	},
 	"forwardPorts": ["3000:3000"]

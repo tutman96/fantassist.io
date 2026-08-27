@@ -6,7 +6,6 @@ import globalStorage from "@/storage";
 import { createNewLayer, unflattenLayer } from "./layer";
 import { deleteAsset, fileStorage } from "./asset";
 import * as Types from "@/protos/scene";
-import config from "../config";
 
 const storage = globalStorage<Types.Scene, Uint8Array>(
   "scene_2",
@@ -56,13 +55,6 @@ export function createNewScene(campaignId: string): Types.Scene {
       }),
     ],
   } as Types.Scene;
-
-  if (config.enable_markers) {
-    scene.layers.push(unflattenLayer({
-      ...createNewLayer(Types.Layer_LayerType.MARKERS),
-      name: "Markers",
-    }))
-  }
 
   return scene;
 }
