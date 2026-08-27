@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "enabled_providers": ["vercel"],
+  "instructions": ["AGENTS.md"],
   "share": "disabled"
 }

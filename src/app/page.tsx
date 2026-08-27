@@ -70,9 +70,14 @@ export default function Home() {
             </Typography>
           </Box>
 
-          <Button fullWidth variant="contained" color="primary" size="large" href="/campaigns" LinkComponent={Link}>
-            Start Building
-          </Button>
+          <Box>
+            <Button fullWidth variant="contained" color="primary" size="large" href="/campaigns" LinkComponent={Link}>
+              Start Building
+            </Button>
+            <Button fullWidth variant="text" color="secondary" size="small" href="/beta" LinkComponent={Link} sx={{ marginTop: 1 }}>
+              Join the Beta
+            </Button>
+          </Box>
         </Box>
       </Box>
     </Box>

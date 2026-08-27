@@ -14,6 +14,7 @@ Current implementation progress:
 - A frozen v1 schema and representative non-tracker scene fixture exist.
 - Bidirectional scene and `.scene` export compatibility tests run with Node's built-in test runner.
 - Legacy marker layers are discarded safely at the v1 compatibility boundary.
+- The stable application exposes `/beta`, a validated version cookie endpoint, and coordinated tab/output switching.
 
 ## Goals
 

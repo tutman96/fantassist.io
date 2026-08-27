@@ -13,12 +13,15 @@ Fantassist is a client-heavy Next.js application for creating and presenting tab
 
 ## Project Rules
 
-- Work on the long-lived `v2` branch. Do not create additional feature branches unless explicitly requested.
+- Work on the currently selected project branch. Do not create additional feature branches unless explicitly requested.
 - Ask before committing or opening a pull request.
 - Preserve unrelated user changes in the working tree.
 - Prefer small, direct changes over compatibility layers without a concrete need.
 - Keep the app deployable to Vercel. There is no server database or required backend.
 - Do not reintroduce tracker, Bluetooth, ArUco, camera, Go, C++, or marker-layer functionality. The tracker subsystem was intentionally removed.
+- Keep one Next.js development server running and rely on live reload for ordinary source edits.
+- Avoid screenshots unless image inspection is needed for visual correctness; otherwise hand final visual approval to the user.
+- Prefer focused tests for risky boundaries over exhaustive UI unit coverage.
 
 ## Stack
 
@@ -36,6 +39,7 @@ The renderer should be treated as an implementation detail behind the scene mode
 ## Routes
 
 - `/`: landing page
+- `/beta`: stable/beta enrollment and version preference
 - `/campaigns`: chooses the last campaign, first campaign, or campaign creation
 - `/campaigns/new`: creates a campaign
 - `/campaigns/[campaignId]`: campaign scene list and campaign export

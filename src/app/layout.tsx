@@ -6,6 +6,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 
 import DatadogInit from "@/datadog-init";
 import { DEEP_SPACE_BLUE } from "@/colors";
+import { VersionSwitchListener } from "@/app/beta/versionSwitch";
 
 export const metadata: Metadata = {
   title: "Fantassist",
@@ -29,6 +30,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <DatadogInit />
+        <VersionSwitchListener />
         <AppRouterCacheProvider>
           <ThemeProvider theme={theme}>
             <CssBaseline enableColorScheme />

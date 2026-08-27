@@ -30,6 +30,11 @@ export default function manifest(): MetadataRoute.Manifest {
         short_name: "Campaigns",
         url: "/campaigns",
       },
+      {
+        name: "Beta Program",
+        short_name: "Beta",
+        url: "/beta",
+      },
     ],
   };
 }
