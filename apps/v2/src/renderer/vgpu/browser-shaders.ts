@@ -5,6 +5,7 @@ import fogComposite from "./shaders/fog-composite.wgsl";
 import fogGuide from "./shaders/fog-guide.wgsl";
 import fogHandle from "./shaders/fog-handle.wgsl";
 import present from "./shaders/present.wgsl";
+import sceneCopy from "./shaders/scene-copy.wgsl";
 
 export const browserSceneShaders = {
   assets,
@@ -14,4 +15,5 @@ export const browserSceneShaders = {
   fogGuide,
   fogHandle,
   present,
+  sceneCopy,
 };

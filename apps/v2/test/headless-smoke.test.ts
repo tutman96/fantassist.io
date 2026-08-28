@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
+import { createSampleSceneDocument, freezeSceneDocument } from "../src/engine/scene-document";
 import { renderHeadlessScene } from "../scripts/render-scene";
 
 test("headless spike renders deterministic nontrivial pixels", { timeout: 60_000 }, async () => {
@@ -12,6 +13,7 @@ test("headless spike renders deterministic nontrivial pixels", { timeout: 60_000
   assert.ok(new Set(first.pixels).size > 16);
   assert.equal(createHash("sha256").update(first.pixels).digest("hex"), createHash("sha256").update(second.pixels).digest("hex"));
   assert.equal(first.diagnostics.lightFormat, "rgba16float");
+  assert.equal(first.diagnostics.sampleCount, 4);
   assert.equal(first.diagnostics.renderCount, 1);
 
   const pixel = (x: number, y: number) => first.pixels.slice((y * 96 + x) * 4, (y * 96 + x) * 4 + 4);
@@ -32,4 +34,21 @@ test("headless spike renders deterministic nontrivial pixels", { timeout: 60_000
     createHash("sha256").update(editor.pixels).digest("hex"),
     createHash("sha256").update(editorSelection.pixels).digest("hex")
   );
+});
+
+test("the present pass preserves ordinary sRGB asset colors", { timeout: 60_000 }, async () => {
+  const base = createSampleSceneDocument();
+  const scene = freezeSceneDocument({
+    ...base,
+    layers: base.layers.filter((layer) => layer.type === "assets"),
+  });
+  const rendered = await renderHeadlessScene({
+    adapter: "auto",
+    profile: "output",
+    size: [96, 54],
+    time: 0,
+    scene,
+  });
+  const offset = (8 * 96 + 8) * 4;
+  assert.deepEqual([...rendered.pixels.slice(offset, offset + 4)], [45, 72, 70, 255]);
 });

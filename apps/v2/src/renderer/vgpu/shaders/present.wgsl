@@ -9,5 +9,5 @@ fn linear_to_display(value: vec3f) -> vec3f {
 
 @fragment fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let linear = textureSampleLevel(linear_scene, texture_sampler, uv, 0.0).rgb;
-  return vec4f(linear_to_display(linear / (linear + vec3f(1.0))), 1.0);
+  return vec4f(linear_to_display(clamp(linear, vec3f(0.0), vec3f(1.0))), 1.0);
 }

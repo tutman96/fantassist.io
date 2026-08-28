@@ -16,6 +16,10 @@ Activating either fog drawing tool ensures a fog layer exists and selects it. If
 
 The renderer tessellates concave polygons in renderer-owned TypeScript and uploads triangle geometry to WebGPU. Fog polygons write coverage into a per-layer mask and clear polygons overwrite that coverage with zero. Each visible fog layer is a composition barrier in persisted layer order, so assets above a fog layer remain unobscured. Editor-only polygon guides are rendered through WebGPU and never appear in player output.
 
+Sampled sRGB assets are decoded by their `rgba8unorm-srgb` textures, composed in linear `rgba16float` targets, and converted directly back to the sRGB display transfer function. The present pass does not tone-map ordinary scene color while no HDR lighting contribution exists; doing so would mute source artwork. Any future HDR lighting implementation must introduce an explicit exposure and tone-mapping policy with color-preservation coverage.
+
+Asset composition, fog masks, and editor overlays render into native 4x multisampled targets that resolve into ordinary sampleable textures between passes. The final display conversion remains single-sampled because it consumes already-resolved scene color. This anti-aliases geometric edges without filtering or blurring source image interiors.
+
 Polygons with `visibleOnTable: false` remain persisted and visible as editor guides but do not contribute to the fog mask. Existing v1 light sources and obstruction polygons remain unchanged by v2 saves but are not rendered or editable in this slice. The previous hard-coded demonstration lights, wall, and fog shapes are removed rather than mixed with persisted scene behavior.
 
 ## Consequences

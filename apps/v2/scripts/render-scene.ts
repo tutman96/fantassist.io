@@ -9,6 +9,7 @@ import type { NodeAdapterMode } from "@vgpu/adapter-node";
 
 import { createSceneEngine } from "../src/engine/scene-engine";
 import { SAMPLE_ASSET_ID } from "../src/engine/scene-document";
+import type { SceneDocument } from "../src/engine/scene-document";
 import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA, fitTableCamera, getTableBounds } from "../src/engine/table-camera";
 import type { RenderView } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
@@ -23,6 +24,7 @@ export interface HeadlessRenderOptions {
   readonly size: readonly [number, number];
   readonly time: number;
   readonly selectSampleAsset?: boolean;
+  readonly scene?: SceneDocument;
 }
 
 export interface HeadlessRenderResult {
@@ -34,6 +36,7 @@ export interface HeadlessRenderResult {
     readonly time: number;
     readonly passes: readonly string[];
     readonly lightFormat: "rgba16float";
+    readonly sampleCount: 4;
     readonly timingMethod: "cpu-wall-clock";
     readonly renderCount: number;
     readonly timingsMs: {
@@ -67,7 +70,7 @@ export async function renderHeadlessScene(options: HeadlessRenderOptions): Promi
           display: DEFAULT_DISPLAY,
         }
       : { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY };
-    const engine = createSceneEngine();
+    const engine = createSceneEngine(options.scene);
     if (options.selectSampleAsset) engine.dispatch({ type: "selection.set", assetId: SAMPLE_ASSET_ID });
     const executor = createSceneExecutor(gpu, output, plan, shaders, view, engine.getSnapshot());
     const compileStart = performance.now();
@@ -95,6 +98,7 @@ export async function renderHeadlessScene(options: HeadlessRenderOptions): Promi
         time: options.time,
         passes: plan.passes,
         lightFormat: executor.lightFormat,
+        sampleCount: executor.sampleCount,
         timingMethod: "cpu-wall-clock",
         renderCount: iterations,
         timingsMs: {

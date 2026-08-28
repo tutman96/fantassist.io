@@ -8,4 +8,5 @@ export interface SceneShaders {
   readonly fogHandle: string | ShaderSource;
   readonly composite: string | ShaderSource;
   readonly present: string | ShaderSource;
+  readonly sceneCopy: string | ShaderSource;
 }

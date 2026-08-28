@@ -13,6 +13,7 @@ import type { SceneShaders } from "./scene-shaders";
 
 export interface SceneExecutor {
   readonly lightFormat: "rgba16float";
+  readonly sampleCount: 4;
   readonly estimatedTargetBytes: number;
   prewarm(): Promise<void>;
   replaceAssets(snapshot: SceneEngineSnapshot, uploads: readonly ImageTextureUpload[]): Promise<void>;
@@ -45,10 +46,10 @@ export function createSceneExecutor(
   imageUploads: readonly ImageTextureUpload[] = initialSnapshot.scene.assets.map(() => createFallbackImageUpload())
 ): SceneExecutor {
   const size = destination.size;
-  const sceneA = target(gpu, { size, format: "rgba16float", label: "scene-a" });
-  const sceneB = target(gpu, { size, format: "rgba16float", label: "scene-b" });
-  const fogMaskTarget = target(gpu, { size, format: "rgba8unorm", label: "fog-mask" });
-  const compositeTarget = target(gpu, { size, format: "rgba16float", label: "editor-composite" });
+  const sceneA = target(gpu, { size, format: "rgba16float", msaa: 4, label: "scene-a" });
+  const sceneB = target(gpu, { size, format: "rgba16float", msaa: 4, label: "scene-b" });
+  const fogMaskTarget = target(gpu, { size, format: "rgba8unorm", msaa: 4, label: "fog-mask" });
+  const compositeTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "editor-composite" });
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   let gridVisible = plan.showGrid;
@@ -197,6 +198,10 @@ export function createSceneExecutor(
     label: "fog-composite",
     set: { scene: sceneA, fog_mask: fogMaskTarget, texture_sampler: linearSampler, params: { fog_opacity: plan.fogOpacity } },
   });
+  const sceneCopy = effect(gpu, shaders.sceneCopy, {
+    label: "scene-layer-copy",
+    set: { scene: sceneA, texture_sampler: linearSampler },
+  });
   const composite = effect(gpu, shaders.composite, {
     label: "editor-composite",
     set: {
@@ -212,9 +217,10 @@ export function createSceneExecutor(
 
   return {
     lightFormat: "rgba16float",
+    sampleCount: 4,
     get estimatedTargetBytes() {
       const [width, height] = destination.size;
-      return width * height * (8 + 8 + 4 + 8 + 4);
+      return width * height * (8 * 5 + 8 * 5 + 4 * 5 + 8 * 5 + 4);
     },
     async prewarm() {
       await Promise.all([
@@ -226,6 +232,7 @@ export function createSceneExecutor(
               .map((drawable) => drawable.compile(signature(compositeTarget)))
           : []),
         fogComposite.compile(signature(sceneB)),
+        sceneCopy.compile(signature(sceneB)),
         composite.compile(signature(compositeTarget)),
         present.compile(signature(destination)),
       ]);
@@ -281,7 +288,9 @@ export function createSceneExecutor(
         currentFrame.pass({ target: activeScene, clear: [0, 0, 0, 1] }, () => undefined);
         for (const operation of compileSceneLayerOperations(snapshot.scene)) {
           if (operation.type === "assets") {
-            currentFrame.pass({ target: activeScene, clear: false }, (pass) => {
+            sceneCopy.set({ scene: activeScene });
+            currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, (pass) => {
+              pass.draw(sceneCopy);
               for (const assetId of operation.assetIds) {
                 const asset = snapshot.scene.assets.find((candidate) => candidate.id === assetId);
                 if (!asset?.visible) continue;
@@ -289,6 +298,7 @@ export function createSceneExecutor(
                 if (entry) pass.draw(entry.drawable);
               }
             });
+            [activeScene, alternateScene] = [alternateScene, activeScene];
             continue;
           }
           const entry = fogEntries.find((candidate) => candidate.layerId === operation.layerId);
@@ -301,17 +311,17 @@ export function createSceneExecutor(
           [activeScene, alternateScene] = [alternateScene, activeScene];
         }
         composite.set({ scene: activeScene });
-        currentFrame.pass({ target: compositeTarget, clear: [0, 0, 0, 1] }, composite);
-        if (plan.showEditorGrid) {
-          currentFrame.pass({ target: compositeTarget, clear: false }, (pass) => {
+        currentFrame.pass({ target: compositeTarget, clear: [0, 0, 0, 1] }, (pass) => {
+          pass.draw(composite);
+          if (plan.showEditorGrid) {
             for (const entry of fogEntries) {
               if (!snapshot.scene.layers.some((layer) => layer.id === entry.layerId && layer.visible)) continue;
               if (entry.fogGuide) pass.draw(entry.fogGuide);
               if (entry.clearGuide) pass.draw(entry.clearGuide);
               if (entry.handles) pass.draw(entry.handles);
             }
-          });
-        }
+          }
+        });
         currentFrame.pass({ target: destination, clear: [0, 0, 0, 1] }, present);
       });
       await submitted.done;
