@@ -9,8 +9,20 @@ type TableSessionMessage =
       readonly display: DisplayConfiguration;
     };
 
-export function synchronizeTableSession(session: TableSession, profile: RenderProfile): () => void {
-  const channel = new BroadcastChannel("fantassist-table-camera");
+export interface TableSessionChannel {
+  onmessage: ((event: MessageEvent<unknown>) => void) | null;
+  postMessage(message: unknown): void;
+  close(): void;
+}
+
+export type TableSessionChannelFactory = (name: string) => TableSessionChannel;
+
+export function synchronizeTableSession(
+  session: TableSession,
+  profile: RenderProfile,
+  createChannel: TableSessionChannelFactory = (name) => new BroadcastChannel(name)
+): () => void {
+  const channel = createChannel("fantassist-table-camera");
   let closed = false;
   const publish = () => {
     const snapshot = session.getSnapshot();
@@ -20,11 +32,12 @@ export function synchronizeTableSession(session: TableSession, profile: RenderPr
     } satisfies TableSessionMessage);
   };
 
-  channel.onmessage = (event: MessageEvent<TableSessionMessage>) => {
-    if (event.data.type === "request-configuration" && profile === "editor") {
+  channel.onmessage = (event) => {
+    const message = event.data as TableSessionMessage;
+    if (message.type === "request-configuration" && profile === "editor") {
       publish();
-    } else if (event.data.type === "configuration" && profile === "output") {
-      session.updateConfiguration({ display: event.data.display });
+    } else if (message.type === "configuration" && profile === "output") {
+      session.updateConfiguration({ display: message.display });
     }
   };
 
@@ -37,11 +50,11 @@ export function synchronizeTableSession(session: TableSession, profile: RenderPr
         publish();
       })
     : () => undefined;
-  if (profile === "output") {
-    queueMicrotask(() => {
-      if (!closed) channel.postMessage({ type: "request-configuration" } satisfies TableSessionMessage);
-    });
-  }
+  queueMicrotask(() => {
+    if (closed) return;
+    if (profile === "editor") publish();
+    else channel.postMessage({ type: "request-configuration" } satisfies TableSessionMessage);
+  });
 
   return () => {
     closed = true;

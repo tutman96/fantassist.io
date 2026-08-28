@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, ChevronDown, FolderOpen, Settings2 } from "lucide-react";
+import { Check, ChevronDown, Radio, Settings2 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PopoverUnderlay } from "@/components/popover-underlay";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -21,7 +20,6 @@ export function SceneSelector() {
   const scenes = (editorScene?.scenes ?? []).filter((scene) => scene.campaignId === editorScene?.activeCampaignId);
   const activeScene = scenes.find((scene) => scene.key === editorScene?.activeSceneKey) ?? scenes[0];
   const campaign = editorScene?.campaigns.find((item) => item.id === activeScene?.campaignId);
-  const status = editorScene?.status ?? "loading";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -45,16 +43,6 @@ export function SceneSelector() {
         collisionPadding={12}
         className="z-40 max-h-[calc(var(--radix-popover-content-available-height)-0.5rem)] w-72 gap-0 overflow-y-auto overscroll-contain rounded-none border border-violet-300/15 bg-[#100d20]/98 p-2 text-white shadow-[0_24px_70px_rgba(0,0,0,0.65)] ring-0 backdrop-blur-xl max-sm:w-[calc(100vw-1.5rem)]"
       >
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-mono text-[9px] font-medium tracking-[0.12em] text-violet-200/60 uppercase" title={campaign?.name}>{campaign?.name ?? "Prototype campaign"}</p>
-            <p className="mt-0.5 text-[10px] text-amber-50/65">{status === "prototype" ? "Scenes are not persisted yet" : "Shared with stable Fantassist"}</p>
-          </div>
-          <Button asChild variant="ghost" size="icon-sm" className="rounded-none text-violet-200/50 hover:bg-violet-200/10 hover:text-violet-100" title="Choose campaign">
-            <Link href="/campaigns"><FolderOpen className="size-3.5" aria-hidden="true" /><span className="sr-only">Choose campaign</span></Link>
-          </Button>
-          <Badge variant="outline" className="h-auto rounded-none border-amber-200/20 bg-amber-100/5 px-1.5 py-0.5 font-mono text-[9px] font-medium tracking-wide text-amber-100/60 uppercase">{status}</Badge>
-        </div>
         <Command
           className="rounded-none! bg-transparent p-0 [&_[data-slot=command-input-wrapper]]:p-0 [&_[data-slot=input-group]]:rounded-none!"
           filter={(value, search) => value.toLowerCase().includes(search.trim().toLowerCase()) ? 1 : 0}
@@ -66,7 +54,7 @@ export function SceneSelector() {
             aria-label="Search scenes"
             className="text-[11px] text-violet-50 placeholder:text-violet-100/45"
           />
-          <CommandList className="mt-1 max-h-[min(18rem,calc(var(--radix-popover-content-available-height)-11rem))] overscroll-contain">
+          <CommandList className="mt-1 max-h-[min(22rem,calc(var(--radix-popover-content-available-height)-6rem))] overscroll-contain">
             <CommandEmpty className="border border-dashed border-violet-300/15 px-3 py-4 text-[10px] text-violet-100/55" aria-live="polite">
               No matching scene
             </CommandEmpty>
@@ -86,7 +74,10 @@ export function SceneSelector() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-heading text-sm text-amber-50" title={scene.name}>{scene.name}</span>
-                  <span className="block font-mono text-[9px] tracking-wide text-violet-200/55 uppercase">{scene.prototype ? "Prototype scene" : `Version ${scene.version}`}</span>
+                  <span className="flex items-center gap-1.5 font-mono text-[9px] tracking-wide uppercase">
+                    <span className="text-violet-200/55">{scene.prototype ? "Prototype scene" : `Version ${scene.version}`}</span>
+                    {scene.key === editorScene?.displayedSceneKey ? <span className="inline-flex items-center gap-1 text-amber-200/75"><Radio className="size-2.5" aria-hidden="true" /> On table</span> : null}
+                  </span>
                 </span>
               </CommandItem>
             ))}
@@ -95,7 +86,7 @@ export function SceneSelector() {
         {editorScene?.error ? <p role="alert" className="px-2 pt-2 text-[10px] text-red-300 [overflow-wrap:anywhere]">{editorScene.error}</p> : null}
         <Separator className="mt-2 bg-violet-300/10" />
         <Button asChild variant="outline" className="mt-2 h-8 w-full rounded-none border-violet-300/12 bg-transparent text-[10px] text-violet-100/65">
-          <Link href={`/campaigns/${encodeURIComponent(campaign?.id ?? "")}`}><Settings2 className="size-3" aria-hidden="true" /> Campaigns and scenes</Link>
+          <Link href={campaign ? `/campaigns/${encodeURIComponent(campaign.id)}` : "/campaigns"}><Settings2 className="size-3" aria-hidden="true" /> All campaigns and scenes</Link>
         </Button>
       </PopoverContent>
     </Popover>

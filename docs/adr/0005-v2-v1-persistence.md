@@ -28,6 +28,10 @@ Asset-set changes do not remount the canvas or recreate its GPU surface. The bro
 
 The editor provider owns an explicit active campaign and persists it through the v1-compatible `last_campaign` setting. Campaign creation writes the unchanged `{ id, name }` record shape. Blank-scene creation and `.scene` import both hydrate the resulting record immediately; media uploads require an active persisted scene and remain scoped to an explicit asset layer.
 
+The routed editor scene and player-displayed scene are deliberately separate. Navigating between scenes changes only the DM workspace. An explicit Display Scene action writes the exact v1 `displayed_scene` setting and publishes that committed snapshot; the scene selector marks the scene currently on the table. The named table window is opened once and subsequently focused rather than navigated for each scene.
+
+The table route restores `displayed_scene`, its complete scene record, optional v2 metadata, media files, and physical display settings directly from shared storage before joining live channels. Editor channels announce current state when mounted and compare scene identity plus per-scene revision, allowing an already-open table to accept lower-version scenes with a different ID while rejecting stale same-scene messages. Navigating to a non-displayed editor scene does not publish it to the player window.
+
 Asset-layer creation is a typed, undoable engine command. New asset layers append at the top of the persisted layer order without separating or moving intervening fog layers. Each asset layer owns its upload action, and inserted images are ordered within that explicit target layer before the complete layer sequence is re-encoded.
 
 Layer visibility and layer reordering are typed, undoable commands written directly to the v1 layer fields and repeated-layer order. V1 has no per-asset visibility field, so asset visibility is optional v2 metadata stored by scene key in the separate `fantassist_v2` LocalForage database. Rendering and picking require both the asset and its containing layer to be visible. V1 remains able to open the scene but does not apply the optional per-asset sidecar.

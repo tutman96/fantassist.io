@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { createSceneEngine } from "@/engine/scene-engine";
+import type { SceneEngine } from "@/engine/scene-engine";
 import { createTableSession } from "@/engine/table-session";
 import { EditorToolbar } from "@/features/editor/editor-toolbar";
 import type { EditorTool } from "@/features/editor/editor-tool";
@@ -16,9 +17,14 @@ import { synchronizeTableSession } from "@/features/presentation/table-session-c
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { createV1Repositories } from "@/persistence/v1/repositories";
 import { createBrowserImageLoader } from "@/renderer/browser-image-loader";
+import type { ImageAssetLoader } from "@/renderer/image-texture";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 
-export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
+export function GpuViewport({ profile, engine: providedEngine, imageLoader: providedImageLoader }: {
+  readonly profile: RenderProfile;
+  readonly engine?: SceneEngine;
+  readonly imageLoader?: ImageAssetLoader;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sharedSession = useSharedTableSession();
   const editorScene = useEditorScene();
@@ -30,18 +36,21 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
     const repositories = createV1Repositories();
     return createBrowserImageLoader((id) => repositories.getAsset(id));
   });
-  const engine = editorScene?.engine ?? ownedEngine;
+  const engine = providedEngine ?? editorScene?.engine ?? ownedEngine;
   const tableSnapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const sceneSnapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
+  const presentationEnabled = profile === "output" || !editorScene || editorScene.activeSceneKey === editorScene.displayedSceneKey;
   const asset = sceneSnapshot.scene.assets[0];
 
   useEffect(() => synchronizeTableSession(session, profile), [profile, session]);
-  useEffect(() => synchronizeSceneEngine(engine, profile), [engine, profile]);
+  useEffect(() => presentationEnabled
+    ? synchronizeSceneEngine(engine, profile)
+    : undefined, [engine, presentationEnabled, profile]);
 
   const status = useSceneViewport({
     canvasRef,
     engine,
-    imageLoader: editorScene?.imageLoader ?? ownedImageLoader,
+    imageLoader: providedImageLoader ?? editorScene?.imageLoader ?? ownedImageLoader,
     profile,
     sceneSnapshot,
     session,
@@ -61,6 +70,7 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
       <canvas
         ref={canvasRef}
         aria-label={profile === "editor" ? "Fantassist scene editor" : "Fantassist table output"}
+        data-scene-id={sceneSnapshot.scene.id}
         data-scene-revision={sceneSnapshot.revision}
         data-asset-x={asset?.transform.x}
         data-asset-y={asset?.transform.y}

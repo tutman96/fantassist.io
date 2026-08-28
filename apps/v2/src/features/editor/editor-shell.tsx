@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { GpuViewport } from "@/features/editor/gpu-viewport";
 import { SceneSelector } from "@/features/scenes/scene-selector";
+import { DisplayedSceneControl } from "@/features/scenes/displayed-scene-control";
 import { TableMenu } from "@/features/table/table-menu";
 
 export function EditorShell() {
@@ -26,6 +27,10 @@ export function EditorShell() {
             </h1>
             <span className="hidden h-4 w-px bg-violet-300/15 sm:block" />
             <SceneSelector />
+          </div>
+
+          <div className="absolute left-1/2 -translate-x-1/2">
+            <DisplayedSceneControl />
           </div>
 
           <nav className="flex items-center gap-1.5 text-[10px] text-white/60" aria-label="Application">

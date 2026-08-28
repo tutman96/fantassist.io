@@ -6,8 +6,20 @@ type SceneSessionMessage =
   | { readonly type: "request-scene" }
   | { readonly type: "scene"; readonly scene: SceneDocument; readonly revision: number };
 
-export function synchronizeSceneEngine(engine: SceneEngine, profile: RenderProfile): () => void {
-  const channel = new BroadcastChannel("fantassist-scene");
+export interface SceneSessionChannel {
+  onmessage: ((event: MessageEvent<unknown>) => void) | null;
+  postMessage(message: unknown): void;
+  close(): void;
+}
+
+export type SceneSessionChannelFactory = (name: string) => SceneSessionChannel;
+
+export function synchronizeSceneEngine(
+  engine: SceneEngine,
+  profile: RenderProfile,
+  createChannel: SceneSessionChannelFactory = (name) => new BroadcastChannel(name)
+): () => void {
+  const channel = createChannel("fantassist-scene");
   let closed = false;
   const publish = () => {
     const snapshot = engine.getCommittedSnapshot();
@@ -18,33 +30,37 @@ export function synchronizeSceneEngine(engine: SceneEngine, profile: RenderProfi
     } satisfies SceneSessionMessage);
   };
 
-  channel.onmessage = (event: MessageEvent<SceneSessionMessage>) => {
-    if (event.data.type === "request-scene" && profile === "editor") {
+  channel.onmessage = (event) => {
+    const message = event.data as SceneSessionMessage;
+    if (message.type === "request-scene" && profile === "editor") {
       publish();
     } else if (
-      event.data.type === "scene" &&
+      message.type === "scene" &&
       profile === "output" &&
-      (event.data.scene.id !== engine.getSnapshot().scene.id ||
-        event.data.revision >= engine.getSnapshot().revision)
+      (message.scene.id !== engine.getSnapshot().scene.id ||
+        message.revision > engine.getSnapshot().revision)
     ) {
-      engine.replaceCommittedScene(event.data.scene, event.data.revision);
+      engine.replaceCommittedScene(message.scene, message.revision);
     }
   };
 
-  let previousRevision = engine.getSnapshot().revision;
+  let previousSnapshot = engine.getCommittedSnapshot();
   const unsubscribe = profile === "editor"
     ? engine.subscribe(() => {
-        const revision = engine.getSnapshot().revision;
-        if (revision === previousRevision) return;
-        previousRevision = revision;
+        const snapshot = engine.getCommittedSnapshot();
+        if (
+          snapshot.scene.id === previousSnapshot.scene.id &&
+          snapshot.revision === previousSnapshot.revision
+        ) return;
+        previousSnapshot = snapshot;
         publish();
       })
     : () => undefined;
-  if (profile === "output") {
-    queueMicrotask(() => {
-      if (!closed) channel.postMessage({ type: "request-scene" } satisfies SceneSessionMessage);
-    });
-  }
+  queueMicrotask(() => {
+    if (closed) return;
+    if (profile === "editor") publish();
+    else channel.postMessage({ type: "request-scene" } satisfies SceneSessionMessage);
+  });
 
   return () => {
     closed = true;

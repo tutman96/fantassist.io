@@ -32,6 +32,7 @@ interface EditorSceneContextValue {
   readonly scenes: readonly SceneCatalogItem[];
   readonly activeCampaignId: string | null;
   readonly activeSceneKey: string;
+  readonly displayedSceneKey: string;
   readonly status: ScenePersistenceStatus;
   readonly error: string | null;
   getAssetFile(assetId: string): Promise<File | null>;
@@ -39,6 +40,7 @@ interface EditorSceneContextValue {
   createCampaign(name: string): Promise<string>;
   createScene(name: string): Promise<string>;
   importScene(file: File): Promise<string>;
+  displayScene(): Promise<void>;
   selectScene(key: string): Promise<void>;
   createAssetLayer(): void;
   uploadImages(files: readonly File[], placement: { readonly centerGrid: GridPoint; readonly heightGrid: number; readonly layerId: string }): Promise<void>;
@@ -56,6 +58,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   const [scenes, setScenes] = useState<readonly SceneCatalogItem[]>([]);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [activeSceneKey, setActiveSceneKey] = useState("");
+  const [displayedSceneKey, setDisplayedSceneKey] = useState("");
   const [status, setStatus] = useState<ScenePersistenceStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const activeRecord = useRef<V1SceneRecord | null>(null);
@@ -111,6 +114,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   };
 
   const selectScene = async (key: string) => {
+    await saveQueue.current;
     const ownGeneration = ++generation.current;
     setStatus("loading");
     setError(null);
@@ -132,6 +136,12 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
     if (!campaigns.some((campaign) => campaign.id === id)) throw new Error("Campaign no longer exists");
     setActiveCampaignId(id);
     await repositories.putSetting("last_campaign", id);
+  };
+  const displayScene = async () => {
+    const key = activeRecord.current?.key;
+    if (!key) throw new Error("Open a persisted scene before displaying it");
+    await repositories.putSetting("displayed_scene", key);
+    setDisplayedSceneKey(key);
   };
   const createCampaign = async (name: string) => {
     const trimmed = name.trim();
@@ -267,6 +277,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       }
       const catalog = sceneRecords.map(catalogItem);
       setScenes(catalog);
+      setDisplayedSceneKey(sceneRecords.some((record) => record.key === displayedScene) ? displayedScene! : "");
       const campaignId = campaignValues.some((campaign) => campaign.id === lastCampaign)
         ? lastCampaign!
         : sceneRecords.find((record) => record.key === displayedScene)?.campaignId ?? campaignValues[0].id;
@@ -327,6 +338,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       scenes,
       activeCampaignId,
       activeSceneKey,
+      displayedSceneKey,
       status,
       error,
       getAssetFile,
@@ -334,6 +346,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       createCampaign,
       createScene,
       importScene,
+      displayScene,
       selectScene,
       createAssetLayer,
       uploadImages,

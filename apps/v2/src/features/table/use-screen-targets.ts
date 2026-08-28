@@ -22,6 +22,7 @@ interface ScreenDetailsLike {
 }
 
 const DEFAULT_TARGET: ScreenTarget = { id: "default", label: "Default screen" };
+let tableWindow: Window | null = null;
 
 export function useScreenTargets() {
   const [targets, setTargets] = useState<readonly ScreenTarget[]>([DEFAULT_TARGET]);
@@ -56,11 +57,19 @@ export function useScreenTargets() {
   };
 
   const openTable = () => {
+    if (tableWindow && !tableWindow.closed) {
+      tableWindow.focus();
+      setStatus("Player table is already open and was brought forward.");
+      return;
+    }
     const target = targets.find((candidate) => candidate.id === targetId);
     const features = target?.left === undefined
       ? "popup=yes"
       : `popup=yes,left=${target.left},top=${target.top},width=${target.width},height=${target.height}`;
-    window.open("/table", "fantassist-table", features);
+    tableWindow = window.open("/table", "fantassist-table", features);
+    setStatus(tableWindow
+      ? "Player table opened. Displayed scenes will update in this window."
+      : "The player table popup was blocked. Allow popups and try again.");
   };
 
   return { targets, targetId, setTargetId, status, detectScreens, openTable };
