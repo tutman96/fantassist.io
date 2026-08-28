@@ -7,6 +7,7 @@ import type { SceneEngine } from "@/engine/scene-engine";
 import { createTableSession } from "@/engine/table-session";
 import { EditorToolbar } from "@/features/editor/editor-toolbar";
 import type { EditorTool } from "@/features/editor/editor-tool";
+import { ensureFogLayer } from "@/features/editor/editor-tool";
 import { useEditorInteractions } from "@/features/editor/use-editor-interactions";
 import { useSceneViewport } from "@/features/editor/use-scene-viewport";
 import { CameraStatus, EditorGestureHints, RendererGate } from "@/features/editor/viewport-status";
@@ -97,7 +98,12 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
             session={session}
             tableSnapshot={tableSnapshot}
             tool={tool}
-            onToolChange={setTool}
+            onToolChange={(nextTool) => {
+              if ((nextTool === "fog" || nextTool === "fog-clear") && !sceneSnapshot.scene.layers.some((layer) => layer.type === "fog")) {
+                ensureFogLayer(engine);
+              }
+              setTool(nextTool);
+            }}
           />
           <WorkspacePanels engine={engine} sceneSnapshot={sceneSnapshot} />
           <EditorGestureHints tool={tool} />

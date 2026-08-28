@@ -3,6 +3,7 @@ import composite from "./shaders/composite.wgsl";
 import fogMask from "./shaders/fog-mask.wgsl";
 import fogComposite from "./shaders/fog-composite.wgsl";
 import fogGuide from "./shaders/fog-guide.wgsl";
+import fogHandle from "./shaders/fog-handle.wgsl";
 import present from "./shaders/present.wgsl";
 
 export const browserSceneShaders = {
@@ -11,5 +12,6 @@ export const browserSceneShaders = {
   fogMask,
   fogComposite,
   fogGuide,
+  fogHandle,
   present,
 };

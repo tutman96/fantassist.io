@@ -8,6 +8,7 @@ import { init, target } from "vgpu/node";
 import type { NodeAdapterMode } from "@vgpu/adapter-node";
 
 import { createSceneEngine } from "../src/engine/scene-engine";
+import { SAMPLE_ASSET_ID } from "../src/engine/scene-document";
 import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA, fitTableCamera, getTableBounds } from "../src/engine/table-camera";
 import type { RenderView } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
@@ -21,6 +22,7 @@ export interface HeadlessRenderOptions {
   readonly profile: RenderProfile;
   readonly size: readonly [number, number];
   readonly time: number;
+  readonly selectSampleAsset?: boolean;
 }
 
 export interface HeadlessRenderResult {
@@ -65,7 +67,9 @@ export async function renderHeadlessScene(options: HeadlessRenderOptions): Promi
           display: DEFAULT_DISPLAY,
         }
       : { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY };
-    const executor = createSceneExecutor(gpu, output, plan, shaders, view, createSceneEngine().getSnapshot());
+    const engine = createSceneEngine();
+    if (options.selectSampleAsset) engine.dispatch({ type: "selection.set", assetId: SAMPLE_ASSET_ID });
+    const executor = createSceneExecutor(gpu, output, plan, shaders, view, engine.getSnapshot());
     const compileStart = performance.now();
     await executor.prewarm();
     const compile = performance.now() - compileStart;

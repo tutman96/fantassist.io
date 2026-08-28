@@ -35,6 +35,13 @@ export function WorkspacePanels({
   const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
     ?? sceneSnapshot.scene.assets[0];
   const assetSelected = asset !== undefined && sceneSnapshot.selectedAssetId === asset.id;
+  const fogSelection = sceneSnapshot.selectedFogPolygon;
+  const selectedFogLayer = fogSelection
+    ? sceneSnapshot.scene.layers.find((layer) => layer.id === fogSelection.layerId && layer.type === "fog")
+    : undefined;
+  const selectedFogPolygon = selectedFogLayer?.type === "fog" && fogSelection
+    ? (fogSelection.collection === "fog" ? selectedFogLayer.fogPolygons : selectedFogLayer.fogClearPolygons)[fogSelection.polygonIndex]
+    : undefined;
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 640px)");
@@ -60,9 +67,9 @@ export function WorkspacePanels({
         open={inspectorOpen}
         onOpenChange={setInspectorOpen}
         eyebrow="Inspector"
-        title={assetSelected ? asset.name : "Scene details"}
-        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : sceneSnapshot.scene.id === "sample/scene" ? "Prototype" : "Persisted"}
-        icon={assetSelected ? <ImageIcon /> : <Ruler />}
+        title={assetSelected ? asset.name : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : "Clear"} polygon ${fogSelection.polygonIndex + 1}` : "Scene details"}
+        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : sceneSnapshot.scene.id === "sample/scene" ? "Prototype" : "Persisted"}
+        icon={assetSelected ? <ImageIcon /> : selectedFogPolygon ? <CloudFog /> : <Ruler />}
         className="top-20 right-3 left-3 max-h-[55%] sm:pointer-events-auto sm:relative sm:top-auto sm:right-auto sm:left-auto sm:flex sm:max-h-[55%] sm:w-full sm:shrink-0 sm:flex-col"
         contentClassName="max-h-[calc(55svh-5rem)] sm:h-full sm:max-h-none"
       >
@@ -71,6 +78,8 @@ export function WorkspacePanels({
             engine={engine}
             sceneSnapshot={sceneSnapshot}
           />
+        ) : selectedFogPolygon && fogSelection ? (
+          <FogPolygonInspector engine={engine} selection={fogSelection} polygon={selectedFogPolygon} />
         ) : (
           <SceneInspector sceneSnapshot={sceneSnapshot} />
         )}
@@ -187,7 +196,7 @@ export function WorkspacePanels({
                 {dropTarget?.layerId === layer.id ? (
                   <span className={`pointer-events-none absolute inset-x-1 z-20 h-0.5 bg-blue-300 shadow-[0_0_8px_rgba(125,211,252,0.8)] ${dropTarget.edge === "before" ? "top-0" : "bottom-0"}`} />
                 ) : null}
-                <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                <div className={`flex items-center justify-between gap-2 border border-transparent px-2 py-1.5 transition-colors ${layer.type === "fog" ? `[&_[data-slot=button]]:hover:bg-transparent ${sceneSnapshot.selectedFogLayerId === layer.id ? "border-fuchsia-300/15 bg-fuchsia-400/10" : "hover:border-violet-300/10 hover:bg-violet-400/5"}` : ""}`}>
                   <Button
                     type="button"
                     variant="ghost"
@@ -224,7 +233,7 @@ export function WorkspacePanels({
                       variant="ghost"
                       aria-pressed={sceneSnapshot.selectedFogLayerId === layer.id}
                       onClick={() => engine.dispatch({ type: "fog.layer.select", layerId: layer.id })}
-                      className={`h-7 min-w-0 flex-1 justify-start rounded-none px-1 text-[11px] font-medium aria-pressed:bg-fuchsia-400/10 aria-pressed:text-fuchsia-100 ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`}
+                      className={`h-7 min-w-0 flex-1 justify-start rounded-none px-1 text-[11px] font-medium hover:bg-transparent aria-pressed:text-fuchsia-100 ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`}
                       title={`Edit ${layer.name}`}
                     >
                       <span className="truncate">{layer.name}</span>
@@ -272,7 +281,11 @@ export function WorkspacePanels({
                   if (!layerAsset) return null;
                   const selected = sceneSnapshot.selectedAssetId === layerAsset.id;
                   return (
-                    <div key={layerAsset.id} className="flex items-center gap-1" data-visible={layerAsset.visible && layer.visible}>
+                    <div
+                      key={layerAsset.id}
+                      className={`flex items-center gap-1 border border-transparent transition-colors [&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/12 hover:bg-violet-400/5"}`}
+                      data-visible={layerAsset.visible && layer.visible}
+                    >
                       <Button
                         type="button"
                         variant="ghost"
@@ -281,7 +294,7 @@ export function WorkspacePanels({
                           engine.dispatch({ type: "selection.set", assetId: layerAsset.id });
                           revealInspector();
                         }}
-                        className="group/layer min-h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none border border-transparent px-2 py-1.5 text-left opacity-45 hover:border-violet-300/12 hover:bg-violet-400/5 data-[visible=true]:opacity-100 aria-pressed:border-blue-300/20 aria-pressed:bg-gradient-to-r aria-pressed:from-blue-500/14 aria-pressed:to-violet-500/8"
+                        className="group/layer min-h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none px-2 py-1.5 text-left opacity-45 hover:bg-transparent data-[visible=true]:opacity-100"
                         data-visible={layerAsset.visible && layer.visible}
                       >
                         <AssetThumbnail assetId={layerAsset.mediaId} selected={selected} />
@@ -300,30 +313,47 @@ export function WorkspacePanels({
                     {([
                       ...layer.fogPolygons.map((polygon, index) => ({ polygon, index, collection: "fog" as const })),
                       ...layer.fogClearPolygons.map((polygon, index) => ({ polygon, index, collection: "clear" as const })),
-                    ]).map(({ polygon, index, collection }) => (
-                      <div key={`${collection}-${index}`} className="flex min-h-8 items-center gap-2 px-2 pl-8 text-[9px] text-violet-100/60">
-                        {collection === "fog" ? <CloudFog className="size-3 text-fuchsia-200/65" /> : <Eraser className="size-3 text-sky-200/65" />}
-                        <span className="min-w-0 flex-1 truncate font-mono tracking-wide uppercase">{collection === "fog" ? "Fog" : "Clear"} {index + 1} · {polygon.vertices.length} points</span>
-                        <LayerIconButton
-                          label={polygon.visibleOnTable ? "Hide polygon on table" : "Show polygon on table"}
-                          onClick={() => engine.dispatch({
-                            type: "fog.polygon.update",
-                            layerId: layer.id,
-                            collection,
-                            polygonIndex: index,
-                            polygon: { ...polygon, visibleOnTable: !polygon.visibleOnTable },
-                          })}
+                    ]).map(({ polygon, index, collection }) => {
+                      const selected = sceneSnapshot.selectedFogPolygon?.layerId === layer.id && sceneSnapshot.selectedFogPolygon.collection === collection && sceneSnapshot.selectedFogPolygon.polygonIndex === index;
+                      return (
+                        <div
+                          key={`${collection}-${index}`}
+                          className={`flex min-h-8 items-center gap-1 border border-transparent px-1 pl-7 text-[9px] text-violet-100/60 transition-colors [&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}
                         >
-                          {polygon.visibleOnTable ? <Eye /> : <EyeOff />}
-                        </LayerIconButton>
-                        <LayerIconButton
-                          label={`Delete ${collection} polygon ${index + 1}`}
-                          onClick={() => engine.dispatch({ type: "fog.polygon.remove", layerId: layer.id, collection, polygonIndex: index })}
-                        >
-                          <Trash2 />
-                        </LayerIconButton>
-                      </div>
-                    ))}
+                          {collection === "fog" ? <CloudFog className="size-3 text-fuchsia-200/65" /> : <Eraser className="size-3 text-sky-200/65" />}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            aria-pressed={selected}
+                            onClick={() => {
+                              engine.dispatch({ type: "fog.selection.set", selection: { layerId: layer.id, collection, polygonIndex: index } });
+                              revealInspector();
+                            }}
+                            className="h-7 min-w-0 flex-1 justify-start rounded-none px-1 font-mono text-[9px] tracking-wide text-violet-100/60 uppercase hover:bg-transparent aria-pressed:text-blue-100"
+                          >
+                            <span className="truncate">{collection === "fog" ? "Fog" : "Clear"} {index + 1} · {polygon.vertices.length} points</span>
+                          </Button>
+                          <LayerIconButton
+                            label={polygon.visibleOnTable ? "Hide polygon on table" : "Show polygon on table"}
+                            onClick={() => engine.dispatch({
+                              type: "fog.polygon.update",
+                              layerId: layer.id,
+                              collection,
+                              polygonIndex: index,
+                              polygon: { ...polygon, visibleOnTable: !polygon.visibleOnTable },
+                            })}
+                          >
+                            {polygon.visibleOnTable ? <Eye /> : <EyeOff />}
+                          </LayerIconButton>
+                          <LayerIconButton
+                            label={`Delete ${collection} polygon ${index + 1}`}
+                            onClick={() => engine.dispatch({ type: "fog.polygon.remove", layerId: layer.id, collection, polygonIndex: index })}
+                          >
+                            <Trash2 />
+                          </LayerIconButton>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -413,6 +443,46 @@ function AssetInspector({ engine, sceneSnapshot }: { readonly engine: SceneEngin
           onConfirm={() => engine.dispatch({ type: "asset.remove", assetId: asset.id })}
           trigger={<Button variant="destructive" className="col-span-2 h-8 w-full rounded-none text-[10px]"><Trash2 aria-hidden="true" /> Delete selected asset</Button>}
         />
+      </div>
+    </div>
+  );
+}
+
+function FogPolygonInspector({
+  engine,
+  selection,
+  polygon,
+}: {
+  readonly engine: SceneEngine;
+  readonly selection: NonNullable<SceneEngineSnapshot["selectedFogPolygon"]>;
+  readonly polygon: Extract<SceneEngineSnapshot["scene"]["layers"][number], { readonly type: "fog" }>["fogPolygons"][number];
+}) {
+  return (
+    <div className="p-2.5">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+        <Metric label="Type" value={selection.collection === "fog" ? "Conceal" : "Clear"} />
+        <Metric label="Vertices" value={String(polygon.vertices.length)} />
+        <Metric label="Table" value={polygon.visibleOnTable ? "Visible" : "Editor only"} />
+      </div>
+      <Separator className="my-2 bg-violet-300/10" />
+      <p className="text-[10px] leading-5 text-violet-100/60">Drag a vertex ring to reshape this polygon, or drag inside it to move the whole shape. Click its outline or layer entry to select it.</p>
+      <Separator className="my-2 bg-violet-300/10" />
+      <div className="grid gap-1.5">
+        <Button
+          variant="outline"
+          onClick={() => engine.dispatch({ type: "fog.polygon.update", ...selection, polygon: { ...polygon, visibleOnTable: !polygon.visibleOnTable } })}
+          className="h-8 rounded-none border-violet-300/18 bg-violet-400/5 text-[10px] text-violet-100/75"
+        >
+          {polygon.visibleOnTable ? <EyeOff /> : <Eye />}
+          {polygon.visibleOnTable ? "Hide on player table" : "Show on player table"}
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={() => engine.dispatch({ type: "fog.polygon.remove", ...selection })}
+          className="h-8 rounded-none text-[10px]"
+        >
+          <Trash2 /> Delete polygon
+        </Button>
       </div>
     </div>
   );

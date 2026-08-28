@@ -74,6 +74,26 @@ fn box_distance(point: vec2f, center: vec2f, half_size: vec2f) -> f32 {
     absolute_local.y <= asset_half.y + 2.5 / params.pixels_per_grid
   );
   let selection_border = (1.0 - smoothstep(1.25, 2.25, asset_edge_distance)) * near_asset;
-  color = mix(color, vec3f(0.02, 0.72, 2.8), selection_border * params.selected);
+  let handle_half = vec2f(5.5 / params.pixels_per_grid);
+  var resize_distance = box_distance(asset_local, vec2f(-asset_half.x, -asset_half.y), handle_half);
+  resize_distance = min(resize_distance, box_distance(asset_local, vec2f(0.0, -asset_half.y), handle_half));
+  resize_distance = min(resize_distance, box_distance(asset_local, vec2f(asset_half.x, -asset_half.y), handle_half));
+  resize_distance = min(resize_distance, box_distance(asset_local, vec2f(asset_half.x, 0.0), handle_half));
+  resize_distance = min(resize_distance, box_distance(asset_local, vec2f(asset_half.x, asset_half.y), handle_half));
+  resize_distance = min(resize_distance, box_distance(asset_local, vec2f(0.0, asset_half.y), handle_half));
+  resize_distance = min(resize_distance, box_distance(asset_local, vec2f(-asset_half.x, asset_half.y), handle_half));
+  resize_distance = min(resize_distance, box_distance(asset_local, vec2f(-asset_half.x, 0.0), handle_half));
+  let resize_outer = 1.0 - smoothstep(-0.5, 0.5, resize_distance * params.pixels_per_grid);
+  let resize_inner = 1.0 - smoothstep(-0.5, 0.5, (resize_distance + 2.5 / params.pixels_per_grid) * params.pixels_per_grid);
+  let resize_handles = resize_outer * (1.0 - resize_inner);
+  let rotate_center = vec2f(0.0, -asset_half.y - 28.0 / params.pixels_per_grid);
+  let rotate_distance = distance(asset_local, rotate_center) * params.pixels_per_grid;
+  let rotate_outer = 1.0 - smoothstep(5.25, 6.25, rotate_distance);
+  let rotate_inner = 1.0 - smoothstep(2.75, 3.75, rotate_distance);
+  let rotate_handle = rotate_outer * (1.0 - rotate_inner);
+  let stem_extent = select(0.0, 1.0, asset_local.y >= rotate_center.y && asset_local.y <= -asset_half.y);
+  let rotate_stem = (1.0 - smoothstep(1.0, 2.0, abs(asset_local.x) * params.pixels_per_grid)) * stem_extent;
+  color = mix(color, vec3f(0.008, 0.18, 0.72), max(selection_border, rotate_stem) * params.selected);
+  color = mix(color, vec3f(0.02, 0.72, 2.8), max(resize_handles, rotate_handle) * params.selected);
   return vec4f(color, 1.0);
 }

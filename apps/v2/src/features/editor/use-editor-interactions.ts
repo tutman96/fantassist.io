@@ -7,11 +7,13 @@ import type { GridPoint } from "@/engine/table-camera";
 import type { AssetHandle, PreviewToken, ResizeHandle, SceneEngine, TableResizeHandle } from "@/engine/scene-engine";
 import type { TableSession } from "@/engine/table-session";
 import type { EditorTool } from "@/features/editor/editor-tool";
+import { ensureFogLayer } from "@/features/editor/editor-tool";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 
 type PointerDrag =
   | { readonly kind: "camera"; readonly x: number; readonly y: number; readonly pointerId: number }
   | { readonly kind: "asset"; readonly pointerId: number; readonly token: PreviewToken }
+  | { readonly kind: "fog-edit"; readonly pointerId: number; readonly token: PreviewToken }
   | { readonly kind: "table"; readonly pointerId: number; readonly token: PreviewToken };
 
 interface TouchGesture {
@@ -54,7 +56,7 @@ export function useEditorInteractions({
       if (event.key === "Escape" && fogDraft.current) {
         engine.cancelPreview(fogDraft.current);
         fogDraft.current = null;
-      } else if (event.key === "Escape" && (drag.current?.kind === "asset" || drag.current?.kind === "table")) {
+      } else if (event.key === "Escape" && (drag.current?.kind === "asset" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table")) {
         engine.cancelPreview(drag.current.token);
         drag.current = null;
       }
@@ -67,6 +69,13 @@ export function useEditorInteractions({
         event.preventDefault();
         if (event.shiftKey) engine.redo();
         else engine.undo();
+      }
+      if ((event.key === "Delete" || event.key === "Backspace") && !interactive) {
+        const selection = engine.getSnapshot().selectedFogPolygon;
+        if (selection) {
+          event.preventDefault();
+          engine.dispatch({ type: "fog.polygon.remove", ...selection });
+        }
       }
     };
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -115,7 +124,7 @@ export function useEditorInteractions({
         touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (touchPoints.current.size >= 2) {
           multiTouchActive.current = true;
-          if (drag.current?.kind === "asset" || drag.current?.kind === "table") engine.cancelPreview(drag.current.token);
+          if (drag.current?.kind === "asset" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table") engine.cancelPreview(drag.current.token);
           drag.current = null;
           touchGesture.current = readTouchGesture(touchPoints.current);
           return;
@@ -126,14 +135,22 @@ export function useEditorInteractions({
             engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
           } else {
             const scene = engine.getSnapshot();
-            const layer = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog")
-              ?? [...scene.scene.layers].reverse().find((candidate) => candidate.type === "fog" && candidate.visible);
-            if (layer) {
-              engine.dispatch({ type: "fog.layer.select", layerId: layer.id });
-              fogDraft.current = engine.beginFogPolygon(layer.id, tool === "fog" ? "fog" : "clear", pointGrid);
-            }
+            const selected = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog");
+            const layerId = selected?.id ?? ensureFogLayer(engine);
+            fogDraft.current = engine.beginFogPolygon(layerId, tool === "fog" ? "fog" : "clear", pointGrid);
           }
           return;
+        }
+        if (tool === "assets") {
+          const current = session.getSnapshot();
+          const fogInteraction = engine.beginFogSelectionInteraction(
+            pointerGrid(event, session),
+            current.editorCamera.cssPixelsPerGrid
+          );
+          if (fogInteraction.handled) {
+            if (fogInteraction.token) drag.current = { kind: "fog-edit", pointerId: event.pointerId, token: fogInteraction.token };
+            return;
+          }
         }
         const token = tool === "table"
           ? beginTableInteraction(event, engine, session)
@@ -152,14 +169,27 @@ export function useEditorInteractions({
             engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
           } else {
             const scene = engine.getSnapshot();
-            const layer = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog")
-              ?? [...scene.scene.layers].reverse().find((candidate) => candidate.type === "fog" && candidate.visible);
-            if (!layer) return;
-            engine.dispatch({ type: "fog.layer.select", layerId: layer.id });
-            fogDraft.current = engine.beginFogPolygon(layer.id, tool === "fog" ? "fog" : "clear", pointGrid);
+            const selected = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog");
+            const layerId = selected?.id ?? ensureFogLayer(engine);
+            fogDraft.current = engine.beginFogPolygon(layerId, tool === "fog" ? "fog" : "clear", pointGrid);
           }
           event.preventDefault();
           return;
+        }
+        if (tool === "assets") {
+          const current = session.getSnapshot();
+          const fogInteraction = engine.beginFogSelectionInteraction(
+            pointerGrid(event, session),
+            current.editorCamera.cssPixelsPerGrid
+          );
+          if (fogInteraction.handled) {
+            event.preventDefault();
+            if (fogInteraction.token) {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              drag.current = { kind: "fog-edit", pointerId: event.pointerId, token: fogInteraction.token };
+            }
+            return;
+          }
         }
         const token = tool === "table"
           ? beginTableInteraction(event, engine, session)
@@ -239,6 +269,8 @@ export function useEditorInteractions({
           ),
           { fromCenter: event.altKey, preserveAspectRatio: event.shiftKey }
         );
+      } else if (previous.kind === "fog-edit") {
+        engine.updateFogSelectionInteraction(previous.token, pointerGrid(event, session));
       } else {
         const bounds = event.currentTarget.getBoundingClientRect();
         const current = session.getSnapshot();
@@ -264,7 +296,7 @@ export function useEditorInteractions({
       }
       const current = drag.current;
       if (!current || current.pointerId !== event.pointerId) return;
-      if (current.kind === "asset" || current.kind === "table") engine.commitPreview(current.token);
+      if (current.kind === "asset" || current.kind === "fog-edit" || current.kind === "table") engine.commitPreview(current.token);
       drag.current = null;
     },
     onPointerCancel(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -273,7 +305,7 @@ export function useEditorInteractions({
         touchGesture.current = readTouchGesture(touchPoints.current);
         if (touchPoints.current.size === 0) multiTouchActive.current = false;
       }
-      if ((drag.current?.kind === "asset" || drag.current?.kind === "table") && drag.current.pointerId === event.pointerId) {
+      if ((drag.current?.kind === "asset" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table") && drag.current.pointerId === event.pointerId) {
         engine.cancelPreview(drag.current.token);
       }
       drag.current = null;

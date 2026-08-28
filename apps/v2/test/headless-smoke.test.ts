@@ -27,4 +27,9 @@ test("headless spike renders deterministic nontrivial pixels", { timeout: 60_000
 
   const editor = await renderHeadlessScene({ ...options, profile: "editor" });
   assert.ok(editor.pixels.some((channel, index) => index % 4 !== 3 && channel > 16));
+  const editorSelection = await renderHeadlessScene({ ...options, profile: "editor", selectSampleAsset: true });
+  assert.notEqual(
+    createHash("sha256").update(editor.pixels).digest("hex"),
+    createHash("sha256").update(editorSelection.pixels).digest("hex")
+  );
 });

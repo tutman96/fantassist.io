@@ -6,6 +6,11 @@ import type { DisplayConfiguration, GridBounds, GridPoint, TableCamera } from ".
 export type EngineListener = () => void;
 export type RendererInvalidation = "all" | "editor";
 export type FogPolygonCollection = "fog" | "clear";
+export interface FogPolygonSelection {
+  readonly layerId: string;
+  readonly collection: FogPolygonCollection;
+  readonly polygonIndex: number;
+}
 
 export interface EngineSnapshot<TScene> {
   readonly scene: TScene;
@@ -16,6 +21,7 @@ export interface SceneEngineSnapshot extends EngineSnapshot<SceneDocument> {
   readonly presentationRevision: number;
   readonly selectedAssetId: string | null;
   readonly selectedFogLayerId: string | null;
+  readonly selectedFogPolygon: FogPolygonSelection | null;
   readonly previewActive: boolean;
   readonly fogDrawingActive: boolean;
   readonly canUndo: boolean;
@@ -58,6 +64,7 @@ export type SceneCommand =
     }
   | { readonly type: "table.camera"; readonly table: TableCamera }
   | { readonly type: "fog.layer.select"; readonly layerId: string | null }
+  | { readonly type: "fog.selection.set"; readonly selection: FogPolygonSelection | null }
   | { readonly type: "selection.set"; readonly assetId: string | null };
 
 export type PreviewCommand = Extract<SceneCommand, {
@@ -112,6 +119,8 @@ export interface SceneEngine {
   commitFogPolygon(token: PreviewToken): CommandResult;
   commitActiveFogPolygon(): CommandResult;
   cancelActivePreview(): void;
+  beginFogSelectionInteraction(pointGrid: GridPoint, cssPixelsPerGrid: number): { readonly handled: boolean; readonly token?: PreviewToken };
+  updateFogSelectionInteraction(token: PreviewToken, pointGrid: GridPoint): void;
   undo(): CommandResult;
   redo(): CommandResult;
   replaceCommittedScene(scene: SceneDocument, revision?: number): void;
@@ -149,6 +158,8 @@ interface ActivePreview {
     readonly handle: TableResizeHandle;
   };
   fogDrawing?: { readonly fixedVertices: readonly GridPoint[] };
+  fogVertex?: { readonly vertexIndex: number };
+  fogMove?: { readonly initialPointer: GridPoint; readonly initialVertices: readonly GridPoint[] };
 }
 
 export type TableResizeHandle = "north-west" | "north-east" | "south-east" | "south-west";
@@ -188,6 +199,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
   let presentationRevision = 0;
   let selectedAssetId: string | null = null;
   let selectedFogLayerId: string | null = null;
+  let selectedFogPolygon: FogPolygonSelection | null = null;
   let preview: ActivePreview | undefined;
   let tokenSequence = 0;
   let disposed = false;
@@ -204,6 +216,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       presentationRevision,
       selectedAssetId,
       selectedFogLayerId,
+      selectedFogPolygon,
       previewActive: preview !== undefined,
       fogDrawingActive: preview?.fogDrawing !== undefined,
       canUndo: undoStack.length > 0,
@@ -284,6 +297,8 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       }
       revision++;
       committedScene = applyFogPolygon(committedScene, layer.id, command.collection, index, command.polygon, revision, true);
+      selectedFogLayerId = layer.id;
+      selectedFogPolygon = { layerId: layer.id, collection: command.collection, polygonIndex: index };
       publish("all");
       return { ok: true, changed: true, revision };
     }
@@ -313,6 +328,13 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     }
     revision++;
     committedScene = applyFogPolygon(committedScene, layer.id, command.collection, command.polygonIndex, undefined, revision);
+    if (selectedFogPolygon?.layerId === layer.id && selectedFogPolygon.collection === command.collection) {
+      selectedFogPolygon = selectedFogPolygon.polygonIndex === command.polygonIndex
+        ? null
+        : selectedFogPolygon.polygonIndex > command.polygonIndex
+          ? { ...selectedFogPolygon, polygonIndex: selectedFogPolygon.polygonIndex - 1 }
+          : selectedFogPolygon;
+    }
     publish("all");
     return { ok: true, changed: true, revision };
   }
@@ -351,6 +373,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         redoStack = [];
         selectedAssetId = command.asset.id;
         selectedFogLayerId = null;
+        selectedFogPolygon = null;
         publish("all");
         return { ok: true, changed: true, revision };
       }
@@ -414,6 +437,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         redoStack = [];
         if (selectedAssetId && layer.assetIds.includes(selectedAssetId)) selectedAssetId = null;
         if (selectedFogLayerId === layer.id) selectedFogLayerId = null;
+        if (selectedFogPolygon?.layerId === layer.id) selectedFogPolygon = null;
         publish("all");
         return { ok: true, changed: true, revision };
       }
@@ -446,6 +470,24 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         }
         if (selectedFogLayerId === command.layerId && selectedAssetId === null) return { ok: true, changed: false, revision };
         selectedFogLayerId = command.layerId;
+        selectedFogPolygon = null;
+        selectedAssetId = null;
+        publish("editor");
+        return { ok: true, changed: true, revision };
+      }
+      if (command.type === "fog.selection.set") {
+        if (command.selection) {
+          const layer = committedScene.layers.find((candidate) => candidate.id === command.selection?.layerId);
+          const polygon = layer?.type === "fog"
+            ? fogCollection(layer, command.selection.collection)[command.selection.polygonIndex]
+            : undefined;
+          if (!polygon) return { ok: false, error: "Unknown fog polygon selection", revision };
+        }
+        if (sameFogSelection(selectedFogPolygon, command.selection) && selectedAssetId === null) {
+          return { ok: true, changed: false, revision };
+        }
+        selectedFogPolygon = command.selection;
+        selectedFogLayerId = command.selection?.layerId ?? selectedFogLayerId;
         selectedAssetId = null;
         publish("editor");
         return { ok: true, changed: true, revision };
@@ -453,9 +495,12 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       if (command.assetId !== null && !findAsset(committedScene, command.assetId)) {
         return { ok: false, error: `Unknown asset '${command.assetId}'`, revision };
       }
-      if (selectedAssetId === command.assetId) return { ok: true, changed: false, revision };
+      if (selectedAssetId === command.assetId && selectedFogPolygon === null) {
+        return { ok: true, changed: false, revision };
+      }
       selectedAssetId = command.assetId;
-      selectedFogLayerId = null;
+      if (command.assetId !== null) selectedFogLayerId = null;
+      selectedFogPolygon = null;
       publish("editor");
       return { ok: true, changed: true, revision };
     },
@@ -720,6 +765,65 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     cancelActivePreview() {
       if (preview) engine.cancelPreview(preview.token);
     },
+    beginFogSelectionInteraction(pointGrid, cssPixelsPerGrid) {
+      if (!isFinitePoint(pointGrid) || !Number.isFinite(cssPixelsPerGrid) || cssPixelsPerGrid <= 0) {
+        return { handled: false };
+      }
+      if (selectedFogPolygon) {
+        const polygon = selectedFogPolygonValue(committedScene, selectedFogPolygon);
+        const vertexIndex = polygon ? pickFogVertex(polygon, pointGrid, cssPixelsPerGrid) : -1;
+        if (polygon && vertexIndex >= 0) {
+          const token = engine.beginPreview({
+            type: "fog.polygon.update",
+            ...selectedFogPolygon,
+            polygon,
+          });
+          if (preview) preview = { ...preview, fogVertex: { vertexIndex } };
+          return { handled: true, token };
+        }
+        if (polygon && pointInPolygon(pointGrid, polygon.vertices)) {
+          const token = engine.beginPreview({
+            type: "fog.polygon.update",
+            ...selectedFogPolygon,
+            polygon,
+          });
+          if (preview) {
+            preview = {
+              ...preview,
+              fogMove: {
+                initialPointer: Object.freeze({ ...pointGrid }),
+                initialVertices: Object.freeze(polygon.vertices.map((vertex) => Object.freeze({ ...vertex }))),
+              },
+            };
+          }
+          return { handled: true, token };
+        }
+      }
+      const selection = pickFogPolygonEdge(committedScene, pointGrid, cssPixelsPerGrid);
+      if (!selection) {
+        if (selectedFogPolygon) engine.dispatch({ type: "fog.selection.set", selection: null });
+        return { handled: false };
+      }
+      engine.dispatch({ type: "fog.selection.set", selection });
+      return { handled: true };
+    },
+    updateFogSelectionInteraction(token, pointGrid) {
+      if (!preview || preview.token.id !== token.id || preview.command.type !== "fog.polygon.update" || !isFinitePoint(pointGrid)) return;
+      let vertices: GridPoint[];
+      if (preview.fogVertex) {
+        vertices = [...preview.command.polygon.vertices];
+        vertices[preview.fogVertex.vertexIndex] = pointGrid;
+      } else if (preview.fogMove) {
+        const delta = {
+          x: pointGrid.x - preview.fogMove.initialPointer.x,
+          y: pointGrid.y - preview.fogMove.initialPointer.y,
+        };
+        vertices = preview.fogMove.initialVertices.map((vertex) => ({ x: vertex.x + delta.x, y: vertex.y + delta.y }));
+      } else {
+        return;
+      }
+      engine.updatePreview(token, { ...preview.command, polygon: { ...preview.command.polygon, vertices } });
+    },
     undo() {
       if (preview) return { ok: false, error: "Cancel the active preview before undoing", revision };
       const entry = undoStack.at(-1);
@@ -738,6 +842,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         committedScene = applyInsertAt(committedScene, entry.asset, entry.layerIndex, revision);
         selectedAssetId = entry.asset.id;
         selectedFogLayerId = null;
+        selectedFogPolygon = null;
         publish("all");
         return { ok: true, changed: true, revision };
       }
@@ -817,6 +922,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         committedScene = applyLayerDelete(committedScene, entry.layer.id, revision);
         if (selectedAssetId && entry.layer.assetIds.includes(selectedAssetId)) selectedAssetId = null;
         if (selectedFogLayerId === entry.layer.id) selectedFogLayerId = null;
+        if (selectedFogPolygon?.layerId === entry.layer.id) selectedFogPolygon = null;
         publish("all");
         return { ok: true, changed: true, revision };
       }
@@ -859,6 +965,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       revision = nextRevision;
       selectedAssetId = null;
       selectedFogLayerId = null;
+      selectedFogPolygon = null;
       preview = undefined;
       undoStack = [];
       redoStack = [];
@@ -1306,6 +1413,71 @@ function fogCollectionById(
 ): readonly FogPolygon[] {
   const layer = scene.layers.find((candidate) => candidate.id === layerId);
   return layer?.type === "fog" ? fogCollection(layer, collection) : [];
+}
+
+function selectedFogPolygonValue(scene: SceneDocument, selection: FogPolygonSelection): FogPolygon | undefined {
+  const layer = scene.layers.find((candidate) => candidate.id === selection.layerId);
+  return layer?.type === "fog" ? fogCollection(layer, selection.collection)[selection.polygonIndex] : undefined;
+}
+
+function pickFogVertex(polygon: FogPolygon, pointGrid: GridPoint, cssPixelsPerGrid: number): number {
+  const tolerance = 9 / cssPixelsPerGrid;
+  return polygon.vertices.findIndex((vertex) => Math.hypot(vertex.x - pointGrid.x, vertex.y - pointGrid.y) <= tolerance);
+}
+
+export function pickFogPolygonEdge(
+  scene: SceneDocument,
+  pointGrid: GridPoint,
+  cssPixelsPerGrid: number
+): FogPolygonSelection | null {
+  if (!isFinitePoint(pointGrid) || !Number.isFinite(cssPixelsPerGrid) || cssPixelsPerGrid <= 0) return null;
+  const tolerance = 8 / cssPixelsPerGrid;
+  for (let layerIndex = scene.layers.length - 1; layerIndex >= 0; layerIndex--) {
+    const layer = scene.layers[layerIndex];
+    if (layer.type !== "fog" || !layer.visible) continue;
+    for (const collection of ["clear", "fog"] as const) {
+      const polygons = fogCollection(layer, collection);
+      for (let polygonIndex = polygons.length - 1; polygonIndex >= 0; polygonIndex--) {
+        const vertices = polygons[polygonIndex].vertices;
+        for (let vertexIndex = 0; vertexIndex < vertices.length; vertexIndex++) {
+          const next = vertices[(vertexIndex + 1) % vertices.length];
+          if (distanceToSegment(pointGrid, vertices[vertexIndex], next) <= tolerance) {
+            return { layerId: layer.id, collection, polygonIndex };
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function distanceToSegment(point: GridPoint, start: GridPoint, end: GridPoint): number {
+  const x = end.x - start.x;
+  const y = end.y - start.y;
+  const lengthSquared = x * x + y * y;
+  if (lengthSquared === 0) return Math.hypot(point.x - start.x, point.y - start.y);
+  const amount = Math.max(0, Math.min(1, ((point.x - start.x) * x + (point.y - start.y) * y) / lengthSquared));
+  return Math.hypot(point.x - (start.x + amount * x), point.y - (start.y + amount * y));
+}
+
+function pointInPolygon(point: GridPoint, vertices: readonly GridPoint[]): boolean {
+  let inside = false;
+  for (let current = 0, previous = vertices.length - 1; current < vertices.length; previous = current++) {
+    const a = vertices[current];
+    const b = vertices[previous];
+    if (((a.y > point.y) !== (b.y > point.y)) &&
+      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function sameFogSelection(left: FogPolygonSelection | null, right: FogPolygonSelection | null): boolean {
+  return left === right || Boolean(left && right &&
+    left.layerId === right.layerId &&
+    left.collection === right.collection &&
+    left.polygonIndex === right.polygonIndex);
 }
 
 function orderAssets(

@@ -34,6 +34,13 @@ export function outlineFogPolygons(polygons: readonly FogPolygon[]): Float32Arra
   return vertices.length > 0 ? new Float32Array(vertices) : null;
 }
 
+export function fogHandleVertices(polygon: FogPolygon): Float32Array<ArrayBuffer> {
+  const corners = [[-1, -1], [1, -1], [-1, 1], [-1, 1], [1, -1], [1, 1]] as const;
+  return new Float32Array(polygon.vertices.flatMap((point) =>
+    corners.flatMap((corner) => [point.x, point.y, corner[0], corner[1]])
+  ));
+}
+
 function normalizeVertices(vertices: FogPolygon["vertices"]): FogPolygon["vertices"] {
   if (vertices.length > 1) {
     const first = vertices[0];

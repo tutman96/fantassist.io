@@ -273,10 +273,15 @@ function assetKey(snapshot: SceneEngineSnapshot): string {
 }
 
 function fogKey(snapshot: SceneEngineSnapshot): string {
-  return snapshot.scene.layers.flatMap((layer) => layer.type === "fog" ? [
+  return [
+    snapshot.selectedFogPolygon?.layerId ?? "",
+    snapshot.selectedFogPolygon?.collection ?? "",
+    snapshot.selectedFogPolygon?.polygonIndex ?? -1,
+    ...snapshot.scene.layers.flatMap((layer) => layer.type === "fog" ? [
     layer.id,
     ...layer.fogPolygons.flatMap((polygon) => [polygon.visibleOnTable ? "1" : "0", ...polygon.vertices.flatMap((vertex) => [vertex.x, vertex.y])]),
     "/",
     ...layer.fogClearPolygons.flatMap((polygon) => [polygon.visibleOnTable ? "1" : "0", ...polygon.vertices.flatMap((vertex) => [vertex.x, vertex.y])]),
-  ] : []).join(":");
+    ] : []),
+  ].join(":");
 }

@@ -6,8 +6,10 @@ import {
   applyRotationSnap,
   createSceneEngine,
   pickAssetHandle,
+  pickFogPolygonEdge,
   pickImageAsset,
 } from "../src/engine/scene-engine";
+import { ensureFogLayer } from "../src/features/editor/editor-tool";
 import {
   DEFAULT_DISPLAY,
   getTableBounds,
@@ -659,4 +661,86 @@ test("fog commands reject invalid layers and degenerate committed polygons", () 
     { ok: false, error: "Fog polygons require at least three vertices", revision: 0 }
   );
   assert.equal(engine.dispatch({ type: "fog.polygon.insert", layerId: "missing", collection: "fog", polygon: { ...invalid, vertices: [...invalid.vertices, { x: 2, y: 0 }] } }).ok, false);
+});
+
+test("fog polygon edges select and vertex drags preview one undoable edit", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const selection = pickFogPolygonEdge(engine.getSnapshot().scene, { x: 10, y: 3 }, 20);
+  assert.deepEqual(selection, { layerId: layer.id, collection: "fog", polygonIndex: 0 });
+  const selected = engine.beginFogSelectionInteraction({ x: 10, y: 3 }, 20);
+  assert.equal(selected.handled, true);
+  assert.equal(selected.token, undefined);
+  assert.deepEqual(engine.getSnapshot().selectedFogPolygon, selection);
+
+  const interaction = engine.beginFogSelectionInteraction({ x: 2, y: 3 }, 20);
+  assert.equal(interaction.handled, true);
+  assert.ok(interaction.token);
+  engine.updateFogSelectionInteraction(interaction.token, { x: -4, y: -2 });
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogPolygons[0].vertices[0], { x: -4, y: -2 });
+  assert.equal(engine.getSnapshot().revision, 0);
+  assert.deepEqual(engine.commitPreview(interaction.token), { ok: true, changed: true, revision: 1 });
+  engine.undo();
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogPolygons[0].vertices[0], { x: 2, y: 3 });
+});
+
+test("fog tools create and select one empty fog layer only when needed", () => {
+  const base = createSampleSceneDocument();
+  const engine = createSceneEngine(freezeSceneDocument({
+    ...base,
+    layers: base.layers.filter((layer) => layer.type !== "fog"),
+  }));
+  const id = ensureFogLayer(engine, () => "automatic-fog");
+  assert.equal(id, "automatic-fog");
+  assert.equal(engine.getSnapshot().selectedFogLayerId, id);
+  assert.deepEqual(engine.getSnapshot().scene.layers.at(-1), {
+    id,
+    name: "Fog",
+    type: "fog",
+    visible: true,
+    assetIds: [],
+    fogPolygons: [],
+    fogClearPolygons: [],
+  });
+  assert.equal(ensureFogLayer(engine, () => "unused"), id);
+  assert.equal(engine.getSnapshot().scene.layers.filter((layer) => layer.type === "fog").length, 1);
+});
+
+test("dragging inside a selected fog polygon translates every vertex", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const selection = { layerId: layer.id, collection: "fog" as const, polygonIndex: 0 };
+  engine.dispatch({ type: "fog.selection.set", selection });
+  const before = layer.fogPolygons[0].vertices;
+  const interaction = engine.beginFogSelectionInteraction({ x: 10, y: 10 }, 20);
+  assert.equal(interaction.handled, true);
+  assert.ok(interaction.token);
+  engine.updateFogSelectionInteraction(interaction.token, { x: 12.5, y: 6 });
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogPolygons[0].vertices, before.map((vertex) => ({ x: vertex.x + 2.5, y: vertex.y - 4 })));
+  assert.equal(engine.getSnapshot().revision, 0);
+  engine.commitPreview(interaction.token);
+  assert.equal(engine.getSnapshot().revision, 1);
+  engine.undo();
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogPolygons[0].vertices, before);
+});
+
+test("clicking away from a selected fog polygon clears polygon selection", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.dispatch({ type: "fog.selection.set", selection: { layerId: layer.id, collection: "fog", polygonIndex: 0 } });
+  assert.ok(engine.getSnapshot().selectedFogPolygon);
+  assert.deepEqual(engine.beginFogSelectionInteraction({ x: 100, y: 100 }, 20), { handled: false });
+  assert.equal(engine.getSnapshot().selectedFogPolygon, null);
+  assert.equal(engine.getSnapshot().selectedFogLayerId, layer.id);
 });

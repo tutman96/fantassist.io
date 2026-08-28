@@ -2,7 +2,7 @@ import { draw, effect, frame, geometry, sampler, target } from "vgpu";
 import type { Draw, Geometry, Gpu, Target, TargetSignature, Texture } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
-import { outlineFogPolygons, tessellateFogPolygons } from "../fog-geometry";
+import { fogHandleVertices, outlineFogPolygons, tessellateFogPolygons } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
 import { compileSceneLayerOperations } from "../render-plan";
@@ -31,6 +31,7 @@ interface FogDrawEntry {
   readonly clear?: Draw;
   readonly fogGuide?: Draw;
   readonly clearGuide?: Draw;
+  readonly handles?: Draw;
   readonly geometries: readonly Geometry[];
 }
 
@@ -155,13 +156,38 @@ export function createSceneExecutor(
       };
       const fogGuide = makeGuide(layer.fogPolygons, [0.82, 0.2, 0.95, 0.9], `fog-guide:${layer.id}`);
       const clearGuide = makeGuide(layer.fogClearPolygons, [0.12, 0.68, 1, 0.9], `fog-clear-guide:${layer.id}`);
+      const selection = sourceSnapshot.selectedFogPolygon?.layerId === layer.id
+        ? sourceSnapshot.selectedFogPolygon
+        : undefined;
+      const selectedPolygon = selection
+        ? (selection.collection === "fog" ? layer.fogPolygons : layer.fogClearPolygons)[selection.polygonIndex]
+        : undefined;
+      const handleGeometry = selectedPolygon ? geometry(gpu, {
+        buffers: [{
+          attributes: {
+            point_grid: { format: "float32x2", location: 0, offset: 0 },
+            corner: { format: "float32x2", location: 1, offset: 8 },
+          },
+          stride: 16,
+          data: fogHandleVertices(selectedPolygon),
+        }],
+        topology: "triangle-list",
+        label: `fog-handles:${layer.id}`,
+      }) : undefined;
+      const handles = handleGeometry ? draw(gpu, {
+        shader: shaders.fogHandle,
+        geometry: handleGeometry,
+        label: `fog-handles:${layer.id}`,
+        set: { params: { ...spatialParams(), color: selection?.collection === "fog" ? [0.82, 0.2, 0.95, 1] : [0.12, 0.68, 1, 1] } },
+      }) : undefined;
       return [{
         layerId: layer.id,
         fog: fog?.drawable,
         clear: clear?.drawable,
         fogGuide: fogGuide?.drawable,
         clearGuide: clearGuide?.drawable,
-        geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry].filter((item): item is Geometry => item !== undefined),
+        handles,
+        geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
       }];
     });
 
@@ -196,7 +222,7 @@ export function createSceneExecutor(
         ...fogEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
           .map((drawable) => drawable.compile(signature(fogMaskTarget))),
         ...(plan.showEditorGrid
-          ? fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide].filter((item): item is Draw => item !== undefined))
+          ? fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.handles].filter((item): item is Draw => item !== undefined))
               .map((drawable) => drawable.compile(signature(compositeTarget)))
           : []),
         fogComposite.compile(signature(sceneB)),
@@ -219,7 +245,7 @@ export function createSceneExecutor(
       await Promise.all(nextEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
         .map((drawable) => drawable.compile(signature(fogMaskTarget))));
       if (plan.showEditorGrid) {
-        await Promise.all(nextEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide].filter((item): item is Draw => item !== undefined))
+        await Promise.all(nextEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.handles].filter((item): item is Draw => item !== undefined))
           .map((drawable) => drawable.compile(signature(compositeTarget))));
       }
       await gpu.settled();
@@ -238,6 +264,13 @@ export function createSceneExecutor(
         entry.clear?.set({ params: { ...spatialParams(), fog_value: 0 } });
         entry.fogGuide?.set({ params: { ...spatialParams(), color: [0.82, 0.2, 0.95, 0.9] } });
         entry.clearGuide?.set({ params: { ...spatialParams(), color: [0.12, 0.68, 1, 0.9] } });
+        const handleSelection = snapshot.selectedFogPolygon;
+        entry.handles?.set({
+          params: {
+            ...spatialParams(),
+            color: handleSelection?.collection === "fog" ? [0.82, 0.2, 0.95, 1] : [0.12, 0.68, 1, 1],
+          },
+        });
       }
       let activeScene: Target = sceneA;
       let alternateScene: Target = sceneB;
@@ -275,6 +308,7 @@ export function createSceneExecutor(
               if (!snapshot.scene.layers.some((layer) => layer.id === entry.layerId && layer.visible)) continue;
               if (entry.fogGuide) pass.draw(entry.fogGuide);
               if (entry.clearGuide) pass.draw(entry.clearGuide);
+              if (entry.handles) pass.draw(entry.handles);
             }
           });
         }
