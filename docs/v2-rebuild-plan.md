@@ -19,6 +19,7 @@ Current implementation progress:
 - A shared v2 render plan executes instanced sampled assets, fog, GPU obstruction shadows, `rgba16float` lighting, linear composition, and display conversion in browser and `vgpu/node` targets.
 - The headless renderer emits PNG and diagnostics artifacts, has deterministic native smoke coverage, and runs with a software adapter in Linux CI.
 - Browser video texture validation is explicitly deferred; the spike does not treat synthetic time-based animation as video support.
+- Grid-space editor camera and physical table-camera behavior are specified in `docs/adr/0002-v2-table-camera.md` before implementation.
 - The dedicated `fantassist-io-v2` Vercel project is deployed on Node 24.
 - Cookie-selected gateway rewrites are verified for v2 documents, immutable assets, stable API ownership, and stable manifest ownership.
 

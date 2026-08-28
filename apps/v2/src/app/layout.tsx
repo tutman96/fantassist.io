@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Alegreya, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { VersionSwitchListener } from "@/features/versioning/version-switch";
 
@@ -13,6 +13,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const alegreya = Alegreya({
+  variable: "--font-alegreya",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "Fantassist Beta",
   description: "The next generation Fantassist scene engine.",
@@ -22,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${geistSans.variable} ${geistMono.variable} ${alegreya.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <VersionSwitchListener />

@@ -1,4 +1,12 @@
 struct Params {
+  target_size: vec2f,
+  grid_to_target_offset: vec2f,
+  target_to_grid_offset: vec2f,
+  content_min: vec2f,
+  content_max: vec2f,
+  table_min: vec2f,
+  table_max: vec2f,
+  pixels_per_grid: f32,
   time: f32,
 }
 
@@ -21,11 +29,11 @@ struct VertexOutput {
     vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0),
     vec2f(0.0, 1.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0),
   );
-  let centers = array<vec2f, 4>(
-    vec2f(0.50, 0.52), vec2f(0.34, 0.55), vec2f(0.66, 0.56), vec2f(0.69, 0.29),
+  let centers_grid = array<vec2f, 4>(
+    vec2f(19.5, 11.5), vec2f(12.5, 12.0), vec2f(26.0, 12.4), vec2f(27.0, 6.5),
   );
-  let sizes = array<vec2f, 4>(
-    vec2f(0.92, 0.82), vec2f(0.34, 0.38), vec2f(0.28, 0.26), vec2f(0.28, 0.18),
+  let sizes_grid = array<vec2f, 4>(
+    vec2f(36.0, 18.0), vec2f(13.0, 8.5), vec2f(10.5, 5.8), vec2f(10.0, 4.0),
   );
   let tints = array<vec4f, 4>(
     vec4f(0.34, 0.55, 0.58, 1.0),
@@ -34,9 +42,14 @@ struct VertexOutput {
     vec4f(0.10, 0.72, 0.88, 1.0),
   );
   let corner = corners[vertex_index];
-  let point = centers[instance_index] + (corner - 0.5) * sizes[instance_index];
+  let point_grid = centers_grid[instance_index] + (corner - 0.5) * sizes_grid[instance_index];
+  let point_target = point_grid * params.pixels_per_grid + params.grid_to_target_offset;
   var output: VertexOutput;
-  output.position = vec4f(point * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
+  output.position = vec4f(
+    point_target / params.target_size * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0),
+    0.0,
+    1.0,
+  );
   output.uv = corner;
   output.tint = tints[instance_index];
   output.kind = instance_index;

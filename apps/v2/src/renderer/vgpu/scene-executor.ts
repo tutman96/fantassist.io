@@ -2,6 +2,8 @@ import { draw, effect, frame, sampler, target } from "vgpu";
 import type { Draw, Effect, Gpu, Target, TargetSignature } from "vgpu";
 
 import type { RenderPlan, ScenePass } from "../render-plan";
+import { compileProjection, projectionUniforms } from "../projection";
+import type { RenderView } from "../projection";
 import type { SceneShaders } from "./scene-shaders";
 
 export interface SceneExecutor {
@@ -11,13 +13,15 @@ export interface SceneExecutor {
   render(time: number): Promise<void>;
   resize(size: readonly [number, number]): void;
   setGridVisible(visible: boolean): void;
+  setView(view: RenderView): void;
 }
 
 export function createSceneExecutor(
   gpu: Gpu,
   destination: Target,
   plan: RenderPlan,
-  shaders: SceneShaders
+  shaders: SceneShaders,
+  initialView: RenderView
 ): SceneExecutor {
   const size = destination.size;
   const scene = target(gpu, { size, format: "rgba8unorm", label: "scene-assets" });
@@ -40,6 +44,10 @@ export function createSceneExecutor(
   });
   const mapPixels = new Uint8Array(8 * 8 * 4);
   let gridVisible = plan.showGrid;
+  let view = initialView;
+  let renderSize = { width: size[0], height: size[1] };
+  let projection = compileProjection(view, renderSize);
+  const spatialParams = (time = 0) => ({ ...projectionUniforms(projection), time });
   for (let y = 0; y < 8; y++) {
     for (let x = 0; x < 8; x++) {
       const offset = (y * 8 + x) * 4;
@@ -60,16 +68,23 @@ export function createSceneExecutor(
     instances: 4,
     blend: "premultiplied",
     label: "asset-background",
-    set: { map_texture: mapTexture, texture_sampler: repeatingSampler },
+    set: {
+      map_texture: mapTexture,
+      texture_sampler: repeatingSampler,
+      params: spatialParams(),
+    },
   });
-  const fogMask = effect(gpu, shaders.fogMask, { label: "fog-mask" });
+  const fogMask = effect(gpu, shaders.fogMask, {
+    label: "fog-mask",
+    set: { params: projectionUniforms(projection) },
+  });
   const obstructionShadows = effect(gpu, shaders.obstructionShadows, {
     label: "obstruction-shadows",
-    set: { params: { time: 0 } },
+    set: { params: spatialParams() },
   });
   const lightAccumulation = effect(gpu, shaders.lightAccumulation, {
     label: "light-accumulation",
-    set: { shadows, texture_sampler: linearSampler, params: { time: 0 } },
+    set: { shadows, texture_sampler: linearSampler, params: spatialParams() },
   });
   const composite = effect(gpu, shaders.composite, {
     label: "composite",
@@ -80,13 +95,13 @@ export function createSceneExecutor(
       shadow_map: shadows,
       texture_sampler: linearSampler,
       params: {
+        ...spatialParams(),
         fog_opacity: plan.fogOpacity,
         show_fog_edges: plan.showEditorGrid ? 1 : 0,
         show_grid: gridVisible ? 1 : 0,
         show_walls: plan.showEditorGrid ? 1 : 0,
         show_lights: plan.showEditorGrid ? 1 : 0,
         time: 0,
-        viewport: destination.size,
       },
     },
   });
@@ -131,22 +146,20 @@ export function createSceneExecutor(
       await gpu.settled();
     },
     async render(time) {
-      assets.set({
-        params: {
-          time,
-        },
-      });
-      obstructionShadows.set({ params: { time } });
-      lightAccumulation.set({ params: { time } });
+      const params = spatialParams(time);
+      assets.set({ params });
+      fogMask.set({ params: projectionUniforms(projection) });
+      obstructionShadows.set({ params });
+      lightAccumulation.set({ params });
       composite.set({
         params: {
+          ...params,
           fog_opacity: plan.fogOpacity,
           show_fog_edges: plan.showEditorGrid ? 1 : 0,
           show_grid: gridVisible ? 1 : 0,
           show_walls: plan.showEditorGrid ? 1 : 0,
           show_lights: plan.showEditorGrid ? 1 : 0,
           time,
-          viewport: destination.size,
         },
       });
       const submitted = frame(gpu, (currentFrame) => {
@@ -159,6 +172,8 @@ export function createSceneExecutor(
       await gpu.settled();
     },
     resize(nextSize) {
+      renderSize = { width: nextSize[0], height: nextSize[1] };
+      projection = compileProjection(view, renderSize);
       scene.resize(nextSize);
       fog.resize(nextSize);
       shadows.resize(nextSize);
@@ -167,6 +182,10 @@ export function createSceneExecutor(
     },
     setGridVisible(visible) {
       gridVisible = visible;
+    },
+    setView(nextView) {
+      view = nextView;
+      projection = compileProjection(view, renderSize);
     },
   };
 }

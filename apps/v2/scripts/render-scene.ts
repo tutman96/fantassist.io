@@ -7,6 +7,8 @@ import { PNG } from "pngjs";
 import { init, target } from "vgpu/node";
 import type { NodeAdapterMode } from "@vgpu/adapter-node";
 
+import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA, fitTableCamera, getTableBounds } from "../src/engine/table-camera";
+import type { RenderView } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
 import type { RenderProfile } from "../src/renderer/scene-renderer";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
@@ -39,6 +41,10 @@ export interface HeadlessRenderResult {
       readonly readback: number;
     };
     readonly estimatedTargetMemoryBytes: number;
+    readonly projection: {
+      readonly display: typeof DEFAULT_DISPLAY;
+      readonly table: typeof DEFAULT_TABLE_CAMERA;
+    };
   };
 }
 
@@ -48,7 +54,17 @@ export async function renderHeadlessScene(options: HeadlessRenderOptions): Promi
     const shaders = await loadSceneShaders();
     const output = target(gpu, { size: options.size, format: "rgba8unorm", label: "headless-output" });
     const plan = createRenderPlan(options.profile);
-    const executor = createSceneExecutor(gpu, output, plan, shaders);
+    const viewportCss = { width: options.size[0], height: options.size[1] };
+    const view: RenderView = options.profile === "editor"
+      ? {
+          kind: "editor",
+          camera: fitTableCamera(getTableBounds(DEFAULT_TABLE_CAMERA, DEFAULT_DISPLAY), viewportCss),
+          viewportCss,
+          table: DEFAULT_TABLE_CAMERA,
+          display: DEFAULT_DISPLAY,
+        }
+      : { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY };
+    const executor = createSceneExecutor(gpu, output, plan, shaders, view);
     const compileStart = performance.now();
     await executor.prewarm();
     const compile = performance.now() - compileStart;
@@ -84,6 +100,7 @@ export async function renderHeadlessScene(options: HeadlessRenderOptions): Promi
           readback,
         },
         estimatedTargetMemoryBytes: executor.estimatedTargetBytes,
+        projection: { display: DEFAULT_DISPLAY, table: DEFAULT_TABLE_CAMERA },
       },
     };
   } finally {

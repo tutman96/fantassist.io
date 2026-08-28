@@ -1,111 +1,72 @@
-import { ArrowRight, Cpu, Layers3, Sparkles } from "lucide-react";
+import { ExternalLink, Radio, Sparkles } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { GpuViewport } from "@/features/scaffold/gpu-viewport";
-
-const foundations = [
-  {
-    icon: Cpu,
-    title: "Engine-owned state",
-    description: "Commands and immutable snapshots live outside React.",
-  },
-  {
-    icon: Layers3,
-    title: "Explicit render passes",
-    description: "Browser and headless output share one vgpu render plan.",
-  },
-  {
-    icon: Sparkles,
-    title: "GPU composition",
-    description: "Lighting, obstruction shadows, and fog execute in WGSL.",
-  },
-];
 
 export default function Home() {
   return (
-    <main className="relative min-h-svh overflow-hidden bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_0%,color-mix(in_oklab,var(--primary)_18%,transparent),transparent_28%),radial-gradient(circle_at_90%_18%,color-mix(in_oklab,var(--accent)_12%,transparent),transparent_30%)]" />
+    <main className="relative h-svh overflow-hidden bg-[#050713] text-white">
+      <GpuViewport profile="editor" />
 
-      <div className="relative mx-auto flex min-h-svh max-w-[1600px] flex-col px-4 py-4 sm:px-6 lg:px-8">
-        <header className="flex items-center justify-between border-b border-border/70 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="grid size-9 place-items-center rounded-md border border-primary/40 bg-primary/10 font-mono text-xs font-bold text-primary">
-              FA
-            </div>
-            <div>
-              <p className="text-sm font-semibold tracking-[0.2em] uppercase">
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-16 items-center justify-between border-b border-amber-100/10 bg-[#090817]/90 px-4 shadow-[0_16px_50px_rgba(2,4,14,0.4)] backdrop-blur-xl sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="relative grid size-10 shrink-0 place-items-center">
+            <div className="absolute inset-0 rotate-12 bg-violet-500/20 blur-lg" />
+            <FacetMark />
+          </div>
+          <div className="min-w-0 leading-tight">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-[11px] font-semibold tracking-[0.18em] text-violet-100 uppercase sm:text-xs">
                 Fantassist
-              </p>
-              <p className="text-xs text-muted-foreground">Scene engine v2</p>
+              </h1>
+              <span className="hidden text-violet-300/30 sm:inline">/</span>
+              <span className="hidden font-mono text-[9px] tracking-[0.15em] text-violet-200/45 uppercase sm:inline">
+                Dungeon canvas
+              </span>
             </div>
+            <p className="mt-0.5 truncate font-heading text-[15px] font-medium tracking-wide text-amber-50/85">Astral Clearing</p>
           </div>
-          <Badge variant="outline" className="border-primary/30 text-primary">
-            <Link href="/beta">Beta active</Link>
-          </Badge>
-        </header>
+        </div>
 
-        <section className="grid flex-1 gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <div className="flex min-h-[34rem] flex-col overflow-hidden rounded-xl border border-border/80 bg-card/40 shadow-2xl shadow-black/30">
-            <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium">Output pipeline probe</p>
-                <p className="text-xs text-muted-foreground">
-                  Pixels below are rendered by vgpu
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
-                WebGPU lifecycle
-              </div>
-            </div>
-            <GpuViewport profile="editor" />
+        <div className="pointer-events-auto absolute left-1/2 hidden -translate-x-1/2 items-center gap-2 lg:flex">
+          <div className="flex h-8 items-center gap-2 border border-amber-100/10 bg-amber-50/5 px-3">
+            <Sparkles className="size-3 text-fuchsia-300" aria-hidden="true" />
+            <span className="font-mono text-[9px] tracking-[0.2em] text-violet-100/60 uppercase">
+              Enchanted table
+            </span>
           </div>
+        </div>
 
-          <aside className="flex flex-col rounded-xl border border-border/80 bg-card/70 p-5 shadow-xl shadow-black/20 backdrop-blur">
-            <Badge className="w-fit">Renderer spike</Badge>
-            <h1 className="mt-5 text-4xl leading-none font-semibold tracking-tight">
-              Prove the pixels before the editor.
-            </h1>
-            <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              This app is isolated from v1 so its runtime, interface, and GPU
-              architecture can evolve without touching the stable deployment.
-            </p>
-
-            <Separator className="my-6" />
-
-            <div className="space-y-5">
-              {foundations.map(({ icon: Icon, title, description }) => (
-                <div key={title} className="grid grid-cols-[2rem_1fr] gap-3">
-                  <div className="grid size-8 place-items-center rounded-md bg-secondary text-primary">
-                    <Icon className="size-4" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-medium">{title}</h2>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      {description}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-auto pt-8">
-              <Button className="w-full" asChild>
-                <Link href="/table">
-                  Open output probe
-                  <ArrowRight aria-hidden="true" />
-                </Link>
-              </Button>
-              <p className="mt-3 text-center font-mono text-[0.65rem] tracking-wide text-muted-foreground uppercase">
-                Scene engine prototype comes next
-              </p>
-            </div>
-          </aside>
-        </section>
-      </div>
+        <nav className="pointer-events-auto flex items-center gap-2 text-[10px] text-white/60" aria-label="Application">
+          <Link className="hidden px-2 py-1.5 tracking-[0.14em] uppercase hover:text-violet-200 sm:block" href="/beta">
+            Beta
+          </Link>
+          <Link
+            aria-label="Open table output"
+            className="group flex h-9 items-center gap-2 border border-amber-100/15 bg-gradient-to-r from-blue-500/10 via-violet-500/15 to-fuchsia-500/10 px-3 font-medium text-amber-50 transition hover:border-amber-100/30 hover:from-blue-500/20 hover:to-fuchsia-500/20"
+            href="/table"
+            target="_blank"
+          >
+            <Radio className="size-3.5 text-fuchsia-300" aria-hidden="true" />
+            <span className="hidden text-[10px] tracking-wide sm:inline">Open table</span>
+            <ExternalLink className="size-3 opacity-50 transition group-hover:opacity-100" aria-hidden="true" />
+          </Link>
+        </nav>
+      </header>
     </main>
+  );
+}
+
+function FacetMark() {
+  return (
+    <Image
+      src="/fantassist-mark.png"
+      width={40}
+      height={40}
+      priority
+      alt=""
+      className="relative size-10 object-contain drop-shadow-[0_0_10px_rgba(129,92,246,0.45)]"
+    />
   );
 }

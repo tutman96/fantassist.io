@@ -24,15 +24,26 @@ fn segment_distance(point: vec2f, segment_a: vec2f, segment_b: vec2f) -> f32 {
 }
 
 @fragment fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let wall_a = vec2f(0.49, 0.22);
-  let wall_b = vec2f(0.52, 0.76);
-  let red_light = vec2f(0.28 + sin(params.time * 0.7) * 0.08, 0.40 + cos(params.time * 0.7) * 0.05);
-  let blue_light = vec2f(0.72 + cos(params.time * 0.6) * 0.06, 0.62 + sin(params.time * 0.6) * 0.08);
-  let red_visibility = 1.0 - segment_blocked(red_light, uv, wall_a, wall_b);
-  let blue_visibility = 1.0 - segment_blocked(blue_light, uv, wall_a, wall_b);
-  let wall = 1.0 - smoothstep(0.004, 0.009, segment_distance(uv, wall_a, wall_b));
+  let world = uv * params.target_size / params.pixels_per_grid + params.target_to_grid_offset;
+  let wall_a = vec2f(19.0, 4.0);
+  let wall_b = vec2f(20.0, 18.0);
+  let red_light = vec2f(11.0 + sin(params.time * 0.7) * 3.0, 8.5 + cos(params.time * 0.7) * 1.5);
+  let blue_light = vec2f(28.0 + cos(params.time * 0.6) * 2.4, 14.0 + sin(params.time * 0.6) * 2.0);
+  let red_visibility = 1.0 - segment_blocked(red_light, world, wall_a, wall_b);
+  let blue_visibility = 1.0 - segment_blocked(blue_light, world, wall_a, wall_b);
+  let wall = 1.0 - smoothstep(1.0 / params.pixels_per_grid, 2.5 / params.pixels_per_grid, segment_distance(world, wall_a, wall_b));
   return vec4f(red_visibility, blue_visibility, wall, 1.0);
 }
-struct Params { time: f32 }
+struct Params {
+  target_size: vec2f,
+  grid_to_target_offset: vec2f,
+  target_to_grid_offset: vec2f,
+  content_min: vec2f,
+  content_max: vec2f,
+  table_min: vec2f,
+  table_max: vec2f,
+  pixels_per_grid: f32,
+  time: f32,
+}
 
 @group(0) @binding(0) var<uniform> params: Params;

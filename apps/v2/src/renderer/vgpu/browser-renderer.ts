@@ -2,6 +2,7 @@ import { init, surface } from "vgpu";
 import type { Gpu, Surface } from "vgpu";
 
 import { createRenderPlan } from "../render-plan";
+import type { RenderView } from "../projection";
 import type { RenderProfile } from "../scene-renderer";
 import { browserSceneShaders } from "./browser-shaders";
 import { createSceneExecutor } from "./scene-executor";
@@ -9,6 +10,7 @@ import { createSceneExecutor } from "./scene-executor";
 export interface BrowserSceneRenderer {
   render(time?: number): void;
   setGridVisible(visible: boolean): void;
+  setView(view: RenderView): void;
   startAnimation(fps?: number): () => void;
   dispose(): void;
 }
@@ -16,6 +18,7 @@ export interface BrowserSceneRenderer {
 export async function createBrowserSceneRenderer(
   canvas: HTMLCanvasElement,
   profile: RenderProfile,
+  initialView: RenderView,
   onFatalError?: (error: unknown) => void
 ): Promise<BrowserSceneRenderer> {
   let disposed = false;
@@ -26,10 +29,13 @@ export async function createBrowserSceneRenderer(
   let lastTime = 0;
   let animationFrame: number | undefined;
   let pendingTime: number | undefined;
+  let activeView = initialView;
+  let activeGridVisible = profile === "editor";
   let requestActiveRender = (time: number) => {
     pendingTime = time;
   };
   let setActiveGridVisible: (visible: boolean) => void = () => undefined;
+  let setActiveView: (view: RenderView) => void = () => undefined;
 
   const initialize = async () => {
     const ownGeneration = ++generation;
@@ -41,7 +47,14 @@ export async function createBrowserSceneRenderer(
     let nextSurface: Surface | undefined;
     try {
       nextSurface = surface(nextGpu, canvas, { dpr: [1, 2], autoResize: true });
-      const executor = createSceneExecutor(nextGpu, nextSurface, createRenderPlan(profile), browserSceneShaders);
+      const executor = createSceneExecutor(
+        nextGpu,
+        nextSurface,
+        createRenderPlan(profile),
+        browserSceneShaders,
+        activeView
+      );
+      executor.setGridVisible(activeGridVisible);
       await executor.prewarm();
       if (disposed || ownGeneration !== generation) {
         nextSurface.dispose();
@@ -74,6 +87,7 @@ export async function createBrowserSceneRenderer(
       });
       requestActiveRender = requestRender;
       setActiveGridVisible = (visible: boolean) => executor.setGridVisible(visible);
+      setActiveView = (view: RenderView) => executor.setView(view);
       requestRender(0);
 
       let rendering = false;
@@ -130,7 +144,14 @@ export async function createBrowserSceneRenderer(
     render,
     setGridVisible(visible) {
       if (disposed) return;
+      activeGridVisible = visible;
       setActiveGridVisible(visible);
+      render(lastTime);
+    },
+    setView(view) {
+      if (disposed) return;
+      activeView = view;
+      setActiveView(view);
       render(lastTime);
     },
     startAnimation(fps = 30) {
@@ -158,6 +179,7 @@ export async function createBrowserSceneRenderer(
       generation++;
       requestActiveRender = () => undefined;
       setActiveGridVisible = () => undefined;
+      setActiveView = () => undefined;
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleWindowResize);

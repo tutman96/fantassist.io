@@ -5,6 +5,7 @@ import { getMockGPUDeviceInstrumentation, init, target } from "vgpu/mock";
 
 import { createRenderPlan, SCENE_PASS_ORDER } from "../src/renderer/render-plan";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
+import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA } from "../src/engine/table-camera";
 import { loadSceneShaders } from "../scripts/load-scene-shaders";
 
 test("shared executor submits the complete render plan in one frame", async () => {
@@ -15,7 +16,8 @@ test("shared executor submits the complete render plan in one frame", async () =
       gpu,
       output,
       createRenderPlan("output"),
-      await loadSceneShaders()
+      await loadSceneShaders(),
+      { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY }
     );
 
     await executor.prewarm();
