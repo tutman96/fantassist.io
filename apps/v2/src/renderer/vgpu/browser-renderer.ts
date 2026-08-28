@@ -42,7 +42,7 @@ export async function createBrowserSceneRenderer(
     pendingTime = time;
   };
   let setActiveGridVisible: (visible: boolean) => void = () => undefined;
-  let setActiveSnapshot: (snapshot: SceneEngineSnapshot) => void = () => undefined;
+  let setActiveSnapshot: (snapshot: SceneEngineSnapshot, assetsChanged: boolean) => boolean = () => true;
   let setActiveView: (view: RenderView) => void = () => undefined;
 
   const initialize = async () => {
@@ -108,7 +108,38 @@ export async function createBrowserSceneRenderer(
       });
       requestActiveRender = requestRender;
       setActiveGridVisible = (visible: boolean) => executor.setGridVisible(visible);
-      setActiveSnapshot = (snapshot: SceneEngineSnapshot) => executor.setSnapshot(snapshot);
+      let replacementRevision = 0;
+      let replacementQueue = Promise.resolve();
+      setActiveSnapshot = (snapshot: SceneEngineSnapshot, assetsChanged: boolean) => {
+        if (!assetsChanged) {
+          executor.setSnapshot(snapshot);
+          return true;
+        }
+        const ownReplacement = ++replacementRevision;
+        replacementQueue = replacementQueue.then(async () => {
+          if (disposed || ownGeneration !== generation || ownReplacement !== replacementRevision) return;
+          const uploads = await Promise.all(snapshot.scene.assets.map(async (asset) =>
+            (imageLoader ? await imageLoader.loadImage(asset.mediaId) : null) ?? createFallbackImageUpload()
+          ));
+          if (disposed || ownGeneration !== generation || ownReplacement !== replacementRevision) {
+            uploads.forEach((upload) => upload.dispose());
+            return;
+          }
+          try {
+            await executor.replaceAssets(snapshot, uploads);
+            executor.setSnapshot(activeSnapshot);
+          } finally {
+            uploads.forEach((upload) => upload.dispose());
+          }
+          if (!disposed && ownGeneration === generation && ownReplacement === replacementRevision) {
+            requestRender(lastTime);
+          }
+        }).catch((error: unknown) => {
+          console.error("Unable to replace v2 image assets", error);
+          onFatalError?.(error);
+        });
+        return false;
+      };
       setActiveView = (view: RenderView) => executor.setView(view);
       requestRender(0);
 
@@ -173,9 +204,9 @@ export async function createBrowserSceneRenderer(
     },
     setSnapshot(nextSnapshot) {
       if (disposed) return;
+      const assetsChanged = assetKey(activeSnapshot) !== assetKey(nextSnapshot);
       activeSnapshot = nextSnapshot;
-      setActiveSnapshot(nextSnapshot);
-      render(lastTime);
+      if (setActiveSnapshot(nextSnapshot, assetsChanged)) render(lastTime);
     },
     setView(view) {
       if (disposed) return;
@@ -208,7 +239,7 @@ export async function createBrowserSceneRenderer(
       generation++;
       requestActiveRender = () => undefined;
       setActiveGridVisible = () => undefined;
-      setActiveSnapshot = () => undefined;
+      setActiveSnapshot = () => true;
       setActiveView = () => undefined;
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
@@ -219,4 +250,8 @@ export async function createBrowserSceneRenderer(
     },
   };
 
+}
+
+function assetKey(snapshot: SceneEngineSnapshot): string {
+  return snapshot.scene.assets.map((asset) => `${asset.id}:${asset.mediaId}`).join("|");
 }

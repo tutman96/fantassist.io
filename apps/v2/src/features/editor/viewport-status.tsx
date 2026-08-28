@@ -26,11 +26,11 @@ export function CameraStatus({ sceneSnapshot, tableSnapshot }: { readonly sceneS
       data-camera-zoom={tableSnapshot.editorCamera.cssPixelsPerGrid}
       data-scene-revision={sceneSnapshot.revision}
       data-selected-asset={sceneSnapshot.selectedAssetId ?? ""}
-      data-asset-x={asset.transform.x}
-      data-asset-y={asset.transform.y}
-      data-asset-width={asset.transform.width}
-      data-asset-height={asset.transform.height}
-      data-asset-rotation={asset.transform.rotation}
+      data-asset-x={asset?.transform.x}
+      data-asset-y={asset?.transform.y}
+      data-asset-width={asset?.transform.width}
+      data-asset-height={asset?.transform.height}
+      data-asset-rotation={asset?.transform.rotation}
     >
       <span>cam x {tableSnapshot.editorCamera.centerGrid.x.toFixed(2)}</span>
       <span className="text-violet-300/30">/</span>

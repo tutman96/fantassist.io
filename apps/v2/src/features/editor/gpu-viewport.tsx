@@ -46,7 +46,7 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
     tableSnapshot,
   });
   const { cursor, ...canvasEvents } = useEditorInteractions({
-    assetRotation: asset.transform.rotation,
+    assetRotation: asset?.transform.rotation ?? 0,
     engine,
     profile,
     session,
@@ -55,15 +55,14 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
   return (
     <div className="relative size-full overflow-hidden bg-[#03050d]">
       <canvas
-        key={sceneSnapshot.scene.assets.map((item) => item.mediaId).join("|")}
         ref={canvasRef}
         aria-label={profile === "editor" ? "Fantassist scene editor" : "Fantassist table output"}
         data-scene-revision={sceneSnapshot.revision}
-        data-asset-x={asset.transform.x}
-        data-asset-y={asset.transform.y}
-        data-asset-width={asset.transform.width}
-        data-asset-height={asset.transform.height}
-        data-asset-rotation={asset.transform.rotation}
+        data-asset-x={asset?.transform.x}
+        data-asset-y={asset?.transform.y}
+        data-asset-width={asset?.transform.width}
+        data-asset-height={asset?.transform.height}
+        data-asset-rotation={asset?.transform.rotation}
         className="block size-full touch-none"
         style={{ cursor }}
         {...canvasEvents}

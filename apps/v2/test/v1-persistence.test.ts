@@ -4,7 +4,7 @@ import test from "node:test";
 import "fake-indexeddb/auto";
 
 import { decodeV1Scene, encodeV1Scene } from "../src/persistence/v1/scene-codec";
-import { hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "../src/persistence/v1/scene-adapter";
+import { applyAssetVisibilityMetadata, hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "../src/persistence/v1/scene-adapter";
 import { SceneConflictError } from "../src/persistence/v1/types";
 import type { V1Scene } from "../src/persistence/v1/types";
 
@@ -142,8 +142,38 @@ test("scene adapter persists new asset layers at their intermingled document ind
   assert.equal(patched.layers[2].fogLayer?.id, "fog-1");
 });
 
+test("scene adapter persists layer visibility/order and applies asset visibility sidecars", () => {
+  const document = projectV1Scene(fullScene);
+  assert.ok(document);
+  const reordered = {
+    ...document,
+    layers: [
+      { ...document.layers[1], visible: false },
+      document.layers[0],
+    ],
+  };
+  const patched = patchV1SceneTransforms(fullScene, reordered, 8);
+  assert.equal(patched.layers[0].fogLayer?.id, "fog-1");
+  assert.equal(patched.layers[0].fogLayer?.visible, false);
+  assert.equal(patched.layers[1].assetLayer?.id, "assets-1");
+  const metadata = applyAssetVisibilityMetadata(document, { "campaign-1/image-1": false });
+  assert.equal(metadata.assets[0].visible, false);
+});
+
+test("scene adapter persists empty scenes after asset and layer deletion", () => {
+  const document = projectV1Scene(fullScene);
+  const withoutAssetLayer = {
+    ...document,
+    layers: document.layers.filter((layer) => layer.type !== "assets"),
+    assets: [],
+  };
+  const patched = patchV1SceneTransforms(fullScene, withoutAssetLayer, 8);
+  assert.equal(patched.layers.some((layer) => layer.assetLayer), false);
+  assert.equal(projectV1Scene(patched).assets.length, 0);
+});
+
 test("v1 repositories use exact stores and reject stale scene saves", async () => {
-  await Promise.all(["campaign", "scene_2", "asset_file", "settings"].map(deleteDatabase));
+  await Promise.all(["campaign", "scene_2", "asset_file", "settings", "fantassist_v2"].map(deleteDatabase));
   const [{ default: localforage }, { createV1Repositories }] = await Promise.all([
     import("localforage"),
     import("../src/persistence/v1/repositories"),
@@ -159,6 +189,8 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
   assert.deepEqual(await repository.listCampaigns(), [{ id: "campaign-1", name: "Campaign One" }]);
   assert.equal((await repository.listScenes("campaign-1"))[0].scene.name, fullScene.name);
   assert.equal(await repository.getSetting("table_size"), 55);
+  await repository.putSceneMetadata(sceneKey, { assetVisibility: { "campaign-1/image-1": false } });
+  assert.equal((await repository.getSceneMetadata(sceneKey))?.assetVisibility["campaign-1/image-1"], false);
   const file = new File([new Uint8Array([1, 2, 3])], "map.png", { type: "image/png" });
   await repository.putAsset("campaign-1/uploaded", file);
   assert.equal((await repository.getAsset("campaign-1/uploaded"))?.name, "map.png");
@@ -180,6 +212,7 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
   assert.deepEqual((await indexedDB.databases()).map((database) => database.name).sort(), [
     "asset_file",
     "campaign",
+    "fantassist_v2",
     "scene_2",
     "settings",
   ]);

@@ -8,6 +8,11 @@ const CAMPAIGN_DATABASE = "campaign";
 const SCENE_DATABASE = "scene_2";
 const ASSET_DATABASE = "asset_file";
 const SETTINGS_DATABASE = "settings";
+const V2_METADATA_DATABASE = "fantassist_v2";
+
+export interface V2SceneMetadata {
+  readonly assetVisibility: Readonly<Record<string, boolean>>;
+}
 
 export interface V1Repositories {
   listCampaigns(): Promise<readonly V1Campaign[]>;
@@ -20,6 +25,8 @@ export interface V1Repositories {
   putAsset(id: string, file: File): Promise<void>;
   removeAsset(id: string): Promise<void>;
   getSetting<T>(key: string): Promise<T | null>;
+  getSceneMetadata(sceneKey: string): Promise<V2SceneMetadata | null>;
+  putSceneMetadata(sceneKey: string, metadata: V2SceneMetadata): Promise<void>;
   subscribeScene(key: string, listener: () => void): () => void;
 }
 
@@ -28,6 +35,7 @@ export function createV1Repositories(): V1Repositories {
   const scenes = localforage.createInstance({ name: SCENE_DATABASE });
   const assets = localforage.createInstance({ name: ASSET_DATABASE });
   const settings = localforage.createInstance({ name: SETTINGS_DATABASE });
+  const metadata = localforage.createInstance({ name: V2_METADATA_DATABASE });
   const setter = crypto.randomUUID();
 
   return {
@@ -80,6 +88,13 @@ export function createV1Repositories(): V1Repositories {
     },
     getSetting<T>(key: string) {
       return settings.getItem<T>(key);
+    },
+    getSceneMetadata(sceneKey) {
+      return metadata.getItem<V2SceneMetadata>(sceneKey);
+    },
+    async putSceneMetadata(sceneKey, value) {
+      await metadata.setItem(sceneKey, value);
+      signalChange(V2_METADATA_DATABASE, sceneKey, setter);
     },
     subscribeScene(key, listener) {
       const eventKey = `${SCENE_DATABASE}_storage_changed`;

@@ -22,9 +22,15 @@ Stored image `File` values decode with `createImageBitmap`. The browser uploader
 
 Scene changes and device recovery reacquire durable files and create new generation-owned image uploads. The output window owns a separate repository/image loader and reloads the media ID received in committed scene snapshots.
 
+Asset-set changes do not remount the canvas or recreate its GPU surface. The browser loader acquires replacement uploads, the existing executor creates and prewarms new texture draws, then atomically swaps its asset resource set after prior GPU work settles. Add, delete, undo, and redo therefore preserve the last presented frame until the replacement is ready.
+
 When no shared scene exists, the first direct-v2 image upload creates a local campaign, v1-compatible scene, asset layer, and file records before hydrating the engine. This makes the upload workflow testable and usable at the standalone v2 origin without requiring a v1 gateway or pre-seeded database.
 
 Asset-layer creation is a typed, undoable engine command. New asset layers append at the top of the persisted layer order without separating or moving intervening fog layers. Each asset layer owns its upload action, and inserted images are ordered within that explicit target layer before the complete layer sequence is re-encoded.
+
+Layer visibility and layer reordering are typed, undoable commands written directly to the v1 layer fields and repeated-layer order. V1 has no per-asset visibility field, so asset visibility is optional v2 metadata stored by scene key in the separate `fantassist_v2` LocalForage database. Rendering and picking require both the asset and its containing layer to be visible. V1 remains able to open the scene but does not apply the optional per-asset sidecar.
+
+Asset and layer deletion are typed, undoable commands. Deleting a layer removes its contained assets from the scene in one history entry; undo restores the exact layer index, asset order, selection-safe scene state, and media references. Empty scenes and scenes with no layers remain valid. Referenced files are retained while undo history can restore them, so physical asset garbage collection remains deferred.
 
 ## Consequences
 

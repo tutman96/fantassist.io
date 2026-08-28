@@ -297,3 +297,74 @@ test("asset layer insertion preserves index and supports undo and redo", () => {
   assert.deepEqual(engine.redo(), { ok: true, changed: true, revision: 3 });
   assert.equal(engine.getSnapshot().scene.layers[1].id, layer.id);
 });
+
+test("layer and asset visibility control picking with undo", () => {
+  const base = createSampleSceneDocument();
+  const bottom = { ...base.assets[0], layerId: "bottom", id: "bottom/image", mediaId: "bottom/image" };
+  const top = { ...base.assets[0], layerId: "top", id: "top/image", mediaId: "top/image" };
+  const engine = createSceneEngine(freezeSceneDocument({
+    ...base,
+    layers: [
+      { id: "bottom", name: "Bottom", type: "assets", visible: true, assetIds: [bottom.id] },
+      { id: "top", name: "Top", type: "assets", visible: true, assetIds: [top.id] },
+    ],
+    assets: [bottom, top],
+  }));
+  assert.equal(pickImageAsset(engine.getSnapshot().scene, { x: 10, y: 10 })?.id, top.id);
+  engine.dispatch({ type: "layer.visibility", layerId: "top", visible: false });
+  assert.equal(pickImageAsset(engine.getSnapshot().scene, { x: 10, y: 10 })?.id, bottom.id);
+  engine.undo();
+  assert.equal(pickImageAsset(engine.getSnapshot().scene, { x: 10, y: 10 })?.id, top.id);
+  engine.dispatch({ type: "asset.visibility", assetId: top.id, visible: false });
+  assert.equal(pickImageAsset(engine.getSnapshot().scene, { x: 10, y: 10 })?.id, bottom.id);
+});
+
+test("layer moves rebuild asset paint order and undo exactly", () => {
+  const base = createSampleSceneDocument();
+  const bottom = { ...base.assets[0], layerId: "bottom", id: "bottom/image", mediaId: "bottom/image" };
+  const top = { ...base.assets[0], layerId: "top", id: "top/image", mediaId: "top/image" };
+  const engine = createSceneEngine(freezeSceneDocument({
+    ...base,
+    layers: [
+      { id: "bottom", name: "Bottom", type: "assets", visible: true, assetIds: [bottom.id] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [] },
+      { id: "top", name: "Top", type: "assets", visible: true, assetIds: [top.id] },
+    ],
+    assets: [bottom, top],
+  }));
+  engine.dispatch({ type: "layer.move", layerId: "bottom", toIndex: 2 });
+  assert.deepEqual(engine.getSnapshot().scene.layers.map((layer) => layer.id), ["fog", "top", "bottom"]);
+  assert.deepEqual(engine.getSnapshot().scene.assets.map((asset) => asset.id), [top.id, bottom.id]);
+  engine.undo();
+  assert.deepEqual(engine.getSnapshot().scene.layers.map((layer) => layer.id), ["bottom", "fog", "top"]);
+  assert.deepEqual(engine.getSnapshot().scene.assets.map((asset) => asset.id), [bottom.id, top.id]);
+});
+
+test("asset deletion supports an empty scene and restores exact membership on undo", () => {
+  const engine = createSceneEngine();
+  const asset = engine.getSnapshot().scene.assets[0];
+  assert.deepEqual(engine.dispatch({ type: "asset.remove", assetId: asset.id }), {
+    ok: true,
+    changed: true,
+    revision: 1,
+  });
+  assert.deepEqual(engine.getSnapshot().scene.assets, []);
+  assert.deepEqual(engine.getSnapshot().scene.layers[0].assetIds, []);
+  engine.undo();
+  assert.equal(engine.getSnapshot().scene.assets[0].id, asset.id);
+  assert.equal(engine.getSnapshot().scene.layers[0].assetIds[0], asset.id);
+});
+
+test("layer deletion removes contained assets and undo restores index and contents", () => {
+  const engine = createSceneEngine();
+  const before = engine.getSnapshot().scene;
+  const layer = before.layers[0];
+  assert.equal(engine.dispatch({ type: "layer.remove", layerId: layer.id }).ok, true);
+  assert.equal(engine.getSnapshot().scene.layers.some((item) => item.id === layer.id), false);
+  assert.equal(engine.getSnapshot().scene.assets.length, 0);
+  engine.undo();
+  assert.deepEqual(engine.getSnapshot().scene.layers.map((item) => item.id), before.layers.map((item) => item.id));
+  assert.deepEqual(engine.getSnapshot().scene.assets.map((item) => item.id), before.assets.map((item) => item.id));
+  engine.redo();
+  assert.equal(engine.getSnapshot().scene.assets.length, 0);
+});

@@ -26,7 +26,12 @@ export type SceneCommand =
       readonly transform: AssetTransform;
     }
   | { readonly type: "asset.insert"; readonly asset: ImageAsset }
+  | { readonly type: "asset.remove"; readonly assetId: string }
+  | { readonly type: "asset.visibility"; readonly assetId: string; readonly visible: boolean }
   | { readonly type: "layer.insert"; readonly layer: SceneLayer; readonly index?: number }
+  | { readonly type: "layer.remove"; readonly layerId: string }
+  | { readonly type: "layer.visibility"; readonly layerId: string; readonly visible: boolean }
+  | { readonly type: "layer.move"; readonly layerId: string; readonly toIndex: number }
   | { readonly type: "selection.set"; readonly assetId: string | null };
 
 export type PreviewCommand = Extract<SceneCommand, { readonly type: "asset.transform" }>;
@@ -69,7 +74,12 @@ export interface SceneEngine {
 type HistoryEntry =
   | { readonly kind: "transform"; readonly assetId: string; readonly before: AssetTransform; readonly after: AssetTransform }
   | { readonly kind: "insert"; readonly asset: ImageAsset }
-  | { readonly kind: "insert-layer"; readonly layer: SceneLayer; readonly index: number };
+  | { readonly kind: "remove"; readonly asset: ImageAsset; readonly layerIndex: number }
+  | { readonly kind: "insert-layer"; readonly layer: SceneLayer; readonly index: number }
+  | { readonly kind: "remove-layer"; readonly layer: SceneLayer; readonly assets: readonly ImageAsset[]; readonly index: number }
+  | { readonly kind: "asset-visibility"; readonly assetId: string; readonly before: boolean; readonly after: boolean }
+  | { readonly kind: "layer-visibility"; readonly layerId: string; readonly before: boolean; readonly after: boolean }
+  | { readonly kind: "move-layer"; readonly layerId: string; readonly fromIndex: number; readonly toIndex: number };
 
 interface ActivePreview {
   readonly token: PreviewToken;
@@ -192,6 +202,31 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (command.type === "asset.remove") {
+        const asset = findAsset(committedScene, command.assetId);
+        if (!asset) return { ok: false, error: `Unknown asset '${command.assetId}'`, revision };
+        const layer = committedScene.layers.find((candidate) => candidate.id === asset.layerId);
+        const layerIndex = layer?.assetIds.indexOf(asset.id) ?? -1;
+        if (layerIndex < 0) return { ok: false, error: `Asset '${asset.id}' is not assigned to its layer`, revision };
+        revision++;
+        committedScene = applyRemove(committedScene, asset.id, revision);
+        undoStack = [...undoStack, { kind: "remove", asset, layerIndex }];
+        redoStack = [];
+        if (selectedAssetId === asset.id) selectedAssetId = null;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (command.type === "asset.visibility") {
+        const asset = findAsset(committedScene, command.assetId);
+        if (!asset) return { ok: false, error: `Unknown asset '${command.assetId}'`, revision };
+        if (asset.visible === command.visible) return { ok: true, changed: false, revision };
+        revision++;
+        committedScene = applyAssetVisibility(committedScene, asset.id, command.visible, revision);
+        undoStack = [...undoStack, { kind: "asset-visibility", assetId: asset.id, before: asset.visible, after: command.visible }];
+        redoStack = [];
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       if (command.type === "layer.insert") {
         if (committedScene.layers.some((layer) => layer.id === command.layer.id)) {
           return { ok: false, error: `Layer '${command.layer.id}' already exists`, revision };
@@ -206,6 +241,45 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         revision++;
         committedScene = applyLayerInsert(committedScene, command.layer, index, revision);
         undoStack = [...undoStack, { kind: "insert-layer", layer: command.layer, index }];
+        redoStack = [];
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (command.type === "layer.remove") {
+        const index = committedScene.layers.findIndex((layer) => layer.id === command.layerId);
+        if (index < 0) return { ok: false, error: `Unknown layer '${command.layerId}'`, revision };
+        const layer = committedScene.layers[index];
+        const assets = layer.assetIds.flatMap((id) => {
+          const asset = findAsset(committedScene, id);
+          return asset ? [asset] : [];
+        });
+        revision++;
+        committedScene = applyLayerDelete(committedScene, layer.id, revision);
+        undoStack = [...undoStack, { kind: "remove-layer", layer, assets, index }];
+        redoStack = [];
+        if (selectedAssetId && layer.assetIds.includes(selectedAssetId)) selectedAssetId = null;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (command.type === "layer.visibility") {
+        const layer = committedScene.layers.find((candidate) => candidate.id === command.layerId);
+        if (!layer) return { ok: false, error: `Unknown layer '${command.layerId}'`, revision };
+        if (layer.visible === command.visible) return { ok: true, changed: false, revision };
+        revision++;
+        committedScene = applyLayerVisibility(committedScene, layer.id, command.visible, revision);
+        undoStack = [...undoStack, { kind: "layer-visibility", layerId: layer.id, before: layer.visible, after: command.visible }];
+        redoStack = [];
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (command.type === "layer.move") {
+        const fromIndex = committedScene.layers.findIndex((layer) => layer.id === command.layerId);
+        if (fromIndex < 0) return { ok: false, error: `Unknown layer '${command.layerId}'`, revision };
+        const toIndex = Math.min(committedScene.layers.length - 1, Math.max(0, command.toIndex));
+        if (fromIndex === toIndex) return { ok: true, changed: false, revision };
+        revision++;
+        committedScene = applyLayerMove(committedScene, fromIndex, toIndex, revision);
+        undoStack = [...undoStack, { kind: "move-layer", layerId: command.layerId, fromIndex, toIndex }];
         redoStack = [];
         publish("all");
         return { ok: true, changed: true, revision };
@@ -319,9 +393,40 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (entry.kind === "remove") {
+        revision++;
+        committedScene = applyInsertAt(committedScene, entry.asset, entry.layerIndex, revision);
+        selectedAssetId = entry.asset.id;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       if (entry.kind === "insert-layer") {
         revision++;
         committedScene = applyLayerRemove(committedScene, entry.layer.id, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "remove-layer") {
+        revision++;
+        committedScene = applyLayerRestore(committedScene, entry.layer, entry.assets, entry.index, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "asset-visibility") {
+        revision++;
+        committedScene = applyAssetVisibility(committedScene, entry.assetId, entry.before, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "layer-visibility") {
+        revision++;
+        committedScene = applyLayerVisibility(committedScene, entry.layerId, entry.before, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "move-layer") {
+        revision++;
+        committedScene = applyLayerMove(committedScene, entry.toIndex, entry.fromIndex, revision);
         publish("all");
         return { ok: true, changed: true, revision };
       }
@@ -343,9 +448,41 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (entry.kind === "remove") {
+        revision++;
+        committedScene = applyRemove(committedScene, entry.asset.id, revision);
+        if (selectedAssetId === entry.asset.id) selectedAssetId = null;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       if (entry.kind === "insert-layer") {
         revision++;
         committedScene = applyLayerInsert(committedScene, entry.layer, entry.index, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "remove-layer") {
+        revision++;
+        committedScene = applyLayerDelete(committedScene, entry.layer.id, revision);
+        if (selectedAssetId && entry.layer.assetIds.includes(selectedAssetId)) selectedAssetId = null;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "asset-visibility") {
+        revision++;
+        committedScene = applyAssetVisibility(committedScene, entry.assetId, entry.after, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "layer-visibility") {
+        revision++;
+        committedScene = applyLayerVisibility(committedScene, entry.layerId, entry.after, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "move-layer") {
+        revision++;
+        committedScene = applyLayerMove(committedScene, entry.fromIndex, entry.toIndex, revision);
         publish("all");
         return { ok: true, changed: true, revision };
       }
@@ -522,7 +659,8 @@ export function pickAssetHandle(
 export function pickImageAsset(scene: SceneDocument, pointGrid: GridPoint): ImageAsset | null {
   for (let index = scene.assets.length - 1; index >= 0; index--) {
     const asset = scene.assets[index];
-    if (!asset.visible) continue;
+    const layer = scene.layers.find((candidate) => candidate.id === asset.layerId);
+    if (!asset.visible || !layer?.visible) continue;
     const transform = asset.transform;
     const centerX = transform.x + transform.width / 2;
     const centerY = transform.y + transform.height / 2;
@@ -582,6 +720,22 @@ function applyRemove(scene: SceneDocument, assetId: string, version: number): Sc
   });
 }
 
+function applyInsertAt(
+  scene: SceneDocument,
+  asset: ImageAsset,
+  layerIndex: number,
+  version: number
+): SceneDocument {
+  const layers = scene.layers.map((layer) => {
+    if (layer.id !== asset.layerId) return layer;
+    const assetIds = [...layer.assetIds];
+    assetIds.splice(layerIndex, 0, asset.id);
+    return { ...layer, assetIds };
+  });
+  const assetsById = new Map([...scene.assets, asset].map((item) => [item.id, item]));
+  return freezeSceneDocument({ ...scene, version, layers, assets: orderAssets(layers, assetsById) });
+}
+
 function applyLayerInsert(
   scene: SceneDocument,
   layer: SceneLayer,
@@ -601,6 +755,84 @@ function applyLayerRemove(scene: SceneDocument, layerId: string, version: number
     version,
     layers: scene.layers.filter((candidate) => candidate.id !== layerId),
   });
+}
+
+function applyLayerDelete(scene: SceneDocument, layerId: string, version: number): SceneDocument {
+  const layer = scene.layers.find((candidate) => candidate.id === layerId);
+  const removedIds = new Set(layer?.assetIds ?? []);
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers: scene.layers.filter((candidate) => candidate.id !== layerId),
+    assets: scene.assets.filter((asset) => !removedIds.has(asset.id)),
+  });
+}
+
+function applyLayerRestore(
+  scene: SceneDocument,
+  layer: SceneLayer,
+  restoredAssets: readonly ImageAsset[],
+  index: number,
+  version: number
+): SceneDocument {
+  const layers = [...scene.layers];
+  layers.splice(index, 0, layer);
+  const assetsById = new Map([...scene.assets, ...restoredAssets].map((asset) => [asset.id, asset]));
+  return freezeSceneDocument({ ...scene, version, layers, assets: orderAssets(layers, assetsById) });
+}
+
+function applyAssetVisibility(
+  scene: SceneDocument,
+  assetId: string,
+  visible: boolean,
+  version: number
+): SceneDocument {
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    assets: scene.assets.map((asset) => asset.id === assetId ? { ...asset, visible } : asset),
+  });
+}
+
+function applyLayerVisibility(
+  scene: SceneDocument,
+  layerId: string,
+  visible: boolean,
+  version: number
+): SceneDocument {
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers: scene.layers.map((layer) => layer.id === layerId ? { ...layer, visible } : layer),
+  });
+}
+
+function applyLayerMove(
+  scene: SceneDocument,
+  fromIndex: number,
+  toIndex: number,
+  version: number
+): SceneDocument {
+  const layers = [...scene.layers];
+  const [layer] = layers.splice(fromIndex, 1);
+  layers.splice(toIndex, 0, layer);
+  const assetsById = new Map(scene.assets.map((asset) => [asset.id, asset]));
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers,
+    assets: orderAssets(layers, assetsById),
+  });
+}
+
+function orderAssets(
+  layers: readonly SceneLayer[],
+  assetsById: ReadonlyMap<string, ImageAsset>
+): ImageAsset[] {
+  return layers.flatMap((layer) => layer.assetIds.flatMap((assetId) => {
+    const asset = assetsById.get(assetId);
+    return asset ? [asset] : [];
+  }));
 }
 
 function validateTransform(transform: AssetTransform): string | null {

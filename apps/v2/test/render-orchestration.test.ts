@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { getMockGPUDeviceInstrumentation, init, target } from "vgpu/mock";
+import type { Gpu, Texture } from "vgpu";
 
 import { createRenderPlan, SCENE_PASS_ORDER } from "../src/renderer/render-plan";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
@@ -30,6 +31,23 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
       assets: [...base.assets, secondAsset],
     }));
     let imageUploads = 0;
+    const uploads = (count: number) => Array.from({ length: count }, () => ({
+      width: 2,
+      height: 2,
+      upload(uploadGpu: Gpu, texture: Texture) {
+        imageUploads++;
+        uploadGpu.gpu.queue.writeTexture(
+          { texture: texture.gpu },
+          new Uint8Array([
+            255, 0, 0, 255, 0, 255, 0, 255,
+            0, 0, 255, 255, 255, 255, 255, 0,
+          ]),
+          { bytesPerRow: 8, rowsPerImage: 2 },
+          [2, 2, 1]
+        );
+      },
+      dispose() {},
+    }));
     const executor = createSceneExecutor(
       gpu,
       output,
@@ -37,23 +55,7 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
       await loadSceneShaders(),
       { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY },
       engine.getSnapshot(),
-      [0, 1].map(() => ({
-        width: 2,
-        height: 2,
-        upload(uploadGpu, texture) {
-          imageUploads++;
-          uploadGpu.gpu.queue.writeTexture(
-            { texture: texture.gpu },
-            new Uint8Array([
-              255, 0, 0, 255, 0, 255, 0, 255,
-              0, 0, 255, 255, 255, 255, 255, 0,
-            ]),
-            { bytesPerRow: 8, rowsPerImage: 2 },
-            [2, 2, 1]
-          );
-        },
-        dispose() {},
-      }))
+      uploads(2)
     );
     assert.equal(imageUploads, 2);
 
@@ -67,9 +69,13 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
     });
     executor.setSnapshot(engine.getSnapshot());
     await executor.render(1.25);
+    engine.dispatch({ type: "asset.remove", assetId: secondAsset.id });
+    await executor.replaceAssets(engine.getSnapshot(), uploads(1));
+    await executor.render(1.25);
+    assert.equal(imageUploads, 3);
 
     const instrumentation = getMockGPUDeviceInstrumentation(gpu.gpu);
-    assert.equal(instrumentation.calls.createCommandEncoder, 2);
+    assert.equal(instrumentation.calls.createCommandEncoder, 3);
     assert.equal(
       instrumentation.calls.createRenderPipeline +
         instrumentation.calls.createRenderPipelineAsync,

@@ -9,7 +9,7 @@ import { createSampleSceneDocument } from "@/engine/scene-document";
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { createV1Repositories } from "@/persistence/v1/repositories";
 import type { V1Repositories } from "@/persistence/v1/repositories";
-import { hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "@/persistence/v1/scene-adapter";
+import { applyAssetVisibilityMetadata, hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "@/persistence/v1/scene-adapter";
 import { SceneConflictError } from "@/persistence/v1/types";
 import type { V1Campaign, V1SceneRecord } from "@/persistence/v1/types";
 import { createBrowserImageLoader } from "@/renderer/browser-image-loader";
@@ -63,8 +63,11 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
 
   const hydrate = async (record: V1SceneRecord) => {
     const projected = projectV1Scene(record.scene);
-    if (!projected) throw new Error("This scene does not contain a supported image asset yet");
-    const document = await hydrateAssetDisplayNames(projected, (id) => repositories.getAsset(id));
+    const [namedDocument, metadata] = await Promise.all([
+      hydrateAssetDisplayNames(projected, (id) => repositories.getAsset(id)),
+      repositories.getSceneMetadata(record.key),
+    ]);
+    const document = applyAssetVisibilityMetadata(namedDocument, metadata?.assetVisibility);
     hydrating.current = true;
     activeRecord.current = record;
     savedEngineRevision.current = document.version;
@@ -284,11 +287,11 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       }));
       setScenes(catalog);
       const preferred = sceneRecords.find((record) => record.key === displayedScene)
-        ?? sceneRecords.find((record) => projectV1Scene(record.scene) !== null);
+        ?? sceneRecords[0];
       if (preferred) await selectSceneForInitialization(preferred.key);
       else {
         setStatus("error");
-        setError("No stored scene contains a supported image asset");
+        setError("No stored scene is available");
       }
     }).catch((cause: unknown) => {
       if (cancelled) return;
@@ -318,6 +321,9 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
         { ...currentRecord, scene: nextScene },
         currentRecord.scene.version
       );
+      await repositories.putSceneMetadata(saved.key, {
+        assetVisibility: Object.fromEntries(committed.scene.assets.map((asset) => [asset.id, asset.visible])),
+      });
       activeRecord.current = saved;
       savedEngineRevision.current = committed.revision;
       setScenes((current) => current.map((scene) => scene.key === saved.key

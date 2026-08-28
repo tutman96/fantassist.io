@@ -1,5 +1,5 @@
 import { draw, effect, frame, sampler, target } from "vgpu";
-import type { Draw, Effect, Gpu, Target, TargetSignature } from "vgpu";
+import type { Draw, Effect, Gpu, Target, TargetSignature, Texture } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
 import { createFallbackImageUpload } from "../image-texture";
@@ -13,6 +13,7 @@ export interface SceneExecutor {
   readonly lightFormat: "rgba16float";
   readonly estimatedTargetBytes: number;
   prewarm(): Promise<void>;
+  replaceAssets(snapshot: SceneEngineSnapshot, uploads: readonly ImageTextureUpload[]): Promise<void>;
   render(time: number): Promise<void>;
   resize(size: readonly [number, number]): void;
   setGridVisible(visible: boolean): void;
@@ -52,39 +53,48 @@ export function createSceneExecutor(
   const selectionParams = () => {
     const asset = snapshot.scene.assets.find((candidate) => candidate.id === snapshot.selectedAssetId)
       ?? snapshot.scene.assets[0];
+    const transform = asset?.transform ?? { x: 0, y: 0, width: 0, height: 0, rotation: 0 };
+    const layerVisible = asset
+      ? snapshot.scene.layers.find((layer) => layer.id === asset.layerId)?.visible ?? false
+      : false;
     return {
-      asset_origin: [asset.transform.x, asset.transform.y],
-      asset_size: [asset.transform.width, asset.transform.height],
-      asset_rotation: (asset.transform.rotation * Math.PI) / 180,
-      selected: plan.showEditorGrid && snapshot.selectedAssetId === asset.id ? 1 : 0,
+      asset_origin: [transform.x, transform.y],
+      asset_size: [transform.width, transform.height],
+      asset_rotation: (transform.rotation * Math.PI) / 180,
+      selected: asset && plan.showEditorGrid && snapshot.selectedAssetId === asset.id && asset.visible && layerVisible ? 1 : 0,
     };
   };
-  const assetEntries = initialSnapshot.scene.assets.flatMap((asset, index) => {
-    if (!asset.visible) return [];
-    const upload = imageUploads[index] ?? createFallbackImageUpload();
-    const texture = gpu.device.createTexture({
-      size: [upload.width, upload.height],
-      format: "rgba8unorm-srgb",
-      usage: ["copy_dst", "texture_binding", "render_attachment"],
-      label: `scene-image:${asset.id}`,
+  const createAssetEntries = (
+    sourceSnapshot: SceneEngineSnapshot,
+    uploads: readonly ImageTextureUpload[]
+  ): { readonly id: string; readonly drawable: Draw; readonly texture: Texture }[] =>
+    sourceSnapshot.scene.assets.map((asset, index) => {
+      const upload = uploads[index] ?? createFallbackImageUpload();
+      const texture = gpu.device.createTexture({
+        size: [upload.width, upload.height],
+        format: "rgba8unorm-srgb",
+        usage: ["copy_dst", "texture_binding", "render_attachment"],
+        label: `scene-image:${asset.id}`,
+      });
+      upload.upload(gpu, texture);
+      return {
+        id: asset.id,
+        texture,
+        drawable: draw(gpu, {
+          shader: shaders.assets,
+          vertices: 6,
+          instances: 1,
+          blend: "premultiplied",
+          label: `asset:${asset.id}`,
+          set: {
+            map_texture: texture,
+            texture_sampler: imageSampler,
+            params: assetParams(asset),
+          },
+        }),
+      };
     });
-    upload.upload(gpu, texture);
-    return [{
-      id: asset.id,
-      drawable: draw(gpu, {
-        shader: shaders.assets,
-        vertices: 6,
-        instances: 1,
-        blend: "premultiplied",
-        label: `asset:${asset.id}`,
-        set: {
-          map_texture: texture,
-          texture_sampler: imageSampler,
-          params: assetParams(asset),
-        },
-      }),
-    }];
-  });
+  let assetEntries = createAssetEntries(initialSnapshot, imageUploads);
   const fogMask = effect(gpu, shaders.fogMask, {
     label: "fog-mask",
     set: { params: projectionUniforms(projection) },
@@ -156,6 +166,15 @@ export function createSceneExecutor(
       ]);
       await gpu.settled();
     },
+    async replaceAssets(nextSnapshot, uploads) {
+      const nextEntries = createAssetEntries(nextSnapshot, uploads);
+      await Promise.all(nextEntries.map((entry) => entry.drawable.compile(signature(scene))));
+      await gpu.settled();
+      const previousEntries = assetEntries;
+      assetEntries = nextEntries;
+      snapshot = nextSnapshot;
+      previousEntries.forEach((entry) => entry.texture.destroy());
+    },
     async render(time) {
       const params = spatialParams(time);
       for (const entry of assetEntries) {
@@ -181,7 +200,12 @@ export function createSceneExecutor(
         for (const name of plan.passes) {
           if (name === "asset-background") {
             currentFrame.pass({ target: scene, clear: [0, 0, 0, 1] }, (pass) => {
-              for (const entry of assetEntries) pass.draw(entry.drawable);
+              for (const asset of snapshot.scene.assets) {
+                const layerVisible = snapshot.scene.layers.find((layer) => layer.id === asset.layerId)?.visible ?? false;
+                if (!asset.visible || !layerVisible) continue;
+                const entry = assetEntries.find((candidate) => candidate.id === asset.id);
+                if (entry) pass.draw(entry.drawable);
+              }
             });
             continue;
           }

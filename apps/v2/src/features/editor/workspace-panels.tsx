@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eye, ImageIcon, ImagePlus, Layers3, ListPlus, Ruler } from "lucide-react";
+import { Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, ListPlus, Ruler, Trash2 } from "lucide-react";
 
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -25,13 +26,15 @@ export function WorkspacePanels({
   const [layersOpen, setLayersOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ readonly layerId: string; readonly edge: "before" | "after" } | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const uploadLayerId = useRef<string | null>(null);
+  const draggedLayerIdRef = useRef<string | null>(null);
   const editorScene = useEditorScene();
   const tableSession = useSharedTableSession();
   const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
     ?? sceneSnapshot.scene.assets[0];
-  const assetSelected = sceneSnapshot.selectedAssetId === asset.id;
+  const assetSelected = asset !== undefined && sceneSnapshot.selectedAssetId === asset.id;
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 640px)");
@@ -64,7 +67,10 @@ export function WorkspacePanels({
         contentClassName="max-h-[calc(55svh-5rem)] sm:h-full sm:max-h-none"
       >
         {assetSelected ? (
-          <AssetInspector sceneSnapshot={sceneSnapshot} />
+          <AssetInspector
+            engine={engine}
+            sceneSnapshot={sceneSnapshot}
+          />
         ) : (
           <SceneInspector sceneSnapshot={sceneSnapshot} />
         )}
@@ -129,11 +135,83 @@ export function WorkspacePanels({
           </div>
           <div className="grid gap-1">
             {[...sceneSnapshot.scene.layers].reverse().map((layer) => (
-              <div key={layer.id} className="border-t border-violet-300/8 first:border-t-0">
+              <div
+                key={layer.id}
+                className="relative border-t border-violet-300/8 first:border-t-0"
+                data-visible={layer.visible}
+                onDragOver={(event) => {
+                  const draggedId = draggedLayerIdRef.current;
+                  if (!draggedId || draggedId === layer.id) return;
+                  event.preventDefault();
+                  const bounds = event.currentTarget.getBoundingClientRect();
+                  setDropTarget({
+                    layerId: layer.id,
+                    edge: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+                  });
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const draggedId = draggedLayerIdRef.current;
+                  if (draggedId) {
+                    const bounds = event.currentTarget.getBoundingClientRect();
+                    moveLayerByDrop(engine, sceneSnapshot, draggedId, {
+                      layerId: layer.id,
+                      edge: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+                    });
+                  }
+                  draggedLayerIdRef.current = null;
+                  setDropTarget(null);
+                }}
+              >
+                {dropTarget?.layerId === layer.id ? (
+                  <span className={`pointer-events-none absolute inset-x-1 z-20 h-0.5 bg-blue-300 shadow-[0_0_8px_rgba(125,211,252,0.8)] ${dropTarget.edge === "before" ? "top-0" : "bottom-0"}`} />
+                ) : null}
                 <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-violet-50/80" title={layer.name}>{layer.name}</span>
-                  <span className="flex shrink-0 items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    draggable
+                    aria-label={`Reorder ${layer.name}`}
+                    title={`Drag to reorder ${layer.name}; use Arrow Up or Arrow Down from the keyboard`}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", layer.id);
+                      draggedLayerIdRef.current = layer.id;
+                    }}
+                    onDragEnd={() => {
+                      draggedLayerIdRef.current = null;
+                      setDropTarget(null);
+                    }}
+                    onKeyDown={(event) => {
+                      const index = sceneSnapshot.scene.layers.findIndex((candidate) => candidate.id === layer.id);
+                      if (event.key === "ArrowUp" && index < sceneSnapshot.scene.layers.length - 1) {
+                        event.preventDefault();
+                        engine.dispatch({ type: "layer.move", layerId: layer.id, toIndex: index + 1 });
+                      } else if (event.key === "ArrowDown" && index > 0) {
+                        event.preventDefault();
+                        engine.dispatch({ type: "layer.move", layerId: layer.id, toIndex: index - 1 });
+                      }
+                    }}
+                    className="-ml-1 cursor-grab rounded-none text-violet-100/40 hover:bg-violet-400/10 hover:text-violet-100 active:cursor-grabbing [&_svg]:size-3.5"
+                  >
+                    <GripVertical aria-hidden="true" />
+                  </Button>
+                  <span className={`min-w-0 flex-1 truncate text-[11px] font-medium ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`} title={layer.name}>{layer.name}</span>
+                  <span className="flex shrink-0 items-center gap-1">
                     <span className="font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
+                    <LayerIconButton
+                      label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+                      onClick={() => engine.dispatch({ type: "layer.visibility", layerId: layer.id, visible: !layer.visible })}
+                    >
+                      {layer.visible ? <Eye /> : <EyeOff />}
+                    </LayerIconButton>
+                    <DeleteConfirmation
+                      title="Delete layer?"
+                      description={`${layer.name} and ${layer.assetIds.length} contained image${layer.assetIds.length === 1 ? "" : "s"} will be removed from the scene.`}
+                      onConfirm={() => engine.dispatch({ type: "layer.remove", layerId: layer.id })}
+                      trigger={<LayerIconButton label={`Delete ${layer.name}`}><Trash2 /></LayerIconButton>}
+                    />
                     {layer.type === "assets" ? (
                       <Button
                         disabled={!editorScene || editorScene.status === "loading" || editorScene.status === "conflict" || uploading}
@@ -158,37 +236,83 @@ export function WorkspacePanels({
                   if (!layerAsset) return null;
                   const selected = sceneSnapshot.selectedAssetId === layerAsset.id;
                   return (
-                    <Button
-                      key={layerAsset.id}
-                      type="button"
-                      variant="ghost"
-                      aria-pressed={selected}
-                      onClick={() => {
-                        engine.dispatch({ type: "selection.set", assetId: layerAsset.id });
-                        revealInspector();
-                      }}
-                      className="group/layer min-h-10 w-full justify-start gap-2.5 rounded-none border border-transparent px-2 py-1.5 text-left hover:border-violet-300/12 hover:bg-violet-400/5 aria-pressed:border-blue-300/20 aria-pressed:bg-gradient-to-r aria-pressed:from-blue-500/14 aria-pressed:to-violet-500/8"
-                    >
-                      <AssetThumbnail assetId={layerAsset.mediaId} selected={selected} />
-                      <span className="min-w-0 flex-1 truncate font-mono text-[9px] tracking-wide text-violet-100/60 uppercase" title={layerAsset.name}>{layerAsset.name}</span>
-                      <Eye className="size-3.5 text-violet-200/55" aria-label="Visible" />
-                    </Button>
+                    <div key={layerAsset.id} className="flex items-center gap-1" data-visible={layerAsset.visible && layer.visible}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          engine.dispatch({ type: "selection.set", assetId: layerAsset.id });
+                          revealInspector();
+                        }}
+                        className="group/layer min-h-10 min-w-0 flex-1 justify-start gap-2.5 rounded-none border border-transparent px-2 py-1.5 text-left opacity-45 hover:border-violet-300/12 hover:bg-violet-400/5 data-[visible=true]:opacity-100 aria-pressed:border-blue-300/20 aria-pressed:bg-gradient-to-r aria-pressed:from-blue-500/14 aria-pressed:to-violet-500/8"
+                        data-visible={layerAsset.visible && layer.visible}
+                      >
+                        <AssetThumbnail assetId={layerAsset.mediaId} selected={selected} />
+                        <span className="min-w-0 flex-1 truncate font-mono text-[9px] tracking-wide text-violet-100/60 uppercase" title={layerAsset.name}>{layerAsset.name}</span>
+                      </Button>
+                      <LayerIconButton
+                        label={layerAsset.visible ? `Hide ${layerAsset.name}` : `Show ${layerAsset.name}`}
+                        onClick={() => engine.dispatch({ type: "asset.visibility", assetId: layerAsset.id, visible: !layerAsset.visible })}
+                      >
+                        {layerAsset.visible ? <Eye /> : <EyeOff />}
+                      </LayerIconButton>
+                    </div>
                   );
                 })}
               </div>
             ))}
           </div>
           {uploadError ? <p role="alert" className="mt-1.5 px-1 text-[10px] text-red-300 [overflow-wrap:anywhere]">{uploadError}</p> : null}
-          <p className="mt-1.5 px-1 text-[10px] leading-4 text-violet-100/50">
-            Use an asset layer&apos;s image action to store media directly in that layer.
-          </p>
         </div>
       </EditorPanel>
     </div>
   );
 }
 
-function AssetInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngineSnapshot }) {
+function LayerIconButton({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  readonly children: React.ReactNode;
+  readonly disabled?: boolean;
+  readonly label: string;
+  readonly onClick?: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-xs"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="rounded-none text-violet-100/50 hover:bg-violet-400/10 hover:text-white [&_svg]:size-3"
+    >
+      {children}
+    </Button>
+  );
+}
+
+function moveLayerByDrop(
+  engine: SceneEngine,
+  snapshot: SceneEngineSnapshot,
+  layerId: string,
+  target: { readonly layerId: string; readonly edge: "before" | "after" }
+) {
+  const visualOrder = snapshot.scene.layers.map((layer) => layer.id).reverse();
+  const withoutDragged = visualOrder.filter((id) => id !== layerId);
+  const targetIndex = withoutDragged.indexOf(target.layerId);
+  if (targetIndex < 0) return;
+  withoutDragged.splice(targetIndex + (target.edge === "after" ? 1 : 0), 0, layerId);
+  const toIndex = [...withoutDragged].reverse().indexOf(layerId);
+  engine.dispatch({ type: "layer.move", layerId, toIndex });
+}
+
+function AssetInspector({ engine, sceneSnapshot }: { readonly engine: SceneEngine; readonly sceneSnapshot: SceneEngineSnapshot }) {
   const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
     ?? sceneSnapshot.scene.assets[0];
   return (
@@ -207,10 +331,54 @@ function AssetInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngine
       </div>
       <Separator className="my-2 bg-violet-300/10" />
       <div className="grid grid-cols-2 gap-1.5">
+        <Button
+          variant="outline"
+          onClick={() => engine.dispatch({ type: "asset.visibility", assetId: asset.id, visible: !asset.visible })}
+          className="col-span-2 h-8 rounded-none border-violet-300/18 bg-violet-400/5 text-[10px] text-violet-100/75 hover:border-blue-300/30 hover:bg-blue-400/10 hover:text-white"
+        >
+          {asset.visible ? <Eye aria-hidden="true" /> : <EyeOff aria-hidden="true" />}
+          {asset.visible ? "Hide selected asset" : "Show selected asset"}
+        </Button>
         <Button disabled variant="outline" className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 text-[10px] text-violet-100/35">Replace media</Button>
         <Button disabled variant="outline" className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 text-[10px] text-violet-100/35">Calibrate</Button>
+        <DeleteConfirmation
+          title="Delete asset?"
+          description={`${asset.name} will be removed from its layer.`}
+          onConfirm={() => engine.dispatch({ type: "asset.remove", assetId: asset.id })}
+          trigger={<Button variant="destructive" className="col-span-2 h-8 w-full rounded-none text-[10px]"><Trash2 aria-hidden="true" /> Delete selected asset</Button>}
+        />
       </div>
     </div>
+  );
+}
+
+function DeleteConfirmation({
+  description,
+  onConfirm,
+  title,
+  trigger,
+}: {
+  readonly description: string;
+  readonly onConfirm: () => void;
+  readonly title: string;
+  readonly trigger: React.ReactElement;
+}) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      <AlertDialogContent className="rounded-none border border-violet-300/20 bg-[#100d20] text-violet-50 ring-0">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-violet-100/60 [overflow-wrap:anywhere]">
+            {description} You can undo this action during the current session.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="rounded-none border-violet-300/12 bg-black/15">
+          <AlertDialogCancel className="rounded-none border-violet-300/15 bg-transparent text-violet-100/70">Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" className="rounded-none" onClick={onConfirm}>Delete</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

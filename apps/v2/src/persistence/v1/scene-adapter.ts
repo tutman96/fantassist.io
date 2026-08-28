@@ -4,7 +4,7 @@ import type { SceneDocument } from "@/engine/scene-document";
 import { decodeV1Scene, encodeV1Scene } from "./scene-codec";
 import type { V1Scene } from "./types";
 
-export function projectV1Scene(scene: V1Scene): SceneDocument | null {
+export function projectV1Scene(scene: V1Scene): SceneDocument {
   const layers = scene.layers.map((layer) => {
     if (layer.assetLayer) {
       return {
@@ -36,13 +36,12 @@ export function projectV1Scene(scene: V1Scene): SceneDocument | null {
         mediaId: asset.id,
         name: `${assetLayer.name || "Assets"} image ${index + 1}`,
         type: "image" as const,
-        visible: assetLayer.visible,
+        visible: true,
         intrinsicSize: asset.size ?? { width: asset.transform.width, height: asset.transform.height },
         transform: { ...asset.transform },
       }];
     });
   });
-  if (assets.length === 0) return null;
   return freezeSceneDocument({
     id: scene.id,
     name: scene.name,
@@ -62,6 +61,20 @@ export async function hydrateAssetDisplayNames(
     return { ...asset, name: file.name.replace(/\.[^.]+$/, "") || asset.name };
   }));
   return freezeSceneDocument({ ...document, assets });
+}
+
+export function applyAssetVisibilityMetadata(
+  document: SceneDocument,
+  visibility: Readonly<Record<string, boolean>> | undefined
+): SceneDocument {
+  if (!visibility) return document;
+  return freezeSceneDocument({
+    ...document,
+    assets: document.assets.map((asset) => ({
+      ...asset,
+      visible: visibility[asset.id] ?? true,
+    })),
+  });
 }
 
 export function patchV1SceneTransforms(
@@ -90,7 +103,15 @@ export function patchV1SceneTransforms(
           },
         };
       }
-      if (layer?.fogLayer) return layer;
+      if (layer?.fogLayer) {
+        return {
+          fogLayer: {
+            ...layer.fogLayer,
+            name: domainLayer.name,
+            visible: domainLayer.visible,
+          },
+        };
+      }
       if (domainLayer.type === "assets") {
         return {
           assetLayer: {
