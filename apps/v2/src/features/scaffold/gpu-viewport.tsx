@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ChevronDown, Grid3X3, LocateFixed, Minus, Move, Plus, RotateCcw, Ruler, Tv2 } from "lucide-react";
+import { ChevronDown, Eye, Grid3X3, ImageIcon, Layers3, LocateFixed, Minus, Move, Plus, PlusCircle, Redo2, RotateCcw, Ruler, Undo2 } from "lucide-react";
 
 import { createSceneEngine } from "@/engine/scene-engine";
-import type { AssetHandle, PreviewToken, ResizeHandle } from "@/engine/scene-engine";
+import type { AssetHandle, PreviewToken, ResizeHandle, SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import { createTableSession } from "@/engine/table-session";
 import { synchronizeSceneEngine } from "@/features/scaffold/scene-session-channel";
+import { useSharedTableSession } from "@/features/scaffold/table-session-context";
 import { synchronizeTableSession } from "@/features/scaffold/table-session-channel";
-import { derivePhysicalDisplay, editorCssToGrid, getTableBounds } from "@/engine/table-camera";
+import { editorCssToGrid } from "@/engine/table-camera";
 import type { GridPoint } from "@/engine/table-camera";
 import type { RenderView } from "@/renderer/projection";
 import type { TableSessionSnapshot } from "@/engine/table-session";
@@ -23,11 +24,16 @@ interface TouchGesture {
   readonly center: GridPoint;
   readonly distance: number;
 }
+type WorkspaceContext = "scene" | "asset";
 
 export function GpuViewport({ profile }: { profile: RenderProfile }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const inspectorRef = useRef<HTMLDetailsElement>(null);
+  const layersRef = useRef<HTMLDetailsElement>(null);
   const rendererRef = useRef<Awaited<ReturnType<typeof createBrowserSceneRenderer>>>(null);
-  const [session] = useState(createTableSession);
+  const sharedSession = useSharedTableSession();
+  const [ownedSession] = useState(createTableSession);
+  const session = sharedSession ?? ownedSession;
   const [engine] = useState(createSceneEngine);
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const sceneSnapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
@@ -38,11 +44,17 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
   const touchPoints = useRef(new Map<number, GridPoint>());
   const touchGesture = useRef<TouchGesture | null>(null);
   const multiTouchActive = useRef(false);
-  const physicalDisplay = derivePhysicalDisplay(snapshot.display);
-  const tableBounds = getTableBounds(snapshot.table, snapshot.display);
 
   useEffect(() => synchronizeTableSession(session, profile), [profile, session]);
   useEffect(() => synchronizeSceneEngine(engine, profile), [engine, profile]);
+
+  useEffect(() => {
+    if (profile === "editor") {
+      const open = window.matchMedia("(min-width: 640px)").matches;
+      if (inspectorRef.current) inspectorRef.current.open = open;
+      if (layersRef.current) layersRef.current.open = open;
+    }
+  }, [profile]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -130,23 +142,6 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
     );
     rendererRef.current?.setSnapshot(sceneSnapshot);
   }, [profile, sceneSnapshot, snapshot, status]);
-
-  const updateNumber = (kind: "width" | "height" | "diagonal" | "scale", value: number) => {
-    if (kind === "scale") {
-      session.updateConfiguration({ table: { scale: value } });
-    } else if (kind === "diagonal") {
-      session.updateConfiguration({ display: { diagonalInches: value } });
-    } else {
-      session.updateConfiguration({
-        display: {
-          resolutionPx: {
-            ...snapshot.display.resolutionPx,
-            [kind]: value,
-          },
-        },
-      });
-    }
-  };
 
   return (
     <div className="relative size-full overflow-hidden bg-[#03050d]">
@@ -323,10 +318,17 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
 
       {profile === "editor" ? (
         <>
-          <aside className="absolute top-20 left-3 z-10 flex flex-col items-center gap-1 border border-amber-100/12 bg-[#100d20]/90 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:left-5">
-            <div className="mb-1 grid size-8 place-items-center border-b border-violet-300/10 text-violet-300/60">
+          <aside aria-label="Editor tools" className="absolute top-3 left-3 z-10 flex items-center gap-1 border border-violet-300/15 bg-[#100d20]/92 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:top-4 sm:left-4 sm:flex-col">
+            <div className="mb-1 hidden size-8 place-items-center border-b border-violet-300/10 text-violet-300/60 sm:grid">
               <Move className="size-3.5" aria-hidden="true" />
             </div>
+            <ToolbarButton label="Undo" shortcut="⌘Z" disabled={!sceneSnapshot.canUndo} onClick={() => engine.undo()}>
+              <Undo2 />
+            </ToolbarButton>
+            <ToolbarButton label="Redo" shortcut="⇧⌘Z" disabled={!sceneSnapshot.canRedo} onClick={() => engine.redo()}>
+              <Redo2 />
+            </ToolbarButton>
+            <div className="mx-1 h-6 w-px bg-gradient-to-b from-transparent via-blue-300/30 to-transparent sm:mx-0 sm:my-1 sm:h-px sm:w-6 sm:bg-gradient-to-r" />
             <ToolbarButton label="Fit table" onClick={() => session.fitTable()}>
               <LocateFixed />
             </ToolbarButton>
@@ -340,7 +342,7 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
             >
               <Grid3X3 />
             </ToolbarButton>
-            <div className="my-1 h-px w-6 bg-gradient-to-r from-transparent via-violet-300/30 to-transparent" />
+            <div className="mx-1 h-6 w-px bg-gradient-to-b from-transparent via-violet-300/30 to-transparent sm:mx-0 sm:my-1 sm:h-px sm:w-6 sm:bg-gradient-to-r" />
             <button
               type="button"
               aria-label="Zoom in"
@@ -361,52 +363,15 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
             </button>
           </aside>
 
-          <details open className="group absolute top-20 right-3 z-10 w-[18rem] border border-amber-100/12 bg-[#100d20]/94 text-white shadow-[0_24px_70px_rgba(0,0,0,0.5)] backdrop-blur-xl max-sm:top-auto max-sm:right-3 max-sm:bottom-16 max-sm:left-16 max-sm:w-auto sm:right-5">
-            <summary className="relative cursor-pointer list-none overflow-hidden border-b border-violet-300/10 px-4 pt-4 pb-3 marker:hidden">
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-blue-400 via-violet-400 to-amber-300" />
-              <div className="absolute -top-8 -right-5 size-24 rotate-12 bg-violet-500/10 blur-2xl" />
-              <div className="relative flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-mono text-[8px] tracking-[0.2em] text-amber-100/40 uppercase">Table portal</p>
-                  <h2 className="mt-0.5 font-heading text-lg font-semibold tracking-wide text-amber-50">Player&apos;s view</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Tv2 className="size-4 text-fuchsia-300/70" aria-hidden="true" />
-                  <ChevronDown className="size-3 text-violet-200/35 transition-transform group-open:rotate-180" aria-hidden="true" />
-                </div>
-              </div>
-              <div className="relative mt-3 flex items-baseline gap-2">
-                <span className="font-mono text-lg font-medium text-white">{tableBounds.width.toFixed(1)}</span>
-                <span className="text-[10px] text-white/35">x</span>
-                <span className="font-mono text-lg font-medium text-white">{tableBounds.height.toFixed(1)}</span>
-                <span className="font-mono text-[9px] tracking-wider text-violet-200/45 uppercase">grid units</span>
-              </div>
-            </summary>
+          <WorkspacePanels
+            inspectorRef={inspectorRef}
+            layersRef={layersRef}
+            context={sceneSnapshot.selectedAssetId ? "asset" : "scene"}
+            engine={engine}
+            sceneSnapshot={sceneSnapshot}
+          />
 
-            <div className="p-4">
-              <div className="mb-3 flex items-center gap-2 font-mono text-[8px] tracking-[0.16em] text-amber-50/35 uppercase">
-                <Ruler className="size-3 text-blue-300/60" aria-hidden="true" />
-                Table dimensions
-              </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-3">
-                <Setting label="Width" suffix="px" value={snapshot.display.resolutionPx.width} min={320} max={8192} step={1} onChange={(value) => updateNumber("width", value)} />
-                <Setting label="Height" suffix="px" value={snapshot.display.resolutionPx.height} min={240} max={8192} step={1} onChange={(value) => updateNumber("height", value)} />
-                <Setting label="Diagonal" suffix="in" value={snapshot.display.diagonalInches} min={10} max={120} step={0.1} onChange={(value) => updateNumber("diagonal", value)} />
-                <Setting label="Grid scale" suffix="in" value={snapshot.table.scale} min={0.1} max={10} step={0.1} onChange={(value) => updateNumber("scale", value)} />
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-violet-300/10 pt-3">
-                <Metric label="Physical width" value={`${physicalDisplay.widthInches.toFixed(1)} in`} />
-                <Metric label="Physical height" value={`${physicalDisplay.heightInches.toFixed(1)} in`} />
-                <Metric label="Pixel density" value={`${physicalDisplay.ppi.toFixed(1)} ppi`} />
-                <Metric label="Table origin" value={`${snapshot.table.originGrid.x.toFixed(1)}, ${snapshot.table.originGrid.y.toFixed(1)}`} />
-              </div>
-              <p className="mt-3 text-[10px] leading-4 text-violet-100/35">
-                One grid unit occupies {snapshot.table.scale.toFixed(1)} physical inch{snapshot.table.scale === 1 ? "" : "es"} on the table.
-              </p>
-            </div>
-          </details>
-
-          <div className="pointer-events-none absolute bottom-4 left-5 hidden items-center gap-3 text-[9px] tracking-[0.12em] text-amber-50/35 uppercase md:flex">
+          <div className="pointer-events-none absolute bottom-3 left-4 hidden items-center gap-2.5 text-[10px] font-medium tracking-[0.08em] text-amber-50/55 uppercase md:flex">
             <span className="text-amber-200/70">✦</span>
             <span>Drag map to move</span>
             <span className="h-3 w-px bg-violet-300/15" />
@@ -419,7 +384,7 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
 
       {profile === "editor" && status === "ready" ? (
         <output
-          className="absolute right-5 bottom-4 flex items-center gap-3 border border-violet-300/10 bg-[#080b19]/80 px-3 py-1.5 font-mono text-[8px] tracking-[0.12em] text-violet-100/50 uppercase backdrop-blur-md [clip-path:polygon(6px_0,100%_0,100%_100%,0_100%,0_6px)] max-sm:hidden"
+          className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2.5 border border-violet-300/15 bg-[#080b19]/88 px-2.5 py-1.5 font-mono text-[9px] font-medium tracking-[0.08em] text-violet-100/65 uppercase backdrop-blur-md [clip-path:polygon(6px_0,100%_0,100%_100%,0_100%,0_6px)] max-sm:hidden"
           data-camera-x={snapshot.editorCamera.centerGrid.x}
           data-camera-y={snapshot.editorCamera.centerGrid.y}
           data-camera-zoom={snapshot.editorCamera.cssPixelsPerGrid}
@@ -455,6 +420,165 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function WorkspacePanels({
+  inspectorRef,
+  layersRef,
+  context,
+  engine,
+  sceneSnapshot,
+}: {
+  readonly inspectorRef: React.RefObject<HTMLDetailsElement | null>;
+  readonly layersRef: React.RefObject<HTMLDetailsElement | null>;
+  readonly context: WorkspaceContext;
+  readonly engine: SceneEngine;
+  readonly sceneSnapshot: SceneEngineSnapshot;
+}) {
+  const asset = sceneSnapshot.scene.assets[0];
+  const contextTitle = context === "asset" ? asset.name : "Scene details";
+  const contextDetail = context === "asset"
+    ? `Image · revision ${sceneSnapshot.revision}`
+    : "Astral Clearing · prototype";
+  const revealInspector = () => {
+    if (window.matchMedia("(max-width: 639px)").matches) {
+      if (layersRef.current) layersRef.current.open = false;
+      if (inspectorRef.current) inspectorRef.current.open = true;
+    }
+  };
+
+  return (
+    <>
+      <details ref={inspectorRef} className="group absolute top-20 right-3 left-3 z-10 max-h-[55%] overflow-y-auto border border-violet-300/15 bg-[#100d20]/94 text-white shadow-[0_24px_70px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:top-4 sm:right-4 sm:left-auto sm:max-h-[calc(100%-2rem)] sm:w-[19rem]">
+        <PanelSummary eyebrow="Inspector" title={contextTitle} detail={contextDetail} icon={context === "asset" ? <ImageIcon /> : <Ruler />} />
+        {context === "asset" ? (
+          <div className="p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Selected image</p>
+              <h3 className="mt-1 font-heading text-base text-amber-50">{asset.name}</h3>
+            </div>
+            <span className="border border-blue-300/20 bg-blue-400/5 px-1.5 py-0.5 font-mono text-[9px] font-medium tracking-wide text-blue-100/65 uppercase">Image</span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 border-y border-violet-300/10 py-2.5">
+            <Metric label="Position" value={`${asset.transform.x.toFixed(2)}, ${asset.transform.y.toFixed(2)}`} />
+            <Metric label="Size" value={`${asset.transform.width.toFixed(2)} × ${asset.transform.height.toFixed(2)}`} />
+            <Metric label="Rotation" value={`${asset.transform.rotation.toFixed(1)}°`} />
+            <Metric label="Revision" value={String(sceneSnapshot.revision)} />
+          </div>
+          <div className="mt-2.5 space-y-1 text-[10px] leading-4 text-violet-100/60">
+            <p><kbd className="font-mono text-blue-200/65">Shift</kbd> preserves ratio from a corner.</p>
+            <p><kbd className="font-mono text-blue-200/65">Alt</kbd> mirrors resize around the center.</p>
+            <p>Rotation captures 45° increments within a 5° window.</p>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-1.5 border-t border-violet-300/10 pt-2.5">
+            <PanelAction disabled>Replace media</PanelAction>
+            <PanelAction disabled>Calibrate</PanelAction>
+          </div>
+          </div>
+        ) : (
+          <div className="p-3">
+          <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Current scene</p>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-heading text-base text-amber-50">Astral Clearing</h3>
+              <p className="mt-0.5 text-[10px] text-violet-100/55">Prototype scene · not persisted</p>
+            </div>
+            <span className="border border-violet-300/15 bg-violet-400/5 px-2 py-1 font-mono text-[9px] font-medium text-violet-100/65">1 image</span>
+          </div>
+          <p className="mt-3 border-t border-violet-300/10 pt-2.5 text-[10px] leading-4 text-violet-100/60">
+            Select scene content to inspect its transform. Shared display calibration and screen selection live in the Open Table menu.
+          </p>
+          </div>
+        )}
+      </details>
+
+      <details ref={layersRef} className="group absolute right-3 bottom-3 left-3 z-10 max-h-[45%] overflow-y-auto border border-violet-300/15 bg-[#100d20]/94 text-white shadow-[0_24px_70px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:right-4 sm:bottom-4 sm:left-auto sm:w-[19rem]">
+        <PanelSummary eyebrow="Layer stack" title="Scene layers" detail="1 content layer" icon={<Layers3 />} />
+        <div className="p-2.5">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Content</p>
+            <button disabled type="button" title="Layer creation is not available yet" aria-label="Add layer" className="grid size-7 cursor-not-allowed place-items-center border border-violet-300/12 text-violet-100/35">
+              <PlusCircle className="size-3.5" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="grid gap-1">
+            <LayerRow
+              active={context === "asset"}
+              icon={<ImageIcon />}
+              name={asset.name}
+              detail="Image · inferred layer"
+              trailing={<Eye className="size-3.5 text-violet-200/55" aria-label="Visible" />}
+              onClick={() => {
+                engine.dispatch({ type: "selection.set", assetId: asset.id });
+                revealInspector();
+              }}
+            />
+          </div>
+          <p className="mt-1.5 px-1 text-[10px] leading-4 text-violet-100/50">
+            Ordering, visibility controls, and content insertion arrive with the persisted scene model.
+          </p>
+        </div>
+      </details>
+    </>
+  );
+}
+
+function PanelSummary({ eyebrow, title, detail, icon }: { readonly eyebrow: string; readonly title: string; readonly detail: string; readonly icon: React.ReactNode }) {
+  return (
+    <summary className="relative cursor-pointer list-none overflow-hidden border-b border-violet-300/10 px-3 py-2.5 marker:hidden focus-visible:outline-2 focus-visible:outline-blue-400">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-blue-400 via-violet-400 to-amber-300" />
+      <div className="absolute -top-8 -right-5 size-24 rotate-12 bg-violet-500/10 blur-2xl" />
+      <div className="relative flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-amber-100/60 uppercase">{eyebrow}</p>
+          <h2 className="mt-0.5 truncate font-heading text-lg font-semibold tracking-wide text-amber-50">{title}</h2>
+          <p className="mt-0.5 truncate font-mono text-[9px] tracking-wide text-violet-200/55 uppercase">{detail}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-fuchsia-300/70 [&_svg]:size-4">
+          {icon}
+          <ChevronDown className="size-3! text-violet-200/35 transition-transform group-open:rotate-180" aria-hidden="true" />
+        </div>
+      </div>
+    </summary>
+  );
+}
+
+function LayerRow({
+  active,
+  icon,
+  name,
+  detail,
+  badge,
+  trailing,
+  onClick,
+}: {
+  readonly active: boolean;
+  readonly icon: React.ReactNode;
+  readonly name: string;
+  readonly detail: string;
+  readonly badge?: string;
+  readonly trailing?: React.ReactNode;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button type="button" aria-pressed={active} onClick={onClick} className="group/layer flex min-h-11 w-full items-center gap-2.5 border border-transparent px-2 py-1.5 text-left transition hover:border-violet-300/12 hover:bg-violet-400/5 focus-visible:outline-2 focus-visible:outline-blue-400 aria-pressed:border-blue-300/20 aria-pressed:bg-gradient-to-r aria-pressed:from-blue-500/14 aria-pressed:to-violet-500/8">
+      <span className="grid size-8 shrink-0 place-items-center border border-violet-300/12 bg-black/20 text-violet-200/50 group-aria-pressed/layer:border-blue-300/25 group-aria-pressed/layer:text-blue-200 [&_svg]:size-3.5">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[11px] font-medium text-violet-50/90">{name}</span>
+        <span className="block truncate font-mono text-[9px] tracking-wide text-violet-100/50 uppercase">{detail}</span>
+      </span>
+      {badge ? <span className="font-mono text-[9px] tracking-wide text-violet-100/50 uppercase">{badge}</span> : trailing}
+    </button>
+  );
+}
+
+function PanelAction({ children, onClick, disabled }: { readonly children: React.ReactNode; readonly onClick?: () => void; readonly disabled?: boolean }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} className="h-8 border border-violet-300/12 bg-violet-400/5 px-2 text-[10px] font-medium text-violet-100/70 transition hover:border-blue-300/25 hover:text-white focus-visible:outline-2 focus-visible:outline-blue-400 disabled:cursor-not-allowed disabled:text-violet-100/35 disabled:hover:border-violet-300/12">
+      {children}
+    </button>
   );
 }
 
@@ -505,20 +629,25 @@ function ToolbarButton({
   label,
   onClick,
   pressed,
+  disabled,
+  shortcut,
 }: {
   readonly children: React.ReactNode;
   readonly label: string;
   readonly onClick: () => void;
   readonly pressed?: boolean;
+  readonly disabled?: boolean;
+  readonly shortcut?: string;
 }) {
   return (
     <button
       type="button"
-      title={label}
+      title={shortcut ? `${label} (${shortcut})` : label}
       aria-label={label}
       aria-pressed={pressed}
+      disabled={disabled}
       onClick={onClick}
-      className="grid size-9 place-items-center border border-transparent text-violet-100/60 transition hover:border-violet-300/15 hover:bg-violet-400/10 hover:text-white focus-visible:outline-2 focus-visible:outline-violet-400 data-[pressed=true]:border-violet-300/25 data-[pressed=true]:bg-gradient-to-br data-[pressed=true]:from-blue-500/25 data-[pressed=true]:to-fuchsia-500/20 data-[pressed=true]:text-violet-50 [&_svg]:size-4"
+      className="grid size-9 place-items-center border border-transparent text-violet-100/70 transition hover:border-violet-300/15 hover:bg-violet-400/10 hover:text-white focus-visible:outline-2 focus-visible:outline-violet-400 disabled:cursor-not-allowed disabled:text-violet-100/30 disabled:hover:border-transparent disabled:hover:bg-transparent data-[pressed=true]:border-violet-300/25 data-[pressed=true]:bg-gradient-to-br data-[pressed=true]:from-blue-500/25 data-[pressed=true]:to-fuchsia-500/20 data-[pressed=true]:text-violet-50 [&_svg]:size-4"
       data-pressed={pressed}
     >
       {children}
@@ -526,64 +655,11 @@ function ToolbarButton({
   );
 }
 
-function Setting({
-  label,
-  suffix,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  readonly label: string;
-  readonly suffix: string;
-  readonly value: number;
-  readonly min: number;
-  readonly max: number;
-  readonly step: number;
-  readonly onChange: (value: number) => void;
-}) {
-  const commit = (input: HTMLInputElement) => {
-    const parsed = input.valueAsNumber;
-    if (!Number.isFinite(parsed)) {
-      input.value = String(value);
-      return;
-    }
-    onChange(Math.min(max, Math.max(min, parsed)));
-  };
-
-  return (
-    <label className="grid gap-1.5 text-[9px] tracking-[0.14em] text-violet-100/40 uppercase">
-      <span>{label}</span>
-      <span className="flex h-9 items-center border border-violet-300/12 bg-black/25 transition-within focus-within:border-violet-400/45 focus-within:bg-violet-400/5">
-        <input
-          key={value}
-          type="number"
-          defaultValue={value}
-          min={min}
-          max={max}
-          step={step}
-          onBlur={(event) => commit(event.currentTarget)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              event.currentTarget.value = String(value);
-              event.currentTarget.blur();
-            }
-          }}
-          className="min-w-0 flex-1 bg-transparent px-2.5 font-mono text-[11px] tracking-normal text-violet-50 outline-none"
-        />
-        <span className="pr-2 font-mono text-[8px] text-violet-200/25 lowercase">{suffix}</span>
-      </span>
-    </label>
-  );
-}
-
 function Metric({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div>
-      <p className="text-[8px] tracking-[0.12em] text-violet-100/30 uppercase">{label}</p>
-      <p className="mt-1 font-mono text-[10px] text-violet-100/70">{value}</p>
+      <p className="text-[9px] font-medium tracking-[0.1em] text-violet-100/55 uppercase">{label}</p>
+      <p className="mt-1 font-mono text-[10px] text-violet-100/85">{value}</p>
     </div>
   );
 }

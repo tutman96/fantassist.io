@@ -144,7 +144,7 @@ After initial fit, resizing the browser preserves `centerGrid` and `cssPixelsPer
 
 ## Editor Behavior
 
-The v2 editor becomes a full-viewport WebGPU canvas beneath a compact application bar. Controls and status may be DOM UI around or above the canvas, but all scene content and editor guides remain GPU rendered.
+The v2 editor becomes a WebGPU workspace beneath a compact application bar. The measured canvas viewport starts below that bar; application-chrome pixels are excluded from camera centering, fit calculations, and pointer normalization. Controls and status may be DOM UI around or above the canvas, but all scene content and editor guides remain GPU rendered.
 
 The editor profile renders:
 
