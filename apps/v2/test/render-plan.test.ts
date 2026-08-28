@@ -1,17 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createRenderPlan, SCENE_PASS_ORDER } from "../src/renderer/render-plan";
+import { createSampleSceneDocument, freezeSceneDocument } from "../src/engine/scene-document";
+import { compileSceneLayerOperations, createRenderPlan, SCENE_PASS_ORDER } from "../src/renderer/render-plan";
 
 test("render plan has deterministic production pass order", () => {
   assert.deepEqual(createRenderPlan("output").passes, SCENE_PASS_ORDER);
   assert.deepEqual(SCENE_PASS_ORDER, [
-    "asset-background",
-    "fog-mask",
-    "obstruction-shadows",
-    "light-accumulation",
-    "composite",
+    "scene-layers",
+    "editor-overlay",
     "present",
+  ]);
+});
+
+test("scene layer operations preserve intermingled fog composition barriers", () => {
+  const base = createSampleSceneDocument();
+  const scene = freezeSceneDocument({
+    ...base,
+    layers: [
+      { id: "bottom", name: "Bottom", type: "assets", visible: true, assetIds: [base.assets[0].id] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] },
+      { id: "hidden", name: "Hidden", type: "assets", visible: false, assetIds: [] },
+      { id: "top", name: "Top", type: "assets", visible: true, assetIds: [] },
+    ],
+  });
+  assert.deepEqual(compileSceneLayerOperations(scene), [
+    { type: "assets", layerId: "bottom", assetIds: [base.assets[0].id] },
+    { type: "fog", layerId: "fog" },
+    { type: "assets", layerId: "top", assetIds: [] },
   ]);
 });
 

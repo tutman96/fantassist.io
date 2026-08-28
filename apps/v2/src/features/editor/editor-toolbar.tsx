@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid3X3, LocateFixed, Minus, Monitor, MousePointer2, Plus, Redo2, RotateCcw, Undo2 } from "lucide-react";
+import { Check, CloudFog, Eraser, Grid3X3, LocateFixed, Minus, Monitor, MousePointer2, Plus, Redo2, RotateCcw, Undo2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -36,6 +36,13 @@ export function EditorToolbar({
       );
       return;
     }
+    if (tool === "fog" || tool === "fog-clear") {
+      session.zoomAt(
+        { x: tableSnapshot.viewportCss.width / 2, y: tableSnapshot.viewportCss.height / 2 },
+        factor
+      );
+      return;
+    }
     const table = sceneSnapshot.scene.table;
     const bounds = getTableBounds(table, tableSnapshot.display);
     engine.dispatch({
@@ -53,8 +60,19 @@ export function EditorToolbar({
     <aside aria-label="Editor tools" className="absolute top-3 left-3 z-10 flex items-center gap-1 border border-violet-300/15 bg-[#100d20]/92 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:top-4 sm:left-4 sm:flex-col">
       <ButtonGroup className="sm:flex-col">
         <ToolToggle label="Edit assets" pressed={tool === "assets"} onPressedChange={() => onToolChange("assets")}><MousePointer2 /></ToolToggle>
+        <ToolToggle label="Draw fog" pressed={tool === "fog"} onPressedChange={() => onToolChange("fog")}><CloudFog /></ToolToggle>
+        <ToolToggle label="Clear fog" pressed={tool === "fog-clear"} onPressedChange={() => onToolChange("fog-clear")}><Eraser /></ToolToggle>
         <ToolToggle label="Edit display view" pressed={tool === "table"} onPressedChange={() => onToolChange("table")}><Monitor /></ToolToggle>
       </ButtonGroup>
+      {sceneSnapshot.fogDrawingActive ? (
+        <>
+          <ToolbarSeparator />
+          <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
+            <ToolButton label="Finish fog polygon" onClick={() => engine.commitActiveFogPolygon()}><Check /></ToolButton>
+            <ToolButton label="Cancel fog polygon" onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
+          </ButtonGroup>
+        </>
+      ) : null}
       <ToolbarSeparator />
       <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
         <ToolButton label="Undo" shortcut="⌘Z" disabled={!sceneSnapshot.canUndo} onClick={() => engine.undo()}><Undo2 /></ToolButton>

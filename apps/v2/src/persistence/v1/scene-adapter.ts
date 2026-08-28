@@ -18,12 +18,15 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
           .map((asset) => asset.id),
       };
     }
+    const fogLayer = layer.fogLayer;
     return {
-      id: layer.fogLayer?.id ?? "",
-      name: layer.fogLayer?.name ?? "Fog",
+      id: fogLayer?.id ?? "",
+      name: fogLayer?.name ?? "Fog",
       type: "fog" as const,
-      visible: layer.fogLayer?.visible ?? false,
-      assetIds: [],
+      visible: fogLayer?.visible ?? false,
+      assetIds: [] as const,
+      fogPolygons: projectPolygons(fogLayer?.fogPolygons ?? []),
+      fogClearPolygons: projectPolygons(fogLayer?.fogClearPolygons ?? []),
     };
   });
   const assets = scene.layers.flatMap((layer) => {
@@ -116,11 +119,14 @@ export function patchV1SceneTransforms(
         };
       }
       if (layer?.fogLayer) {
+        if (domainLayer.type !== "fog") throw new Error(`Layer '${domainLayer.id}' changed type`);
         return {
           fogLayer: {
             ...layer.fogLayer,
             name: domainLayer.name,
             visible: domainLayer.visible,
+            fogPolygons: persistPolygons(domainLayer.fogPolygons, 0),
+            fogClearPolygons: persistPolygons(domainLayer.fogClearPolygons, 1),
           },
         };
       }
@@ -135,9 +141,38 @@ export function patchV1SceneTransforms(
           },
         };
       }
-      throw new Error(`Cannot persist unknown fog layer '${domainLayer.id}'`);
+      return {
+        fogLayer: {
+          id: domainLayer.id,
+          name: domainLayer.name,
+          visible: domainLayer.visible,
+          type: 1,
+          lightSources: [],
+          obstructionPolygons: [],
+          fogPolygons: persistPolygons(domainLayer.fogPolygons, 0),
+          fogClearPolygons: persistPolygons(domainLayer.fogClearPolygons, 1),
+        },
+      };
     }),
   };
+}
+
+function projectPolygons(polygons: readonly import("./types").V1Polygon[]) {
+  return polygons.map((polygon) => ({
+    vertices: polygon.verticies.map((vertex) => ({ ...vertex })),
+    visibleOnTable: polygon.visibleOnTable,
+  }));
+}
+
+function persistPolygons(
+  polygons: readonly import("@/engine/scene-document").FogPolygon[],
+  type: 0 | 1
+) {
+  return polygons.map((polygon) => ({
+    type,
+    verticies: polygon.vertices.map((vertex) => ({ ...vertex })),
+    visibleOnTable: polygon.visibleOnTable,
+  }));
 }
 
 function synchronizeAssets(

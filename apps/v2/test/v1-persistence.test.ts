@@ -187,6 +187,46 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
 });
 
+test("scene adapter projects and persists fog geometry without changing lights or walls", () => {
+  const document = projectV1Scene(fullScene);
+  const fog = document.layers.find((layer) => layer.type === "fog");
+  assert.ok(fog);
+  assert.deepEqual(fog.fogPolygons[0], {
+    vertices: [{ x: -1, y: -2 }, { x: 8, y: 4 }],
+    visibleOnTable: false,
+  });
+  const changed = {
+    ...fog,
+    fogPolygons: [{ vertices: [{ x: -5, y: 1 }, { x: 9, y: 1 }, { x: 2, y: 12 }], visibleOnTable: true }],
+    fogClearPolygons: [{ vertices: [{ x: 0, y: 2 }, { x: 4, y: 2 }, { x: 2, y: 5 }], visibleOnTable: false }],
+  };
+  const patched = patchV1SceneTransforms(fullScene, {
+    ...document,
+    layers: document.layers.map((layer) => layer.id === fog.id ? changed : layer),
+  }, 8);
+  const persisted = patched.layers[1].fogLayer;
+  assert.deepEqual(persisted?.fogPolygons, [{ type: 0, verticies: changed.fogPolygons[0].vertices, visibleOnTable: true }]);
+  assert.deepEqual(persisted?.fogClearPolygons, [{ type: 1, verticies: changed.fogClearPolygons[0].vertices, visibleOnTable: false }]);
+  assert.deepEqual(persisted?.lightSources, fullScene.layers[1].fogLayer?.lightSources);
+  assert.deepEqual(persisted?.obstructionPolygons, fullScene.layers[1].fogLayer?.obstructionPolygons);
+});
+
+test("scene adapter persists newly created empty fog layers", () => {
+  const document = projectV1Scene(fullScene);
+  const fog = { id: "fog-2", name: "Upper fog", type: "fog" as const, visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] };
+  const patched = patchV1SceneTransforms(fullScene, { ...document, layers: [...document.layers, fog] }, 8);
+  assert.deepEqual(patched.layers.at(-1)?.fogLayer, {
+    id: fog.id,
+    name: fog.name,
+    visible: true,
+    type: 1,
+    lightSources: [],
+    obstructionPolygons: [],
+    fogPolygons: [],
+    fogClearPolygons: [],
+  });
+});
+
 test("scene adapter persists the table camera while preserving v1 rotation", () => {
   const document = projectV1Scene(fullScene);
   const patched = patchV1SceneTransforms(fullScene, {

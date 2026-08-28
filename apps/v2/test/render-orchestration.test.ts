@@ -4,7 +4,7 @@ import test from "node:test";
 import { getMockGPUDeviceInstrumentation, init, target } from "vgpu/mock";
 import type { Gpu, Texture } from "vgpu";
 
-import { createRenderPlan, SCENE_PASS_ORDER } from "../src/renderer/render-plan";
+import { createRenderPlan } from "../src/renderer/render-plan";
 import { createCosmicExecutor } from "../src/renderer/vgpu/cosmic-executor";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
 import { createSceneEngine } from "../src/engine/scene-engine";
@@ -106,7 +106,7 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
     assert.equal(
       instrumentation.calls.createRenderPipeline +
         instrumentation.calls.createRenderPipelineAsync,
-      SCENE_PASS_ORDER.length
+      5
     );
   } finally {
     gpu.dispose();

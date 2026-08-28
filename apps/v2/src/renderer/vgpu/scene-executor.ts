@@ -1,10 +1,12 @@
-import { draw, effect, frame, sampler, target } from "vgpu";
-import type { Draw, Effect, Gpu, Target, TargetSignature, Texture } from "vgpu";
+import { draw, effect, frame, geometry, sampler, target } from "vgpu";
+import type { Draw, Geometry, Gpu, Target, TargetSignature, Texture } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
+import { outlineFogPolygons, tessellateFogPolygons } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
-import type { RenderPlan, ScenePass } from "../render-plan";
+import { compileSceneLayerOperations } from "../render-plan";
+import type { RenderPlan } from "../render-plan";
 import { compileProjection, projectionUniforms } from "../projection";
 import type { RenderView } from "../projection";
 import type { SceneShaders } from "./scene-shaders";
@@ -14,12 +16,22 @@ export interface SceneExecutor {
   readonly estimatedTargetBytes: number;
   prewarm(): Promise<void>;
   replaceAssets(snapshot: SceneEngineSnapshot, uploads: readonly ImageTextureUpload[]): Promise<void>;
+  replaceFog(snapshot: SceneEngineSnapshot): Promise<void>;
   render(time: number): Promise<void>;
   resize(size: readonly [number, number]): void;
   setGridVisible(visible: boolean): void;
   setTableEditing(editing: boolean): void;
   setSnapshot(snapshot: SceneEngineSnapshot): void;
   setView(view: RenderView): void;
+}
+
+interface FogDrawEntry {
+  readonly layerId: string;
+  readonly fog?: Draw;
+  readonly clear?: Draw;
+  readonly fogGuide?: Draw;
+  readonly clearGuide?: Draw;
+  readonly geometries: readonly Geometry[];
 }
 
 export function createSceneExecutor(
@@ -32,11 +44,10 @@ export function createSceneExecutor(
   imageUploads: readonly ImageTextureUpload[] = initialSnapshot.scene.assets.map(() => createFallbackImageUpload())
 ): SceneExecutor {
   const size = destination.size;
-  const scene = target(gpu, { size, format: "rgba8unorm", label: "scene-assets" });
-  const fog = target(gpu, { size, format: "rgba8unorm", label: "fog-mask" });
-  const shadows = target(gpu, { size, format: "rgba8unorm", label: "obstruction-shadows" });
-  const lights = target(gpu, { size, format: "rgba16float", label: "light-accumulation" });
-  const compositeTarget = target(gpu, { size, format: "rgba16float", label: "linear-composite" });
+  const sceneA = target(gpu, { size, format: "rgba16float", label: "scene-a" });
+  const sceneB = target(gpu, { size, format: "rgba16float", label: "scene-b" });
+  const fogMaskTarget = target(gpu, { size, format: "rgba8unorm", label: "fog-mask" });
+  const compositeTarget = target(gpu, { size, format: "rgba16float", label: "editor-composite" });
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   let gridVisible = plan.showGrid;
@@ -45,16 +56,16 @@ export function createSceneExecutor(
   let snapshot = initialSnapshot;
   let renderSize = { width: size[0], height: size[1] };
   let projection = compileProjection(view, renderSize);
-  const spatialParams = (time = 0) => ({ ...projectionUniforms(projection), time });
-  const assetParams = (asset: SceneEngineSnapshot["scene"]["assets"][number], time = 0) => ({
-      ...spatialParams(time),
-      asset_origin: [asset.transform.x, asset.transform.y],
-      asset_size: [asset.transform.width, asset.transform.height],
-      asset_rotation: (asset.transform.rotation * Math.PI) / 180,
-    });
+  const spatialParams = () => projectionUniforms(projection);
+  const assetParams = (asset: SceneEngineSnapshot["scene"]["assets"][number]) => ({
+    ...spatialParams(),
+    time: 0,
+    asset_origin: [asset.transform.x, asset.transform.y],
+    asset_size: [asset.transform.width, asset.transform.height],
+    asset_rotation: (asset.transform.rotation * Math.PI) / 180,
+  });
   const selectionParams = () => {
-    const asset = snapshot.scene.assets.find((candidate) => candidate.id === snapshot.selectedAssetId)
-      ?? snapshot.scene.assets[0];
+    const asset = snapshot.scene.assets.find((candidate) => candidate.id === snapshot.selectedAssetId);
     const transform = asset?.transform ?? { x: 0, y: 0, width: 0, height: 0, rotation: 0 };
     const layerVisible = asset
       ? snapshot.scene.layers.find((layer) => layer.id === asset.layerId)?.visible ?? false
@@ -63,10 +74,16 @@ export function createSceneExecutor(
       asset_origin: [transform.x, transform.y],
       asset_size: [transform.width, transform.height],
       asset_rotation: (transform.rotation * Math.PI) / 180,
-      selected: asset && plan.showEditorGrid && snapshot.selectedAssetId === asset.id && asset.visible && layerVisible ? 1 : 0,
+      selected: asset && plan.showEditorGrid && asset.visible && layerVisible ? 1 : 0,
       table_editing: tableEditing && plan.showEditorGrid ? 1 : 0,
     };
   };
+  const signature = (output: Target): TargetSignature => ({
+    colors: output.colors.map((color) => color.format),
+    depth: output.depth?.format,
+    sampleCount: output.sampleCount,
+  });
+
   const createAssetEntries = (
     sourceSnapshot: SceneEngineSnapshot,
     uploads: readonly ImageTextureUpload[]
@@ -86,135 +103,182 @@ export function createSceneExecutor(
         drawable: draw(gpu, {
           shader: shaders.assets,
           vertices: 6,
-          instances: 1,
           blend: "premultiplied",
           label: `asset:${asset.id}`,
-          set: {
-            map_texture: texture,
-            texture_sampler: imageSampler,
-            params: assetParams(asset),
-          },
+          set: { map_texture: texture, texture_sampler: imageSampler, params: assetParams(asset) },
         }),
       };
     });
+
+  const createFogEntries = (sourceSnapshot: SceneEngineSnapshot): FogDrawEntry[] =>
+    sourceSnapshot.scene.layers.flatMap((layer) => {
+      if (layer.type !== "fog") return [];
+      const makeDraw = (polygons: typeof layer.fogPolygons, value: number, label: string) => {
+        const mesh = tessellateFogPolygons(polygons);
+        if (!mesh) return undefined;
+        const meshGeometry = geometry(gpu, {
+          buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: mesh.vertices }],
+          indices: mesh.indices,
+          topology: "triangle-list",
+          label,
+        });
+        return {
+          geometry: meshGeometry,
+          drawable: draw(gpu, {
+            shader: shaders.fogMask,
+            geometry: meshGeometry,
+            label,
+            set: { params: { ...spatialParams(), fog_value: value } },
+          }),
+        };
+      };
+      const fog = makeDraw(layer.fogPolygons, 1, `fog-fill:${layer.id}`);
+      const clear = makeDraw(layer.fogClearPolygons, 0, `fog-clear:${layer.id}`);
+      const makeGuide = (polygons: typeof layer.fogPolygons, color: readonly number[], label: string) => {
+        const vertices = outlineFogPolygons(polygons);
+        if (!vertices) return undefined;
+        const guideGeometry = geometry(gpu, {
+          buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: vertices }],
+          topology: "line-list",
+          label,
+        });
+        return {
+          geometry: guideGeometry,
+          drawable: draw(gpu, {
+            shader: shaders.fogGuide,
+            geometry: guideGeometry,
+            blend: "premultiplied",
+            label,
+            set: { params: { ...spatialParams(), color } },
+          }),
+        };
+      };
+      const fogGuide = makeGuide(layer.fogPolygons, [0.82, 0.2, 0.95, 0.9], `fog-guide:${layer.id}`);
+      const clearGuide = makeGuide(layer.fogClearPolygons, [0.12, 0.68, 1, 0.9], `fog-clear-guide:${layer.id}`);
+      return [{
+        layerId: layer.id,
+        fog: fog?.drawable,
+        clear: clear?.drawable,
+        fogGuide: fogGuide?.drawable,
+        clearGuide: clearGuide?.drawable,
+        geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry].filter((item): item is Geometry => item !== undefined),
+      }];
+    });
+
   let assetEntries = createAssetEntries(initialSnapshot, imageUploads);
-  const fogMask = effect(gpu, shaders.fogMask, {
-    label: "fog-mask",
-    set: { params: projectionUniforms(projection) },
-  });
-  const obstructionShadows = effect(gpu, shaders.obstructionShadows, {
-    label: "obstruction-shadows",
-    set: { params: spatialParams() },
-  });
-  const lightAccumulation = effect(gpu, shaders.lightAccumulation, {
-    label: "light-accumulation",
-    set: { shadows, texture_sampler: linearSampler, params: spatialParams() },
+  let fogEntries = createFogEntries(initialSnapshot);
+  const fogComposite = effect(gpu, shaders.fogComposite, {
+    label: "fog-composite",
+    set: { scene: sceneA, fog_mask: fogMaskTarget, texture_sampler: linearSampler, params: { fog_opacity: plan.fogOpacity } },
   });
   const composite = effect(gpu, shaders.composite, {
-    label: "composite",
+    label: "editor-composite",
     set: {
-      scene,
-      fog_mask: fog,
-      light: lights,
-      shadow_map: shadows,
+      scene: sceneA,
       texture_sampler: linearSampler,
-      params: {
-        ...spatialParams(),
-        fog_opacity: plan.fogOpacity,
-        show_fog_edges: plan.showEditorGrid ? 1 : 0,
-        show_grid: gridVisible ? 1 : 0,
-        show_walls: plan.showEditorGrid ? 1 : 0,
-        show_lights: plan.showEditorGrid ? 1 : 0,
-        ...selectionParams(),
-        time: 0,
-      },
+      params: { ...spatialParams(), show_editor: plan.showEditorGrid ? 1 : 0, show_grid: gridVisible ? 1 : 0, ...selectionParams() },
     },
   });
   const present = effect(gpu, shaders.present, {
     label: "linear-to-display-present",
     set: { linear_scene: compositeTarget, texture_sampler: linearSampler },
   });
-  const passes: Record<
-    Exclude<ScenePass, "asset-background">,
-    { drawable: Draw | Effect; output: Target; clear: readonly [number, number, number, number] }
-  > = {
-    "fog-mask": { drawable: fogMask, output: fog, clear: [1, 1, 1, 1] },
-    "obstruction-shadows": {
-      drawable: obstructionShadows,
-      output: shadows,
-      clear: [1, 1, 0, 1],
-    },
-    "light-accumulation": { drawable: lightAccumulation, output: lights, clear: [0, 0, 0, 1] },
-    composite: { drawable: composite, output: compositeTarget, clear: [0, 0, 0, 1] },
-    present: { drawable: present, output: destination, clear: [0, 0, 0, 1] },
-  };
-  const signature = (output: Target): TargetSignature => ({
-    colors: output.colors.map((color) => color.format),
-    depth: output.depth?.format,
-    sampleCount: output.sampleCount,
-  });
 
   return {
     lightFormat: "rgba16float",
     get estimatedTargetBytes() {
       const [width, height] = destination.size;
-      return width * height * (4 + 4 + 4 + 8 + 8 + 4);
+      return width * height * (8 + 8 + 4 + 8 + 4);
     },
     async prewarm() {
       await Promise.all([
-        ...assetEntries.map((entry) => entry.drawable.compile(signature(scene))),
-        ...plan.passes
-          .filter((name): name is Exclude<ScenePass, "asset-background"> => name !== "asset-background")
-          .map((name) => passes[name].drawable.compile(signature(passes[name].output))),
+        ...assetEntries.map((entry) => entry.drawable.compile(signature(sceneA))),
+        ...fogEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
+          .map((drawable) => drawable.compile(signature(fogMaskTarget))),
+        ...(plan.showEditorGrid
+          ? fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide].filter((item): item is Draw => item !== undefined))
+              .map((drawable) => drawable.compile(signature(compositeTarget)))
+          : []),
+        fogComposite.compile(signature(sceneB)),
+        composite.compile(signature(compositeTarget)),
+        present.compile(signature(destination)),
       ]);
       await gpu.settled();
     },
     async replaceAssets(nextSnapshot, uploads) {
       const nextEntries = createAssetEntries(nextSnapshot, uploads);
-      await Promise.all(nextEntries.map((entry) => entry.drawable.compile(signature(scene))));
+      await Promise.all(nextEntries.map((entry) => entry.drawable.compile(signature(sceneA))));
       await gpu.settled();
       const previousEntries = assetEntries;
       assetEntries = nextEntries;
       snapshot = nextSnapshot;
       previousEntries.forEach((entry) => entry.texture.destroy());
     },
-    async render(time) {
-      const params = spatialParams(time);
+    async replaceFog(nextSnapshot) {
+      const nextEntries = createFogEntries(nextSnapshot);
+      await Promise.all(nextEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
+        .map((drawable) => drawable.compile(signature(fogMaskTarget))));
+      if (plan.showEditorGrid) {
+        await Promise.all(nextEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide].filter((item): item is Draw => item !== undefined))
+          .map((drawable) => drawable.compile(signature(compositeTarget))));
+      }
+      await gpu.settled();
+      const previousEntries = fogEntries;
+      fogEntries = nextEntries;
+      snapshot = nextSnapshot;
+      previousEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
+    },
+    async render() {
       for (const entry of assetEntries) {
         const asset = snapshot.scene.assets.find((candidate) => candidate.id === entry.id);
-        if (asset) entry.drawable.set({ params: assetParams(asset, time) });
+        if (asset) entry.drawable.set({ params: assetParams(asset) });
       }
-      fogMask.set({ params: projectionUniforms(projection) });
-      obstructionShadows.set({ params });
-      lightAccumulation.set({ params });
+      for (const entry of fogEntries) {
+        entry.fog?.set({ params: { ...spatialParams(), fog_value: 1 } });
+        entry.clear?.set({ params: { ...spatialParams(), fog_value: 0 } });
+        entry.fogGuide?.set({ params: { ...spatialParams(), color: [0.82, 0.2, 0.95, 0.9] } });
+        entry.clearGuide?.set({ params: { ...spatialParams(), color: [0.12, 0.68, 1, 0.9] } });
+      }
+      let activeScene: Target = sceneA;
+      let alternateScene: Target = sceneB;
       composite.set({
-        params: {
-          ...params,
-          fog_opacity: plan.fogOpacity,
-          show_fog_edges: plan.showEditorGrid ? 1 : 0,
-          show_grid: gridVisible ? 1 : 0,
-          show_walls: plan.showEditorGrid ? 1 : 0,
-          show_lights: plan.showEditorGrid ? 1 : 0,
-          ...selectionParams(),
-          time,
-        },
+        params: { ...spatialParams(), show_editor: plan.showEditorGrid ? 1 : 0, show_grid: gridVisible ? 1 : 0, ...selectionParams() },
       });
       const submitted = frame(gpu, (currentFrame) => {
-        for (const name of plan.passes) {
-          if (name === "asset-background") {
-            currentFrame.pass({ target: scene, clear: [0, 0, 0, 1] }, (pass) => {
-              for (const asset of snapshot.scene.assets) {
-                const layerVisible = snapshot.scene.layers.find((layer) => layer.id === asset.layerId)?.visible ?? false;
-                if (!asset.visible || !layerVisible) continue;
-                const entry = assetEntries.find((candidate) => candidate.id === asset.id);
+        currentFrame.pass({ target: activeScene, clear: [0, 0, 0, 1] }, () => undefined);
+        for (const operation of compileSceneLayerOperations(snapshot.scene)) {
+          if (operation.type === "assets") {
+            currentFrame.pass({ target: activeScene, clear: false }, (pass) => {
+              for (const assetId of operation.assetIds) {
+                const asset = snapshot.scene.assets.find((candidate) => candidate.id === assetId);
+                if (!asset?.visible) continue;
+                const entry = assetEntries.find((candidate) => candidate.id === assetId);
                 if (entry) pass.draw(entry.drawable);
               }
             });
             continue;
           }
-          const pass = passes[name];
-          currentFrame.pass({ target: pass.output, clear: pass.clear }, pass.drawable);
+          const entry = fogEntries.find((candidate) => candidate.layerId === operation.layerId);
+          currentFrame.pass({ target: fogMaskTarget, clear: [0, 0, 0, 1] }, (pass) => {
+            if (entry?.fog) pass.draw(entry.fog);
+            if (entry?.clear) pass.draw(entry.clear);
+          });
+          fogComposite.set({ scene: activeScene, params: { fog_opacity: plan.fogOpacity } });
+          currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, fogComposite);
+          [activeScene, alternateScene] = [alternateScene, activeScene];
         }
+        composite.set({ scene: activeScene });
+        currentFrame.pass({ target: compositeTarget, clear: [0, 0, 0, 1] }, composite);
+        if (plan.showEditorGrid) {
+          currentFrame.pass({ target: compositeTarget, clear: false }, (pass) => {
+            for (const entry of fogEntries) {
+              if (!snapshot.scene.layers.some((layer) => layer.id === entry.layerId && layer.visible)) continue;
+              if (entry.fogGuide) pass.draw(entry.fogGuide);
+              if (entry.clearGuide) pass.draw(entry.clearGuide);
+            }
+          });
+        }
+        currentFrame.pass({ target: destination, clear: [0, 0, 0, 1] }, present);
       });
       await submitted.done;
       await gpu.settled();
@@ -222,10 +286,9 @@ export function createSceneExecutor(
     resize(nextSize) {
       renderSize = { width: nextSize[0], height: nextSize[1] };
       projection = compileProjection(view, renderSize);
-      scene.resize(nextSize);
-      fog.resize(nextSize);
-      shadows.resize(nextSize);
-      lights.resize(nextSize);
+      sceneA.resize(nextSize);
+      sceneB.resize(nextSize);
+      fogMaskTarget.resize(nextSize);
       compositeTarget.resize(nextSize);
     },
     setGridVisible(visible) {

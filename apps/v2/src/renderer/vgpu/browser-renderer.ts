@@ -45,7 +45,7 @@ export async function createBrowserSceneRenderer(
   };
   let setActiveGridVisible: (visible: boolean) => void = () => undefined;
   let setActiveTableEditing: (editing: boolean) => void = () => undefined;
-  let setActiveSnapshot: (snapshot: SceneEngineSnapshot, assetsChanged: boolean) => boolean = () => true;
+  let setActiveSnapshot: (snapshot: SceneEngineSnapshot, assetsChanged: boolean, fogChanged: boolean) => boolean = () => true;
   let setActiveView: (view: RenderView) => void = () => undefined;
 
   const initialize = async () => {
@@ -115,23 +115,26 @@ export async function createBrowserSceneRenderer(
       setActiveTableEditing = (editing: boolean) => executor.setTableEditing(editing);
       let replacementRevision = 0;
       let replacementQueue = Promise.resolve();
-      setActiveSnapshot = (snapshot: SceneEngineSnapshot, assetsChanged: boolean) => {
-        if (!assetsChanged) {
+      setActiveSnapshot = (snapshot: SceneEngineSnapshot, assetsChanged: boolean, fogChanged: boolean) => {
+        if (!assetsChanged && !fogChanged) {
           executor.setSnapshot(snapshot);
           return true;
         }
         const ownReplacement = ++replacementRevision;
         replacementQueue = replacementQueue.then(async () => {
           if (disposed || ownGeneration !== generation || ownReplacement !== replacementRevision) return;
-          const uploads = await Promise.all(snapshot.scene.assets.map(async (asset) =>
-            (imageLoader ? await imageLoader.loadImage(asset.mediaId) : null) ?? createFallbackImageUpload()
-          ));
+          const uploads = assetsChanged
+            ? await Promise.all(snapshot.scene.assets.map(async (asset) =>
+                (imageLoader ? await imageLoader.loadImage(asset.mediaId) : null) ?? createFallbackImageUpload()
+              ))
+            : [];
           if (disposed || ownGeneration !== generation || ownReplacement !== replacementRevision) {
             uploads.forEach((upload) => upload.dispose());
             return;
           }
           try {
-            await executor.replaceAssets(snapshot, uploads);
+            if (assetsChanged) await executor.replaceAssets(snapshot, uploads);
+            if (fogChanged) await executor.replaceFog(snapshot);
             executor.setSnapshot(activeSnapshot);
           } finally {
             uploads.forEach((upload) => upload.dispose());
@@ -140,7 +143,7 @@ export async function createBrowserSceneRenderer(
             requestRender(lastTime);
           }
         }).catch((error: unknown) => {
-          console.error("Unable to replace v2 image assets", error);
+          console.error("Unable to replace v2 scene resources", error);
           onFatalError?.(error);
         });
         return false;
@@ -216,8 +219,9 @@ export async function createBrowserSceneRenderer(
     setSnapshot(nextSnapshot) {
       if (disposed) return;
       const assetsChanged = assetKey(activeSnapshot) !== assetKey(nextSnapshot);
+      const fogChanged = fogKey(activeSnapshot) !== fogKey(nextSnapshot);
       activeSnapshot = nextSnapshot;
-      if (setActiveSnapshot(nextSnapshot, assetsChanged)) render(lastTime);
+      if (setActiveSnapshot(nextSnapshot, assetsChanged, fogChanged)) render(lastTime);
     },
     setView(view) {
       if (disposed) return;
@@ -266,4 +270,13 @@ export async function createBrowserSceneRenderer(
 
 function assetKey(snapshot: SceneEngineSnapshot): string {
   return snapshot.scene.assets.map((asset) => `${asset.id}:${asset.mediaId}`).join("|");
+}
+
+function fogKey(snapshot: SceneEngineSnapshot): string {
+  return snapshot.scene.layers.flatMap((layer) => layer.type === "fog" ? [
+    layer.id,
+    ...layer.fogPolygons.flatMap((polygon) => [polygon.visibleOnTable ? "1" : "0", ...polygon.vertices.flatMap((vertex) => [vertex.x, vertex.y])]),
+    "/",
+    ...layer.fogClearPolygons.flatMap((polygon) => [polygon.visibleOnTable ? "1" : "0", ...polygon.vertices.flatMap((vertex) => [vertex.x, vertex.y])]),
+  ] : []).join(":");
 }

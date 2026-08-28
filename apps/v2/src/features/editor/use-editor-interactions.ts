@@ -36,6 +36,8 @@ export function useEditorInteractions({
   const [tableHandle, setTableHandle] = useState<TableResizeHandle | "move" | null>(null);
   const spacePressed = useRef(false);
   const drag = useRef<PointerDrag | null>(null);
+  const fogDraft = useRef<PreviewToken | null>(null);
+  const previousTool = useRef(tool);
   const touchPoints = useRef(new Map<number, GridPoint>());
   const touchGesture = useRef<TouchGesture | null>(null);
   const multiTouchActive = useRef(false);
@@ -44,13 +46,22 @@ export function useEditorInteractions({
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
       const interactive = target?.closest("button, a, input, select, textarea, [contenteditable='true']");
+      const textEditing = target?.closest("input, select, textarea, [contenteditable='true']");
       if (event.code === "Space" && !interactive) {
         spacePressed.current = true;
         event.preventDefault();
       }
-      if (event.key === "Escape" && (drag.current?.kind === "asset" || drag.current?.kind === "table")) {
+      if (event.key === "Escape" && fogDraft.current) {
+        engine.cancelPreview(fogDraft.current);
+        fogDraft.current = null;
+      } else if (event.key === "Escape" && (drag.current?.kind === "asset" || drag.current?.kind === "table")) {
         engine.cancelPreview(drag.current.token);
         drag.current = null;
+      }
+      if (event.key === "Enter" && fogDraft.current && !textEditing) {
+        event.preventDefault();
+        engine.commitFogPolygon(fogDraft.current);
+        fogDraft.current = null;
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && !interactive) {
         event.preventDefault();
@@ -69,8 +80,24 @@ export function useEditorInteractions({
     };
   }, [engine]);
 
+  useEffect(() => {
+    if (tool !== previousTool.current && fogDraft.current) {
+      engine.cancelPreview(fogDraft.current);
+      fogDraft.current = null;
+    }
+    previousTool.current = tool;
+  }, [engine, tool]);
+
+  useEffect(() => engine.subscribe(() => {
+    if (fogDraft.current && !engine.getSnapshot().fogDrawingActive) fogDraft.current = null;
+  }), [engine]);
+
   return {
-    cursor: tool === "table" ? cursorForTableHandle(tableHandle) : cursorForHandle(hoveredHandle, assetRotation),
+    cursor: tool === "table"
+      ? cursorForTableHandle(tableHandle)
+      : tool === "fog" || tool === "fog-clear"
+        ? "crosshair"
+        : cursorForHandle(hoveredHandle, assetRotation),
     onContextMenu(event: React.MouseEvent<HTMLCanvasElement>) {
       event.preventDefault();
     },
@@ -93,6 +120,21 @@ export function useEditorInteractions({
           touchGesture.current = readTouchGesture(touchPoints.current);
           return;
         }
+        if (tool === "fog" || tool === "fog-clear") {
+          const pointGrid = pointerGrid(event, session);
+          if (fogDraft.current) {
+            engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
+          } else {
+            const scene = engine.getSnapshot();
+            const layer = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog")
+              ?? [...scene.scene.layers].reverse().find((candidate) => candidate.type === "fog" && candidate.visible);
+            if (layer) {
+              engine.dispatch({ type: "fog.layer.select", layerId: layer.id });
+              fogDraft.current = engine.beginFogPolygon(layer.id, tool === "fog" ? "fog" : "clear", pointGrid);
+            }
+          }
+          return;
+        }
         const token = tool === "table"
           ? beginTableInteraction(event, engine, session)
           : beginAssetInteraction(event, engine, session);
@@ -104,6 +146,21 @@ export function useEditorInteractions({
         event.button === 2 ||
         (event.button === 0 && spacePressed.current);
       if (!forcePan && event.button === 0) {
+        if (tool === "fog" || tool === "fog-clear") {
+          const pointGrid = pointerGrid(event, session);
+          if (fogDraft.current) {
+            engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
+          } else {
+            const scene = engine.getSnapshot();
+            const layer = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog")
+              ?? [...scene.scene.layers].reverse().find((candidate) => candidate.type === "fog" && candidate.visible);
+            if (!layer) return;
+            engine.dispatch({ type: "fog.layer.select", layerId: layer.id });
+            fogDraft.current = engine.beginFogPolygon(layer.id, tool === "fog" ? "fog" : "clear", pointGrid);
+          }
+          event.preventDefault();
+          return;
+        }
         const token = tool === "table"
           ? beginTableInteraction(event, engine, session)
           : beginAssetInteraction(event, engine, session);
@@ -121,6 +178,9 @@ export function useEditorInteractions({
       }
     },
     onPointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
+      if (fogDraft.current && (tool === "fog" || tool === "fog-clear")) {
+        engine.updateFogPolygonCursor(fogDraft.current, pointerGrid(event, session));
+      }
       if (profile === "editor" && event.pointerType !== "touch" && !drag.current) {
         const bounds = event.currentTarget.getBoundingClientRect();
         const current = session.getSnapshot();
@@ -218,6 +278,12 @@ export function useEditorInteractions({
       }
       drag.current = null;
     },
+    onDoubleClick(event: React.MouseEvent<HTMLCanvasElement>) {
+      if (!fogDraft.current || (tool !== "fog" && tool !== "fog-clear")) return;
+      event.preventDefault();
+      engine.commitFogPolygon(fogDraft.current);
+      fogDraft.current = null;
+    },
     onWheel(event: React.WheelEvent<HTMLCanvasElement>) {
       if (profile !== "editor") return;
       event.preventDefault();
@@ -230,6 +296,19 @@ export function useEditorInteractions({
       }
     },
   };
+}
+
+function pointerGrid(
+  event: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>,
+  session: TableSession
+): GridPoint {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  const current = session.getSnapshot();
+  return editorCssToGrid(
+    { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+    current.editorCamera,
+    current.viewportCss
+  );
 }
 
 function beginTableInteraction(

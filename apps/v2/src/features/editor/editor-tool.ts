@@ -1,1 +1,1 @@
-export type EditorTool = "assets" | "table";
+export type EditorTool = "assets" | "fog" | "fog-clear" | "table";

@@ -503,7 +503,7 @@ test("asset insertion stays inside its target layer's intermingled paint order",
     ...base,
     layers: [
       { id: "bottom", name: "Ground", type: "assets", visible: true, assetIds: [bottom.id] },
-      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] },
       { id: "top", name: "Tokens", type: "assets", visible: true, assetIds: [top.id] },
     ],
     assets: [bottom, top],
@@ -561,7 +561,7 @@ test("layer moves rebuild asset paint order and undo exactly", () => {
     ...base,
     layers: [
       { id: "bottom", name: "Bottom", type: "assets", visible: true, assetIds: [bottom.id] },
-      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] },
       { id: "top", name: "Top", type: "assets", visible: true, assetIds: [top.id] },
     ],
     assets: [bottom, top],
@@ -601,4 +601,62 @@ test("layer deletion removes contained assets and undo restores index and conten
   assert.deepEqual(engine.getSnapshot().scene.assets.map((item) => item.id), before.assets.map((item) => item.id));
   engine.redo();
   assert.equal(engine.getSnapshot().scene.assets.length, 0);
+});
+
+test("fog polygon drawing previews immutable geometry and commits one revision", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const initialCount = layer.fogPolygons.length;
+  const token = engine.beginFogPolygon(layer.id, "fog", { x: -2, y: 1 });
+  engine.appendFogPolygonVertex(token, { x: 5, y: 1 });
+  engine.appendFogPolygonVertex(token, { x: 5, y: 8 });
+  engine.updateFogPolygonCursor(token, { x: -2, y: 8 });
+  assert.equal(engine.getSnapshot().revision, 0);
+  assert.equal(engine.getSnapshot().previewActive, true);
+  assert.equal((engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id) as typeof layer).fogPolygons.length, initialCount + 1);
+  assert.equal(engine.getCommittedSnapshot().scene.layers.find((candidate) => candidate.id === layer.id)?.type, "fog");
+  assert.deepEqual(engine.commitFogPolygon(token), { ok: true, changed: true, revision: 1 });
+  const committed = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(committed?.type === "fog");
+  assert.deepEqual(committed.fogPolygons.at(-1)?.vertices, [{ x: -2, y: 1 }, { x: 5, y: 1 }, { x: 5, y: 8 }]);
+  assert.equal(Object.isFrozen(committed.fogPolygons), true);
+  assert.equal(Object.isFrozen(committed.fogPolygons.at(-1)?.vertices), true);
+  assert.equal(Object.isFrozen(committed.fogPolygons.at(-1)?.vertices[0]), true);
+});
+
+test("fog polygon insert, update, remove, undo, and redo preserve exact values", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const polygon = { vertices: [{ x: 0, y: 0 }, { x: 6, y: 0 }, { x: 0, y: 6 }], visibleOnTable: true };
+  assert.equal(engine.dispatch({ type: "fog.polygon.insert", layerId: layer.id, collection: "clear", polygon }).ok, true);
+  const index = layer.fogClearPolygons.length;
+  const hidden = { ...polygon, visibleOnTable: false };
+  assert.equal(engine.dispatch({ type: "fog.polygon.update", layerId: layer.id, collection: "clear", polygonIndex: index, polygon: hidden }).ok, true);
+  assert.equal(engine.dispatch({ type: "fog.polygon.remove", layerId: layer.id, collection: "clear", polygonIndex: index }).ok, true);
+  engine.undo();
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogClearPolygons[index], hidden);
+  engine.undo();
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogClearPolygons[index], polygon);
+  engine.redo();
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogClearPolygons[index], hidden);
+});
+
+test("fog commands reject invalid layers and degenerate committed polygons", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const invalid = { vertices: [{ x: 0, y: 0 }, { x: 1, y: 1 }], visibleOnTable: true };
+  assert.deepEqual(
+    engine.dispatch({ type: "fog.polygon.insert", layerId: layer.id, collection: "fog", polygon: invalid }),
+    { ok: false, error: "Fog polygons require at least three vertices", revision: 0 }
+  );
+  assert.equal(engine.dispatch({ type: "fog.polygon.insert", layerId: "missing", collection: "fog", polygon: { ...invalid, vertices: [...invalid.vertices, { x: 2, y: 0 }] } }).ok, false);
 });

@@ -72,6 +72,9 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
         aria-label={profile === "editor" ? "Fantassist scene editor" : "Fantassist table output"}
         data-scene-id={sceneSnapshot.scene.id}
         data-scene-revision={sceneSnapshot.revision}
+        data-preview-active={sceneSnapshot.previewActive}
+        data-fog-polygons={sceneSnapshot.scene.layers.reduce((count, layer) => count + (layer.type === "fog" ? layer.fogPolygons.length : 0), 0)}
+        data-fog-clear-polygons={sceneSnapshot.scene.layers.reduce((count, layer) => count + (layer.type === "fog" ? layer.fogClearPolygons.length : 0), 0)}
         data-asset-x={asset?.transform.x}
         data-asset-y={asset?.transform.y}
         data-asset-width={asset?.transform.width}

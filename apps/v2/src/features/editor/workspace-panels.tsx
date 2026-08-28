@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, ListPlus, Ruler, Trash2 } from "lucide-react";
+import { CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, ListPlus, Ruler, Trash2 } from "lucide-react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -113,25 +113,46 @@ export function WorkspacePanels({
                 }).finally(() => setUploading(false));
               }}
             />
-            <Button
-              disabled={!editorScene || editorScene.status === "prototype" || editorScene.status === "loading" || editorScene.status === "conflict"}
-              variant="ghost"
-              size="icon-sm"
-              type="button"
-              title={editorScene?.status === "prototype" ? "Upload an image to create a persisted scene first" : "Add asset layer"}
-              aria-label="Add asset layer"
-              onClick={() => {
-                try {
-                  editorScene?.createAssetLayer();
-                  setUploadError(null);
-                } catch (cause) {
-                  setUploadError(cause instanceof Error ? cause.message : "Unable to create the asset layer");
-                }
-              }}
-              className="rounded-none border border-violet-300/12 text-violet-100/60"
-            >
-              <ListPlus className="size-3.5" aria-hidden="true" />
-            </Button>
+            <span className="flex gap-1">
+              <Button
+                disabled={!editorScene || editorScene.status === "prototype" || editorScene.status === "loading" || editorScene.status === "conflict"}
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                title="Add fog layer"
+                aria-label="Add fog layer"
+                onClick={() => {
+                  try {
+                    editorScene?.createFogLayer();
+                    setUploadError(null);
+                  } catch (cause) {
+                    setUploadError(cause instanceof Error ? cause.message : "Unable to create the fog layer");
+                  }
+                }}
+                className="rounded-none border border-violet-300/12 text-violet-100/60"
+              >
+                <CloudFog className="size-3.5" aria-hidden="true" />
+              </Button>
+              <Button
+                disabled={!editorScene || editorScene.status === "prototype" || editorScene.status === "loading" || editorScene.status === "conflict"}
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                title={editorScene?.status === "prototype" ? "Upload an image to create a persisted scene first" : "Add asset layer"}
+                aria-label="Add asset layer"
+                onClick={() => {
+                  try {
+                    editorScene?.createAssetLayer();
+                    setUploadError(null);
+                  } catch (cause) {
+                    setUploadError(cause instanceof Error ? cause.message : "Unable to create the asset layer");
+                  }
+                }}
+                className="rounded-none border border-violet-300/12 text-violet-100/60"
+              >
+                <ListPlus className="size-3.5" aria-hidden="true" />
+              </Button>
+            </span>
           </div>
           <div className="grid gap-1">
             {[...sceneSnapshot.scene.layers].reverse().map((layer) => (
@@ -197,7 +218,20 @@ export function WorkspacePanels({
                   >
                     <GripVertical aria-hidden="true" />
                   </Button>
-                  <span className={`min-w-0 flex-1 truncate text-[11px] font-medium ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`} title={layer.name}>{layer.name}</span>
+                  {layer.type === "fog" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      aria-pressed={sceneSnapshot.selectedFogLayerId === layer.id}
+                      onClick={() => engine.dispatch({ type: "fog.layer.select", layerId: layer.id })}
+                      className={`h-7 min-w-0 flex-1 justify-start rounded-none px-1 text-[11px] font-medium aria-pressed:bg-fuchsia-400/10 aria-pressed:text-fuchsia-100 ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`}
+                      title={`Edit ${layer.name}`}
+                    >
+                      <span className="truncate">{layer.name}</span>
+                    </Button>
+                  ) : (
+                    <span className={`min-w-0 flex-1 truncate text-[11px] font-medium ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`} title={layer.name}>{layer.name}</span>
+                  )}
                   <span className="flex shrink-0 items-center gap-1">
                     <span className="font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
                     <LayerIconButton
@@ -208,7 +242,9 @@ export function WorkspacePanels({
                     </LayerIconButton>
                     <DeleteConfirmation
                       title="Delete layer?"
-                      description={`${layer.name} and ${layer.assetIds.length} contained image${layer.assetIds.length === 1 ? "" : "s"} will be removed from the scene.`}
+                      description={layer.type === "assets"
+                        ? `${layer.name} and ${layer.assetIds.length} contained image${layer.assetIds.length === 1 ? "" : "s"} will be removed from the scene.`
+                        : `${layer.name} and ${layer.fogPolygons.length + layer.fogClearPolygons.length} contained polygon${layer.fogPolygons.length + layer.fogClearPolygons.length === 1 ? "" : "s"} will be removed from the scene.`}
                       onConfirm={() => engine.dispatch({ type: "layer.remove", layerId: layer.id })}
                       trigger={<LayerIconButton label={`Delete ${layer.name}`}><Trash2 /></LayerIconButton>}
                     />
@@ -231,7 +267,7 @@ export function WorkspacePanels({
                     ) : null}
                   </span>
                 </div>
-                {layer.assetIds.map((assetId) => {
+                {layer.type === "assets" ? layer.assetIds.map((assetId) => {
                   const layerAsset = sceneSnapshot.scene.assets.find((candidate) => candidate.id === assetId);
                   if (!layerAsset) return null;
                   const selected = sceneSnapshot.selectedAssetId === layerAsset.id;
@@ -259,7 +295,37 @@ export function WorkspacePanels({
                       </LayerIconButton>
                     </div>
                   );
-                })}
+                }) : (
+                  <div className="grid gap-0.5 pb-1">
+                    {([
+                      ...layer.fogPolygons.map((polygon, index) => ({ polygon, index, collection: "fog" as const })),
+                      ...layer.fogClearPolygons.map((polygon, index) => ({ polygon, index, collection: "clear" as const })),
+                    ]).map(({ polygon, index, collection }) => (
+                      <div key={`${collection}-${index}`} className="flex min-h-8 items-center gap-2 px-2 pl-8 text-[9px] text-violet-100/60">
+                        {collection === "fog" ? <CloudFog className="size-3 text-fuchsia-200/65" /> : <Eraser className="size-3 text-sky-200/65" />}
+                        <span className="min-w-0 flex-1 truncate font-mono tracking-wide uppercase">{collection === "fog" ? "Fog" : "Clear"} {index + 1} · {polygon.vertices.length} points</span>
+                        <LayerIconButton
+                          label={polygon.visibleOnTable ? "Hide polygon on table" : "Show polygon on table"}
+                          onClick={() => engine.dispatch({
+                            type: "fog.polygon.update",
+                            layerId: layer.id,
+                            collection,
+                            polygonIndex: index,
+                            polygon: { ...polygon, visibleOnTable: !polygon.visibleOnTable },
+                          })}
+                        >
+                          {polygon.visibleOnTable ? <Eye /> : <EyeOff />}
+                        </LayerIconButton>
+                        <LayerIconButton
+                          label={`Delete ${collection} polygon ${index + 1}`}
+                          onClick={() => engine.dispatch({ type: "fog.polygon.remove", layerId: layer.id, collection, polygonIndex: index })}
+                        >
+                          <Trash2 />
+                        </LayerIconButton>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

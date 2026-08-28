@@ -43,6 +43,7 @@ interface EditorSceneContextValue {
   displayScene(): Promise<void>;
   selectScene(key: string): Promise<void>;
   createAssetLayer(): void;
+  createFogLayer(): void;
   uploadImages(files: readonly File[], placement: { readonly centerGrid: GridPoint; readonly heightGrid: number; readonly layerId: string }): Promise<void>;
 }
 
@@ -257,6 +258,26 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
     });
     if (!result.ok) throw new Error(result.error);
   };
+  const createFogLayer = () => {
+    if (!activeRecord.current) throw new Error("Create a persisted scene before adding a fog layer");
+    if (status === "conflict") throw new Error("Resolve the scene conflict before adding a layer");
+    const count = engine.getSnapshot().scene.layers.filter((layer) => layer.type === "fog").length;
+    const id = crypto.randomUUID();
+    const result = engine.dispatch({
+      type: "layer.insert",
+      layer: {
+        id,
+        name: `Fog ${count + 1}`,
+        type: "fog",
+        visible: true,
+        assetIds: [],
+        fogPolygons: [],
+        fogClearPolygons: [],
+      },
+    });
+    if (!result.ok) throw new Error(result.error);
+    engine.dispatch({ type: "fog.layer.select", layerId: id });
+  };
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
@@ -349,6 +370,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       displayScene,
       selectScene,
       createAssetLayer,
+      createFogLayer,
       uploadImages,
     }}>
       {children}
