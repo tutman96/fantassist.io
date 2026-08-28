@@ -2,6 +2,7 @@
   "name": "@fantassist/v2",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -11,8 +12,11 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "shader:check": "vgpu check src/renderer/vgpu/shaders/scaffold.wgsl --require-validation",
-    "check": "npm run lint && npm run typecheck && npm run shader:check && npm run build"
+    "shader:check": "for shader in src/renderer/vgpu/shaders/*.wgsl; do vgpu check \"$shader\" --require-validation || exit 1; done",
+    "test": "node --import tsx --test test/*.test.ts",
+    "render:scene": "tsx scripts/render-scene.ts",
+    "render:performance": "npm run render:scene -- --performance --out artifacts/performance-4k.png",
+    "check": "npm run lint && npm run typecheck && npm run shader:check && npm test && npm run build"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -30,12 +34,15 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^24.13.3",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "pngjs": "^7.0.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }

@@ -16,7 +16,9 @@ Current implementation progress:
 - Legacy marker layers are discarded safely at the v1 compatibility boundary.
 - The stable application exposes `/beta`, a validated version cookie endpoint, and coordinated tab/output switching.
 - The independent `apps/v2` scaffold uses Next 16, React 19, Tailwind 4, shadcn with Radix, and vgpu.
-- The initial v2 WGSL pass validates against a WebGPU device and renders through a client-only lifecycle adapter.
+- A shared v2 render plan executes instanced sampled assets, fog, GPU obstruction shadows, `rgba16float` lighting, linear composition, and display conversion in browser and `vgpu/node` targets.
+- The headless renderer emits PNG and diagnostics artifacts, has deterministic native smoke coverage, and runs with a software adapter in Linux CI.
+- Browser video texture validation is explicitly deferred; the spike does not treat synthetic time-based animation as video support.
 - The dedicated `fantassist-io-v2` Vercel project is deployed on Node 24.
 - Cookie-selected gateway rewrites are verified for v2 documents, immutable assets, stable API ownership, and stable manifest ownership.
 
@@ -1035,7 +1037,7 @@ Do not begin broad interface work until the first three milestones have passed.
 
 | Decision | Options | Recommendation |
 | --- | --- | --- |
-| Supported browsers | Chromium-only initially or broader WebGPU support | Decide from video and performance spike results |
+| Supported browsers | Chromium-only initially or broader WebGPU support | Decide after deferred video validation and broader hardware measurements |
 | Unsupported browser behavior | Block v2 or redirect to v1 | Offer a direct switch back to v1 |
 | Renderer threading | Main thread or worker | Start on main thread; preserve worker-compatible APIs |
 | Picking | CPU bounds or GPU ID pass | CPU for simple assets, GPU where pixel accuracy is required |
@@ -1065,7 +1067,7 @@ Do not begin broad interface work until the first three milestones have passed.
 | Risk | Mitigation |
 | --- | --- |
 | Vgpu API instability | Pin a validated release and wrap it behind renderer interfaces |
-| Video texture limitations | Prove upload and lifecycle behavior before foundation work |
+| Video texture limitations | Deferred by product priority; prove upload and lifecycle behavior before implementing video assets |
 | 4K lighting cost | Benchmark multiple algorithms during the spike |
 | V1 dropping v2 protobuf fields | Freeze shared schema and use optional sidecar storage |
 | IndexedDB unavailable across deployments | Keep both versions on one exact origin |

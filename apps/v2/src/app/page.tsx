@@ -15,12 +15,12 @@ const foundations = [
   {
     icon: Layers3,
     title: "Explicit render passes",
-    description: "Editor and output profiles share one vgpu pipeline.",
+    description: "Browser and headless output share one vgpu render plan.",
   },
   {
     icon: Sparkles,
     title: "GPU composition",
-    description: "Lighting, shadows, and fog will remain entirely in WGSL.",
+    description: "Lighting, obstruction shadows, and fog execute in WGSL.",
   },
 ];
 
@@ -65,9 +65,9 @@ export default function Home() {
           </div>
 
           <aside className="flex flex-col rounded-xl border border-border/80 bg-card/70 p-5 shadow-xl shadow-black/20 backdrop-blur">
-            <Badge className="w-fit">Scaffolding</Badge>
+            <Badge className="w-fit">Renderer spike</Badge>
             <h1 className="mt-5 text-4xl leading-none font-semibold tracking-tight">
-              Build the engine before the editor.
+              Prove the pixels before the editor.
             </h1>
             <p className="mt-4 text-sm leading-6 text-muted-foreground">
               This app is isolated from v1 so its runtime, interface, and GPU
@@ -100,7 +100,7 @@ export default function Home() {
                 </Link>
               </Button>
               <p className="mt-3 text-center font-mono text-[0.65rem] tracking-wide text-muted-foreground uppercase">
-                Scene compatibility comes next
+                Scene engine prototype comes next
               </p>
             </div>
           </aside>
