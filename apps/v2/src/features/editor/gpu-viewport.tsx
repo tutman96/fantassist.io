@@ -10,16 +10,25 @@ import { useSceneViewport } from "@/features/editor/use-scene-viewport";
 import { CameraStatus, EditorGestureHints, RendererGate } from "@/features/editor/viewport-status";
 import { WorkspacePanels } from "@/features/editor/workspace-panels";
 import { synchronizeSceneEngine } from "@/features/presentation/scene-session-channel";
+import { useEditorScene } from "@/features/scenes/editor-scene-context";
 import { synchronizeTableSession } from "@/features/presentation/table-session-channel";
 import { useSharedTableSession } from "@/features/table/table-session-context";
+import { createV1Repositories } from "@/persistence/v1/repositories";
+import { createBrowserImageLoader } from "@/renderer/browser-image-loader";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 
 export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sharedSession = useSharedTableSession();
+  const editorScene = useEditorScene();
   const [ownedSession] = useState(createTableSession);
   const session = sharedSession ?? ownedSession;
-  const [engine] = useState(createSceneEngine);
+  const [ownedEngine] = useState(createSceneEngine);
+  const [ownedImageLoader] = useState(() => {
+    const repositories = createV1Repositories();
+    return createBrowserImageLoader((id) => repositories.getAsset(id));
+  });
+  const engine = editorScene?.engine ?? ownedEngine;
   const tableSnapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const sceneSnapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
   const asset = sceneSnapshot.scene.assets[0];
@@ -30,6 +39,7 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
   const status = useSceneViewport({
     canvasRef,
     engine,
+    imageLoader: editorScene?.imageLoader ?? ownedImageLoader,
     profile,
     sceneSnapshot,
     session,
@@ -45,6 +55,7 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
   return (
     <div className="relative size-full overflow-hidden bg-[#03050d]">
       <canvas
+        key={asset.mediaId}
         ref={canvasRef}
         aria-label={profile === "editor" ? "Fantassist scene editor" : "Fantassist table output"}
         data-scene-revision={sceneSnapshot.revision}

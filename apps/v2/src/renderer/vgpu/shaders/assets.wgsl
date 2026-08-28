@@ -44,12 +44,12 @@ struct VertexOutput {
     1.0,
   );
   output.uv = corner;
-  output.tint = vec4f(0.34, 0.55, 0.58, 1.0);
+  output.tint = vec4f(1.0);
   return output;
 }
 
 @fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-  let sampled = textureSampleLevel(map_texture, texture_sampler, input.uv * 5.0, 0.0).rgb;
-  let color = sampled * input.tint.rgb;
-  return vec4f(color * input.tint.a, input.tint.a);
+  let sampled = textureSampleLevel(map_texture, texture_sampler, input.uv, 0.0);
+  let alpha = sampled.a * input.tint.a;
+  return vec4f(sampled.rgb * input.tint.rgb * alpha, alpha);
 }

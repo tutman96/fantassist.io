@@ -78,6 +78,8 @@ test("commands validate input and snapshots remain deeply frozen", () => {
   assert.equal(notifications, 0);
   assert.equal(Object.isFrozen(engine.getSnapshot()), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene), true);
+  assert.equal(Object.isFrozen(engine.getSnapshot().scene.layers), true);
+  assert.equal(Object.isFrozen(engine.getSnapshot().scene.layers[0].assetIds), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.assets), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.assets[0].transform), true);
 });

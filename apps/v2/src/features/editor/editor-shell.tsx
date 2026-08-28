@@ -3,13 +3,15 @@ import Link from "next/link";
 
 import { GpuViewport } from "@/features/editor/gpu-viewport";
 import { SceneSelector } from "@/features/scenes/scene-selector";
+import { EditorSceneProvider } from "@/features/scenes/editor-scene-context";
 import { TableMenu } from "@/features/table/table-menu";
 import { TableSessionProvider } from "@/features/table/table-session-context";
 
 export function EditorShell() {
   return (
     <TableSessionProvider>
-      <main className="flex h-svh flex-col overflow-hidden bg-[#050713] text-white">
+      <EditorSceneProvider>
+        <main className="flex h-svh flex-col overflow-hidden bg-[#050713] text-white">
         <header className="relative z-20 flex h-12 shrink-0 items-center justify-between border-b border-violet-300/12 bg-[#090817] px-3 shadow-[0_10px_30px_rgba(2,4,14,0.32)] sm:px-4">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="relative grid size-8 shrink-0 place-items-center">
@@ -41,7 +43,8 @@ export function EditorShell() {
         <section className="relative min-h-0 flex-1" aria-label="Scene workspace">
           <GpuViewport profile="editor" />
         </section>
-      </main>
+        </main>
+      </EditorSceneProvider>
     </TableSessionProvider>
   );
 }

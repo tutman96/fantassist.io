@@ -15,14 +15,33 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
   try {
     const output = target(gpu, { size: [64, 36], format: "rgba8unorm" });
     const engine = createSceneEngine();
+    let imageUploads = 0;
     const executor = createSceneExecutor(
       gpu,
       output,
       createRenderPlan("output"),
       await loadSceneShaders(),
       { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY },
-      engine.getSnapshot()
+      engine.getSnapshot(),
+      {
+        width: 2,
+        height: 2,
+        upload(uploadGpu, texture) {
+          imageUploads++;
+          uploadGpu.gpu.queue.writeTexture(
+            { texture: texture.gpu },
+            new Uint8Array([
+              255, 0, 0, 255, 0, 255, 0, 255,
+              0, 0, 255, 255, 255, 255, 255, 0,
+            ]),
+            { bytesPerRow: 8, rowsPerImage: 2 },
+            [2, 2, 1]
+          );
+        },
+        dispose() {},
+      }
     );
+    assert.equal(imageUploads, 1);
 
     await executor.prewarm();
     await executor.render(1.25);

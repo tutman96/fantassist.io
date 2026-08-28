@@ -7,12 +7,14 @@ import type { TableSession, TableSessionSnapshot } from "@/engine/table-session"
 import type { RenderView } from "@/renderer/projection";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 import { createBrowserSceneRenderer } from "@/renderer/vgpu/browser-renderer";
+import type { ImageAssetLoader } from "@/renderer/image-texture";
 
 export type RendererStatus = "starting" | "ready" | "unsupported";
 
 export function useSceneViewport({
   canvasRef,
   engine,
+  imageLoader,
   profile,
   sceneSnapshot,
   session,
@@ -20,6 +22,7 @@ export function useSceneViewport({
 }: {
   readonly canvasRef: React.RefObject<HTMLCanvasElement | null>;
   readonly engine: SceneEngine;
+  readonly imageLoader?: ImageAssetLoader;
   readonly profile: RenderProfile;
   readonly sceneSnapshot: SceneEngineSnapshot;
   readonly session: TableSession;
@@ -27,6 +30,7 @@ export function useSceneViewport({
 }): RendererStatus {
   const rendererRef = useRef<Awaited<ReturnType<typeof createBrowserSceneRenderer>>>(null);
   const [status, setStatus] = useState<RendererStatus>("starting");
+  const assetMediaId = sceneSnapshot.scene.assets[0].mediaId;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,7 +43,7 @@ export function useSceneViewport({
     const observer = new ResizeObserver(updateViewport);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [canvasRef, session]);
+  }, [assetMediaId, canvasRef, session]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,7 +54,7 @@ export function useSceneViewport({
     queueMicrotask(() => {
       if (disposed) return;
       const initialView = toRenderView(profile, session.getSnapshot());
-      void createBrowserSceneRenderer(canvas, profile, initialView, engine.getSnapshot(), () => {
+      void createBrowserSceneRenderer(canvas, profile, initialView, engine.getSnapshot(), imageLoader, () => {
         if (!disposed) setStatus("unsupported");
       })
         .then((renderer) => {
@@ -75,7 +79,7 @@ export function useSceneViewport({
       disposed = true;
       disposeRenderer?.();
     };
-  }, [canvasRef, engine, profile, session]);
+  }, [assetMediaId, canvasRef, engine, imageLoader, profile, session]);
 
   useEffect(() => {
     rendererRef.current?.setView(toRenderView(profile, tableSnapshot));

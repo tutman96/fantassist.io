@@ -8,15 +8,26 @@ export interface AssetTransform {
 
 export interface ImageAsset {
   readonly id: string;
+  readonly layerId: string;
+  readonly mediaId: string;
   readonly name: string;
   readonly type: "image";
   readonly transform: AssetTransform;
+}
+
+export interface SceneLayer {
+  readonly id: string;
+  readonly name: string;
+  readonly type: "assets" | "fog";
+  readonly visible: boolean;
+  readonly assetIds: readonly string[];
 }
 
 export interface SceneDocument {
   readonly id: string;
   readonly name: string;
   readonly version: number;
+  readonly layers: readonly SceneLayer[];
   readonly assets: readonly ImageAsset[];
 }
 
@@ -27,9 +38,15 @@ export function createSampleSceneDocument(): SceneDocument {
     id: "sample/scene",
     name: "Astral Clearing",
     version: 0,
+    layers: [
+      { id: "sample/assets", name: "Assets", type: "assets", visible: true, assetIds: [SAMPLE_ASSET_ID] },
+      { id: "sample/fog", name: "Fog", type: "fog", visible: true, assetIds: [] },
+    ],
     assets: [
       {
         id: SAMPLE_ASSET_ID,
+        layerId: "sample/assets",
+        mediaId: SAMPLE_ASSET_ID,
         name: "Astral clearing map",
         type: "image",
         transform: { x: 1.5, y: 2.5, rotation: 0, width: 36, height: 18 },
@@ -41,6 +58,7 @@ export function createSampleSceneDocument(): SceneDocument {
 export function freezeSceneDocument(scene: SceneDocument): SceneDocument {
   return Object.freeze({
     ...scene,
+    layers: Object.freeze(scene.layers.map((layer) => Object.freeze({ ...layer, assetIds: Object.freeze([...layer.assetIds]) }))),
     assets: Object.freeze(
       scene.assets.map((asset) =>
         Object.freeze({

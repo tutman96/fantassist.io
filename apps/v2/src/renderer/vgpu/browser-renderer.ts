@@ -2,6 +2,8 @@ import { init, surface } from "vgpu";
 import type { Gpu, Surface } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
+import { createFallbackImageUpload } from "../image-texture";
+import type { ImageAssetLoader } from "../image-texture";
 import { createRenderPlan } from "../render-plan";
 import type { RenderView } from "../projection";
 import type { RenderProfile } from "../scene-renderer";
@@ -22,6 +24,7 @@ export async function createBrowserSceneRenderer(
   profile: RenderProfile,
   initialView: RenderView,
   initialSnapshot: SceneEngineSnapshot,
+  imageLoader?: ImageAssetLoader,
   onFatalError?: (error: unknown) => void
 ): Promise<BrowserSceneRenderer> {
   let disposed = false;
@@ -50,7 +53,17 @@ export async function createBrowserSceneRenderer(
       return;
     }
     let nextSurface: Surface | undefined;
+    let imageUpload: Awaited<ReturnType<ImageAssetLoader["loadImage"]>> | undefined;
     try {
+      imageUpload = imageLoader
+        ? await imageLoader.loadImage(activeSnapshot.scene.assets[0].mediaId)
+        : null;
+      if (disposed || ownGeneration !== generation) {
+        imageUpload?.dispose();
+        nextGpu.dispose();
+        return;
+      }
+      imageUpload ??= createFallbackImageUpload();
       nextSurface = surface(nextGpu, canvas, { dpr: [1, 2], autoResize: true });
       const executor = createSceneExecutor(
         nextGpu,
@@ -58,8 +71,11 @@ export async function createBrowserSceneRenderer(
         createRenderPlan(profile),
         browserSceneShaders,
         activeView,
-        activeSnapshot
+        activeSnapshot,
+        imageUpload
       );
+      imageUpload.dispose();
+      imageUpload = undefined;
       executor.setGridVisible(activeGridVisible);
       await executor.prewarm();
       if (disposed || ownGeneration !== generation) {
@@ -120,6 +136,7 @@ export async function createBrowserSceneRenderer(
         queueMicrotask(() => void drain());
       }
     } catch (error) {
+      imageUpload?.dispose();
       nextSurface?.dispose();
       nextGpu.dispose();
       throw error;

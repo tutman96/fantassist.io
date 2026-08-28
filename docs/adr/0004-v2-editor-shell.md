@@ -17,7 +17,7 @@ The command bar contains project identity, a searchable scene selector, and the 
 The workspace contains:
 
 - A responsive tool rail with engine-backed undo and redo.
-- One inferred image-content row backed by the current prototype asset.
+- Ordered layer metadata and the currently supported image content from the active engine scene.
 - An independent contextual inspector anchored at the top-right.
 - An independent layer stack anchored at the bottom-right.
 

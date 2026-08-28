@@ -19,7 +19,9 @@ export function WorkspacePanels({
 }) {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
-  const asset = sceneSnapshot.scene.assets[0];
+  const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
+    ?? sceneSnapshot.scene.assets[0];
+  const assetLayer = sceneSnapshot.scene.layers.find((layer) => layer.id === asset.layerId);
   const assetSelected = sceneSnapshot.selectedAssetId === asset.id;
 
   useEffect(() => {
@@ -47,7 +49,7 @@ export function WorkspacePanels({
         onOpenChange={setInspectorOpen}
         eyebrow="Inspector"
         title={assetSelected ? asset.name : "Scene details"}
-        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : "Astral Clearing · prototype"}
+        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.name} · ${sceneSnapshot.scene.id === "sample/scene" ? "prototype" : "persisted"}`}
         icon={assetSelected ? <ImageIcon /> : <Ruler />}
         className="top-20 right-3 left-3 max-h-[55%] sm:top-4 sm:right-4 sm:left-auto sm:max-h-[calc(100%-2rem)] sm:w-[19rem]"
         contentClassName="max-h-[calc(55svh-5rem)] sm:max-h-[calc(100svh-12rem)]"
@@ -55,7 +57,7 @@ export function WorkspacePanels({
         {assetSelected ? (
           <AssetInspector sceneSnapshot={sceneSnapshot} />
         ) : (
-          <SceneInspector />
+          <SceneInspector sceneSnapshot={sceneSnapshot} />
         )}
       </EditorPanel>
 
@@ -64,7 +66,7 @@ export function WorkspacePanels({
         onOpenChange={setLayersOpen}
         eyebrow="Layer stack"
         title="Scene layers"
-        detail="1 content layer"
+        detail={`${sceneSnapshot.scene.layers.length} layers`}
         icon={<Layers3 />}
         className="right-3 bottom-3 left-3 max-h-[45%] sm:right-4 sm:bottom-4 sm:left-auto sm:w-[19rem]"
         contentClassName="max-h-[calc(45svh-5rem)]"
@@ -90,8 +92,8 @@ export function WorkspacePanels({
               <ImageIcon className="size-3.5" aria-hidden="true" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[11px] font-medium text-violet-50/90">{asset.name}</span>
-              <span className="block truncate font-mono text-[9px] tracking-wide text-violet-100/50 uppercase">Image · inferred layer</span>
+              <span className="block truncate text-[11px] font-medium text-violet-50/90">{assetLayer?.name ?? asset.name}</span>
+              <span className="block truncate font-mono text-[9px] tracking-wide text-violet-100/50 uppercase">{asset.name} · image</span>
             </span>
             <Eye className="size-3.5 text-violet-200/55" aria-label="Visible" />
           </Button>
@@ -105,7 +107,8 @@ export function WorkspacePanels({
 }
 
 function AssetInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngineSnapshot }) {
-  const asset = sceneSnapshot.scene.assets[0];
+  const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
+    ?? sceneSnapshot.scene.assets[0];
   return (
     <div className="p-3">
       <div className="flex items-start justify-between gap-3">
@@ -137,16 +140,16 @@ function AssetInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngine
   );
 }
 
-function SceneInspector() {
+function SceneInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngineSnapshot }) {
   return (
     <div className="p-3">
       <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Current scene</p>
       <div className="mt-2 flex items-center justify-between gap-3">
         <div>
-          <h3 className="font-heading text-base text-amber-50">Astral Clearing</h3>
-          <p className="mt-0.5 text-[10px] text-violet-100/55">Prototype scene · not persisted</p>
+          <h3 className="font-heading text-base text-amber-50">{sceneSnapshot.scene.name}</h3>
+          <p className="mt-0.5 text-[10px] text-violet-100/55">{sceneSnapshot.scene.id === "sample/scene" ? "Prototype scene · not persisted" : "Shared with stable Fantassist"}</p>
         </div>
-        <Badge variant="outline" className="h-auto rounded-none border-violet-300/15 bg-violet-400/5 px-2 py-1 font-mono text-[9px] text-violet-100/65">1 image</Badge>
+        <Badge variant="outline" className="h-auto rounded-none border-violet-300/15 bg-violet-400/5 px-2 py-1 font-mono text-[9px] text-violet-100/65">{sceneSnapshot.scene.assets.length} image{sceneSnapshot.scene.assets.length === 1 ? "" : "s"}</Badge>
       </div>
       <Separator className="my-2.5 bg-violet-300/10" />
       <p className="text-[10px] leading-4 text-violet-100/60">

@@ -37,7 +37,7 @@ Only committed revisions cross the `BroadcastChannel` scene boundary. The editor
 - Drag previews do not alter scene version or cause output-window updates.
 - A completed drag, undo, or redo updates the output as one committed revision.
 - Device-loss recovery can rebuild from the browser renderer's latest engine snapshot.
-- The current scene document and GPU binding intentionally support one procedural image. Ordered multi-asset buffers, persisted protobuf adaptation, media loading, and command metadata remain later milestones.
+- The engine document now carries ordered v1 layer summaries and persisted image media IDs. The current GPU binding still presents one image at a time; ordered multi-asset buffers and command metadata remain later milestones.
 
 ## Acceptance Criteria
 

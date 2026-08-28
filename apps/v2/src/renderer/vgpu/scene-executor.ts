@@ -2,6 +2,8 @@ import { draw, effect, frame, sampler, target } from "vgpu";
 import type { Draw, Effect, Gpu, Target, TargetSignature } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
+import { createFallbackImageUpload } from "../image-texture";
+import type { ImageTextureUpload } from "../image-texture";
 import type { RenderPlan, ScenePass } from "../render-plan";
 import { compileProjection, projectionUniforms } from "../projection";
 import type { RenderView } from "../projection";
@@ -24,7 +26,8 @@ export function createSceneExecutor(
   plan: RenderPlan,
   shaders: SceneShaders,
   initialView: RenderView,
-  initialSnapshot: SceneEngineSnapshot
+  initialSnapshot: SceneEngineSnapshot,
+  imageUpload: ImageTextureUpload = createFallbackImageUpload()
 ): SceneExecutor {
   const size = destination.size;
   const scene = target(gpu, { size, format: "rgba8unorm", label: "scene-assets" });
@@ -33,19 +36,13 @@ export function createSceneExecutor(
   const lights = target(gpu, { size, format: "rgba16float", label: "light-accumulation" });
   const compositeTarget = target(gpu, { size, format: "rgba16float", label: "linear-composite" });
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
-  const repeatingSampler = sampler(gpu, {
-    minFilter: "nearest",
-    magFilter: "nearest",
-    addressModeU: "repeat",
-    addressModeV: "repeat",
-  });
+  const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   const mapTexture = gpu.device.createTexture({
-    size: [8, 8],
-    format: "rgba8unorm",
-    usage: ["copy_dst", "texture_binding"],
-    label: "deterministic-map-texture",
+    size: [imageUpload.width, imageUpload.height],
+    format: "rgba8unorm-srgb",
+    usage: ["copy_dst", "texture_binding", "render_attachment"],
+    label: "scene-image-texture",
   });
-  const mapPixels = new Uint8Array(8 * 8 * 4);
   let gridVisible = plan.showGrid;
   let view = initialView;
   let snapshot = initialSnapshot;
@@ -70,19 +67,7 @@ export function createSceneExecutor(
       selected: plan.showEditorGrid && snapshot.selectedAssetId === asset.id ? 1 : 0,
     };
   };
-  for (let y = 0; y < 8; y++) {
-    for (let x = 0; x < 8; x++) {
-      const offset = (y * 8 + x) * 4;
-      const bright = (x + y) % 2 === 0;
-      mapPixels.set(bright ? [45, 72, 70, 255] : [20, 39, 48, 255], offset);
-    }
-  }
-  gpu.gpu.queue.writeTexture(
-    { texture: mapTexture.gpu },
-    mapPixels,
-    { bytesPerRow: 8 * 4 },
-    [8, 8]
-  );
+  imageUpload.upload(gpu, mapTexture);
 
   const assets = draw(gpu, {
     shader: shaders.assets,
@@ -92,7 +77,7 @@ export function createSceneExecutor(
     label: "asset-background",
     set: {
       map_texture: mapTexture,
-      texture_sampler: repeatingSampler,
+      texture_sampler: imageSampler,
       params: assetParams(),
     },
   });
