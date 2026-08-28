@@ -14,6 +14,8 @@ V2 opens the existing `campaign`, `scene_2`, `asset_file`, and `settings` LocalF
 
 The frozen v1 protobuf schema has a v2-owned non-React codec. A loaded repository record retains the complete supported v1 scene. The adapter projects ordered layer summaries and supported image transforms into an immutable engine document. On save, it clones the complete v1 scene, patches image transforms by stable asset ID, advances the scene version exactly once, and re-encodes every other supported field unchanged.
 
+The codec also owns the exact v1 `SceneExport` envelope used by `.scene` files. Import preparation is non-React and write-free: it validates all referenced media first, assigns destination campaign IDs to the scene and assets, preserves scene contents and layer ordering, resolves destination name collisions, and returns repository-ready scene and file records. Blank scenes use the v1 table defaults and ordered Assets/Fog layers. Global setting writes continue to use the exact `settings` database and its v1 cross-tab notification key.
+
 Only committed engine revisions enter the serialized save queue. Selection, hover, camera movement, previews, and canceled interactions do not persist. Before each write, the repository rereads the stored scene and rejects a stale expected version. External v1 storage notifications reload a clean scene and produce a conflict state when local committed work has not been saved.
 
 The editor scene provider owns catalog loading, active repository records, engine hydration, autosave status, conflict status, and the browser image loader. The scene selector consumes this provider rather than maintaining a second scene model. Display resolution and diagonal load from the existing global settings records; scene table offset, scale, and output-grid state load from the selected scene.
@@ -24,7 +26,7 @@ Scene changes and device recovery reacquire durable files and create new generat
 
 Asset-set changes do not remount the canvas or recreate its GPU surface. The browser loader acquires replacement uploads, the existing executor creates and prewarms new texture draws, then atomically swaps its asset resource set after prior GPU work settles. Add, delete, undo, and redo therefore preserve the last presented frame until the replacement is ready.
 
-When no shared scene exists, the first direct-v2 image upload creates a local campaign, v1-compatible scene, asset layer, and file records before hydrating the engine. This makes the upload workflow testable and usable at the standalone v2 origin without requiring a v1 gateway or pre-seeded database.
+The editor provider owns an explicit active campaign and persists it through the v1-compatible `last_campaign` setting. Campaign creation writes the unchanged `{ id, name }` record shape. Blank-scene creation and `.scene` import both hydrate the resulting record immediately; media uploads require an active persisted scene and remain scoped to an explicit asset layer.
 
 Asset-layer creation is a typed, undoable engine command. New asset layers append at the top of the persisted layer order without separating or moving intervening fog layers. Each asset layer owns its upload action, and inserted images are ordered within that explicit target layer before the complete layer sequence is re-encoded.
 

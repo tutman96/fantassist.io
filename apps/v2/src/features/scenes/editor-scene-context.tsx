@@ -1,15 +1,15 @@
 "use client";
 
-import { createContext, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { createSceneEngine } from "@/engine/scene-engine";
 import type { SceneEngine } from "@/engine/scene-engine";
 import type { GridPoint } from "@/engine/table-camera";
-import { createSampleSceneDocument } from "@/engine/scene-document";
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { createV1Repositories } from "@/persistence/v1/repositories";
 import type { V1Repositories } from "@/persistence/v1/repositories";
 import { applyAssetVisibilityMetadata, hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "@/persistence/v1/scene-adapter";
+import { createBlankV1SceneRecord, prepareV1SceneImport } from "@/persistence/v1/scene-lifecycle";
 import { SceneConflictError } from "@/persistence/v1/types";
 import type { V1Campaign, V1SceneRecord } from "@/persistence/v1/types";
 import { createBrowserImageLoader } from "@/renderer/browser-image-loader";
@@ -30,10 +30,15 @@ interface EditorSceneContextValue {
   readonly imageLoader: ImageAssetLoader;
   readonly campaigns: readonly V1Campaign[];
   readonly scenes: readonly SceneCatalogItem[];
+  readonly activeCampaignId: string | null;
   readonly activeSceneKey: string;
   readonly status: ScenePersistenceStatus;
   readonly error: string | null;
   getAssetFile(assetId: string): Promise<File | null>;
+  selectCampaign(id: string): Promise<void>;
+  createCampaign(name: string): Promise<string>;
+  createScene(name: string): Promise<string>;
+  importScene(file: File): Promise<string>;
   selectScene(key: string): Promise<void>;
   createAssetLayer(): void;
   uploadImages(files: readonly File[], placement: { readonly centerGrid: GridPoint; readonly heightGrid: number; readonly layerId: string }): Promise<void>;
@@ -48,10 +53,9 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   const [imageLoader] = useState(() => createBrowserImageLoader((id) => repositories.getAsset(id)));
   const [getAssetFile] = useState(() => (id: string) => repositories.getAsset(id));
   const [campaigns, setCampaigns] = useState<readonly V1Campaign[]>([]);
-  const [scenes, setScenes] = useState<readonly SceneCatalogItem[]>([
-    { key: "sample/scene", campaignId: "sample", name: "Astral Clearing", version: 0, prototype: true },
-  ]);
-  const [activeSceneKey, setActiveSceneKey] = useState("sample/scene");
+  const [scenes, setScenes] = useState<readonly SceneCatalogItem[]>([]);
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [activeSceneKey, setActiveSceneKey] = useState("");
   const [status, setStatus] = useState<ScenePersistenceStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const activeRecord = useRef<V1SceneRecord | null>(null);
@@ -60,6 +64,15 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   const saveQueue = useRef(Promise.resolve());
   const unsubscribeExternal = useRef<() => void>(() => undefined);
   const hydrating = useRef(false);
+
+  const clearActiveScene = () => {
+    generation.current++;
+    unsubscribeExternal.current();
+    activeRecord.current = null;
+    setActiveSceneKey("");
+    setStatus("prototype");
+    setError(null);
+  };
 
   const hydrate = async (record: V1SceneRecord) => {
     const projected = projectV1Scene(record.scene);
@@ -107,18 +120,6 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   };
 
   const selectScene = async (key: string) => {
-    if (key === "sample/scene") {
-      generation.current++;
-      unsubscribeExternal.current();
-      activeRecord.current = null;
-      hydrating.current = true;
-      engine.replaceCommittedScene(createSampleSceneDocument(), 0);
-      savedEngineRevision.current = 0;
-      hydrating.current = false;
-      setActiveSceneKey(key);
-      setStatus("prototype");
-      return;
-    }
     const ownGeneration = ++generation.current;
     setStatus("loading");
     setError(null);
@@ -126,13 +127,63 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       const record = await repositories.loadScene(key);
       if (!record || generation.current !== ownGeneration) return;
       await hydrate(record);
+      setActiveCampaignId(record.campaignId);
       setActiveSceneKey(key);
       setStatus("saved");
+      await repositories.putSetting("last_campaign", record.campaignId);
       watchExternalChanges(key, ownGeneration);
     } catch (cause) {
       setStatus("error");
       setError(cause instanceof Error ? cause.message : "Unable to open the scene");
     }
+  };
+  const selectCampaign = async (id: string) => {
+    if (!campaigns.some((campaign) => campaign.id === id)) throw new Error("Campaign no longer exists");
+    setActiveCampaignId(id);
+    await repositories.putSetting("last_campaign", id);
+  };
+  const createCampaign = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Campaign name is required");
+    const campaign = { id: crypto.randomUUID(), name: trimmed };
+    await repositories.putCampaign(campaign);
+    setCampaigns((current) => [...current, campaign].sort((a, b) => a.name.localeCompare(b.name)));
+    setActiveCampaignId(campaign.id);
+    clearActiveScene();
+    await repositories.putSetting("last_campaign", campaign.id);
+    return campaign.id;
+  };
+  const activateCreatedScene = async (record: V1SceneRecord) => {
+    setScenes((current) => [...current.filter((scene) => scene.key !== record.key), catalogItem(record)]
+      .sort((a, b) => a.name.localeCompare(b.name)));
+    await selectScene(record.key);
+  };
+  const createScene = async (name: string) => {
+    if (!activeCampaignId) throw new Error("Choose a campaign before creating a scene");
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Scene name is required");
+    const record = createBlankV1SceneRecord(activeCampaignId, trimmed);
+    await repositories.createScene(record);
+    await activateCreatedScene(record);
+    return record.key;
+  };
+  const importScene = async (file: File) => {
+    if (!activeCampaignId) throw new Error("Choose a campaign before importing a scene");
+    const records = await repositories.listScenes(activeCampaignId);
+    const prepared = prepareV1SceneImport(new Uint8Array(await file.arrayBuffer()), activeCampaignId, records);
+    const storedIds: string[] = [];
+    try {
+      for (const item of prepared.files) {
+        await repositories.putAsset(item.id, item.file);
+        storedIds.push(item.id);
+      }
+      await repositories.createScene(prepared.record);
+    } catch (cause) {
+      await Promise.all(storedIds.map((id) => repositories.removeAsset(id)));
+      throw cause;
+    }
+    await activateCreatedScene(prepared.record);
+    return prepared.record.key;
   };
   const uploadImages = async (
     files: readonly File[],
@@ -140,8 +191,9 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   ) => {
     if (status === "conflict") throw new Error("Resolve the scene conflict before uploading media");
     const existingRecord = activeRecord.current;
-    const campaignId = existingRecord?.campaignId ?? crypto.randomUUID();
-    const layerId = existingRecord ? placement.layerId : crypto.randomUUID();
+    if (!existingRecord) throw new Error("Create a scene before uploading media");
+    const campaignId = existingRecord.campaignId;
+    const layerId = placement.layerId;
     if (!layerId) throw new Error("This scene does not have an asset layer");
     if (existingRecord && !engine.getSnapshot().scene.layers.some((layer) => layer.id === layerId && layer.type === "assets")) {
       throw new Error(`Unknown asset layer '${layerId}'`);
@@ -174,61 +226,6 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       });
     }
 
-    if (!existingRecord) {
-      const key = `${campaignId}/${crypto.randomUUID()}`;
-      const table = tableSession?.getSnapshot().table;
-      const sceneName = prepared[0]?.asset.name || "Untitled Scene";
-      const record: V1SceneRecord = {
-        key,
-        campaignId,
-        scene: {
-          id: key,
-          name: sceneName,
-          version: 0,
-          table: {
-            displayGrid: table?.displayGrid ?? false,
-            offset: table?.originGrid ?? { x: 0, y: 0 },
-            rotation: 0,
-            scale: table?.scale ?? 1,
-          },
-          layers: [{
-            assetLayer: {
-              id: layerId,
-              name: "Assets",
-              visible: true,
-              type: 0,
-              assets: Object.fromEntries(prepared.map(({ asset }) => [asset.id, {
-                id: asset.id,
-                type: 0,
-                size: asset.intrinsicSize,
-                transform: asset.transform,
-              }])),
-            },
-          }],
-        },
-      };
-      try {
-        for (const item of prepared) await repositories.putAsset(item.asset.id, item.file);
-        const campaign = { id: campaignId, name: "Local Campaign" };
-        await repositories.putCampaign(campaign);
-        await repositories.createScene(record);
-        const ownGeneration = ++generation.current;
-        setCampaigns((current) => [...current, campaign]);
-        setScenes([{ key, campaignId, name: sceneName, version: 0, prototype: false }]);
-        await hydrate(record);
-        const selectedAsset = prepared.at(-1)?.asset;
-        if (selectedAsset) engine.dispatch({ type: "selection.set", assetId: selectedAsset.id });
-        setActiveSceneKey(key);
-        setStatus("saved");
-        setError(null);
-        watchExternalChanges(key, ownGeneration);
-        return;
-      } catch (cause) {
-        await Promise.all(prepared.map((item) => repositories.removeAsset(item.asset.id)));
-        throw cause;
-      }
-    }
-
     const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layerId);
     if (!layer) throw new Error("This scene does not have an asset layer");
     for (const { file, asset } of prepared) {
@@ -259,40 +256,31 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
     });
     if (!result.ok) throw new Error(result.error);
   };
-  const selectSceneForInitialization = useEffectEvent(selectScene);
-
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
       repositories.listCampaigns(),
       repositories.listScenes(),
       repositories.getSetting<string>("displayed_scene"),
+      repositories.getSetting<string>("last_campaign"),
       repositories.getSetting<{ width: number; height: number }>("table_resolution"),
       repositories.getSetting<number>("table_size"),
-    ]).then(async ([campaignValues, sceneRecords, displayedScene, resolution, diagonal]) => {
+    ]).then(async ([campaignValues, sceneRecords, displayedScene, lastCampaign, resolution, diagonal]) => {
       if (cancelled) return;
       setCampaigns(campaignValues);
       if (resolution && tableSession) tableSession.updateConfiguration({ display: { resolutionPx: resolution } });
       if (diagonal && tableSession) tableSession.updateConfiguration({ display: { diagonalInches: diagonal } });
-      if (sceneRecords.length === 0) {
+      if (campaignValues.length === 0) {
         setStatus("prototype");
         return;
       }
-      const catalog = sceneRecords.map((record) => ({
-        key: record.key,
-        campaignId: record.campaignId,
-        name: record.scene.name,
-        version: record.scene.version,
-        prototype: false,
-      }));
+      const catalog = sceneRecords.map(catalogItem);
       setScenes(catalog);
-      const preferred = sceneRecords.find((record) => record.key === displayedScene)
-        ?? sceneRecords[0];
-      if (preferred) await selectSceneForInitialization(preferred.key);
-      else {
-        setStatus("error");
-        setError("No stored scene is available");
-      }
+      const campaignId = campaignValues.some((campaign) => campaign.id === lastCampaign)
+        ? lastCampaign!
+        : sceneRecords.find((record) => record.key === displayedScene)?.campaignId ?? campaignValues[0].id;
+      setActiveCampaignId(campaignId);
+      setStatus("prototype");
     }).catch((cause: unknown) => {
       if (cancelled) return;
       setStatus("error");
@@ -341,10 +329,31 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   }), [engine, repositories, status]);
 
   return (
-    <EditorSceneContext value={{ engine, imageLoader, campaigns, scenes, activeSceneKey, status, error, getAssetFile, selectScene, createAssetLayer, uploadImages }}>
+    <EditorSceneContext value={{
+      engine,
+      imageLoader,
+      campaigns,
+      scenes,
+      activeCampaignId,
+      activeSceneKey,
+      status,
+      error,
+      getAssetFile,
+      selectCampaign,
+      createCampaign,
+      createScene,
+      importScene,
+      selectScene,
+      createAssetLayer,
+      uploadImages,
+    }}>
       {children}
     </EditorSceneContext>
   );
+}
+
+function catalogItem(record: V1SceneRecord): SceneCatalogItem {
+  return { key: record.key, campaignId: record.campaignId, name: record.scene.name, version: record.scene.version, prototype: false };
 }
 
 export function useEditorScene(): EditorSceneContextValue | null {

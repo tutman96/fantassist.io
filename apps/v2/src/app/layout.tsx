@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Alegreya, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { CampaignBackdrop } from "@/features/campaigns/campaign-backdrop";
 import { VersionSwitchListener } from "@/features/versioning/version-switch";
 
 const geistSans = Geist({
@@ -33,7 +34,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <TooltipProvider>
           <VersionSwitchListener />
-          {children}
+          <CampaignBackdrop />
+          <div className="relative">{children}</div>
         </TooltipProvider>
       </body>
     </html>

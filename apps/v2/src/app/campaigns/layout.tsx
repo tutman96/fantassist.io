@@ -1,13 +1,10 @@
-import { CampaignObservatory } from "@/features/campaigns/campaign-observatory";
 import { EditorSceneProvider } from "@/features/scenes/editor-scene-context";
 import { TableSessionProvider } from "@/features/table/table-session-context";
 
-export default function Home() {
+export default function CampaignsLayout({ children }: LayoutProps<"/campaigns">) {
   return (
     <TableSessionProvider>
-      <EditorSceneProvider>
-        <CampaignObservatory landing />
-      </EditorSceneProvider>
+      <EditorSceneProvider>{children}</EditorSceneProvider>
     </TableSessionProvider>
   );
 }

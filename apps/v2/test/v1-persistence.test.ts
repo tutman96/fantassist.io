@@ -3,10 +3,11 @@ import test from "node:test";
 
 import "fake-indexeddb/auto";
 
-import { decodeV1Scene, encodeV1Scene } from "../src/persistence/v1/scene-codec";
+import { decodeV1Scene, decodeV1SceneExport, encodeV1Scene, encodeV1SceneExport } from "../src/persistence/v1/scene-codec";
 import { applyAssetVisibilityMetadata, hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "../src/persistence/v1/scene-adapter";
+import { createBlankV1SceneRecord, prepareV1SceneImport } from "../src/persistence/v1/scene-lifecycle";
 import { SceneConflictError } from "../src/persistence/v1/types";
-import type { V1Scene } from "../src/persistence/v1/types";
+import type { V1Scene, V1SceneRecord } from "../src/persistence/v1/types";
 
 const sceneKey = "campaign-1/scene-1";
 
@@ -70,6 +71,100 @@ test("v1 codec preserves the complete supported scene schema", () => {
   assert.equal(image?.snapToGrid, false);
   assert.equal(Object.hasOwn(video ?? {}, "volume"), true);
   assert.equal(video?.volume, 0);
+});
+
+test("v1 scene export codec round-trips the exact envelope and requires a scene", () => {
+  const sceneExport = {
+    scene: fullScene,
+    files: [
+      { id: "campaign-1/image-1", payload: new Uint8Array([1, 2, 3]), mediaType: "image/png" },
+      { id: "unused", payload: new Uint8Array([4]), mediaType: "application/octet-stream" },
+    ],
+  };
+  assert.deepEqual(decodeV1SceneExport(encodeV1SceneExport(sceneExport)), sceneExport);
+  assert.throws(() => decodeV1SceneExport(new Uint8Array()), /missing scene/);
+});
+
+test("blank scene records use v1 defaults and ordered empty layers", () => {
+  const uuids = uuidSequence("scene", "assets", "fog");
+  const record = createBlankV1SceneRecord("campaign-2", "New room", uuids);
+  assert.equal(record.key, "campaign-2/scene");
+  assert.deepEqual(record.scene, {
+    id: "campaign-2/scene",
+    name: "New room",
+    version: 0,
+    table: { displayGrid: true, offset: { x: 0, y: 0 }, rotation: 0, scale: 1 },
+    layers: [
+      { assetLayer: { id: "assets", name: "Assets", visible: true, type: 0, assets: {} } },
+      {
+        fogLayer: {
+          id: "fog",
+          name: "Fog",
+          visible: true,
+          type: 1,
+          lightSources: [],
+          obstructionPolygons: [],
+          fogPolygons: [],
+          fogClearPolygons: [],
+        },
+      },
+    ],
+  });
+});
+
+test("scene import remaps IDs while preserving scene data and resolves name collisions", async () => {
+  const bytes = encodeV1SceneExport({
+    scene: fullScene,
+    files: [
+      { id: "campaign-1/image-1", payload: new Uint8Array([1, 2]), mediaType: "image/png" },
+      { id: "campaign-1/video-1", payload: new Uint8Array([3, 4]), mediaType: "video/mp4" },
+      { id: "unreferenced", payload: new Uint8Array([5]), mediaType: "image/gif" },
+    ],
+  });
+  const destinationScenes = [
+    destinationScene("campaign-2", "Persisted dungeon"),
+    destinationScene("campaign-2", "Persisted dungeon (2)"),
+    destinationScene("other-campaign", "Persisted dungeon (3)"),
+  ];
+  const prepared = prepareV1SceneImport(
+    bytes,
+    "campaign-2",
+    destinationScenes,
+    uuidSequence("new-scene", "new-image", "new-video")
+  );
+
+  assert.equal(prepared.record.key, "campaign-2/new-scene");
+  assert.equal(prepared.record.scene.id, "campaign-2/new-scene");
+  assert.equal(prepared.record.scene.name, "Persisted dungeon (3)");
+  assert.equal(prepared.record.scene.version, fullScene.version);
+  assert.deepEqual(prepared.record.scene.table, fullScene.table);
+  assert.equal(prepared.record.scene.layers[0].assetLayer?.id, "assets-1");
+  assert.deepEqual(prepared.record.scene.layers[1], fullScene.layers[1]);
+  assert.deepEqual(Object.keys(prepared.record.scene.layers[0].assetLayer?.assets ?? {}), [
+    "campaign-2/new-image",
+    "campaign-2/new-video",
+  ]);
+  assert.equal(prepared.record.scene.layers[0].assetLayer?.assets["campaign-2/new-image"].id, "campaign-2/new-image");
+  assert.deepEqual(
+    prepared.record.scene.layers[0].assetLayer?.assets["campaign-2/new-image"].transform,
+    fullScene.layers[0].assetLayer?.assets["campaign-1/image-1"].transform
+  );
+  assert.deepEqual(prepared.files.map(({ id, file }) => [id, file.name, file.type]), [
+    ["campaign-2/new-image", "image-1.png", "image/png"],
+    ["campaign-2/new-video", "video-1.mp4", "video/mp4"],
+  ]);
+  assert.deepEqual(new Uint8Array(await prepared.files[0].file.arrayBuffer()), new Uint8Array([1, 2]));
+});
+
+test("scene import rejects missing referenced files before producing writes", () => {
+  const bytes = encodeV1SceneExport({
+    scene: fullScene,
+    files: [{ id: "campaign-1/image-1", payload: new Uint8Array([1]), mediaType: "image/png" }],
+  });
+  assert.throws(
+    () => prepareV1SceneImport(bytes, "campaign-2", [], uuidSequence("unused")),
+    /missing referenced asset 'campaign-1\/video-1'/
+  );
 });
 
 test("scene adapter patches image transforms without losing unrelated v1 data", () => {
@@ -189,6 +284,18 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
   assert.deepEqual(await repository.listCampaigns(), [{ id: "campaign-1", name: "Campaign One" }]);
   assert.equal((await repository.listScenes("campaign-1"))[0].scene.name, fullScene.name);
   assert.equal(await repository.getSetting("table_size"), 55);
+  const signals: Array<{ key: string; value: string }> = [];
+  const previousLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: { setItem: (key: string, value: string) => signals.push({ key, value }) },
+  });
+  await repository.putSetting("table_size", 65);
+  assert.equal(await settings.getItem("table_size"), 65);
+  assert.equal(signals.at(-1)?.key, "settings_storage_changed");
+  assert.equal(JSON.parse(signals.at(-1)?.value ?? "{}").key, "table_size");
+  if (previousLocalStorage) Object.defineProperty(globalThis, "localStorage", previousLocalStorage);
+  else delete (globalThis as { localStorage?: Storage }).localStorage;
   await repository.putSceneMetadata(sceneKey, { assetVisibility: { "campaign-1/image-1": false } });
   assert.equal((await repository.getSceneMetadata(sceneKey))?.assetVisibility["campaign-1/image-1"], false);
   const file = new File([new Uint8Array([1, 2, 3])], "map.png", { type: "image/png" });
@@ -224,4 +331,18 @@ function deleteDatabase(name: string): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+}
+
+function uuidSequence(...values: string[]): () => string {
+  let index = 0;
+  return () => {
+    const value = values[index++];
+    if (!value) throw new Error("UUID sequence exhausted");
+    return value;
+  };
+}
+
+function destinationScene(campaignId: string, name: string): V1SceneRecord {
+  const key = `${campaignId}/${name}`;
+  return { key, campaignId, scene: { id: key, name, version: 0, layers: [] } };
 }

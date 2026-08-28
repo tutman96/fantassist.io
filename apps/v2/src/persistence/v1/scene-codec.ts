@@ -1,6 +1,6 @@
 import { parse, type Type } from "protobufjs";
 
-import type { V1Scene } from "./types";
+import type { V1Scene, V1SceneExport, V1SceneExportFile } from "./types";
 
 const SOURCE = `
 syntax = "proto3";
@@ -37,13 +37,29 @@ message FogLayer {
     PolygonType type = 1; repeated Vector2d verticies = 2; bool visibleOnTable = 3;
   }
 }
+message SceneExport {
+  Scene scene = 1;
+  repeated File files = 2;
+  message File { string id = 1; bytes payload = 2; string mediaType = 3; }
+}
 `;
 
-let sceneType: Type | undefined;
+let types: { scene: Type; sceneExport: Type } | undefined;
 
 function getSceneType(): Type {
-  sceneType ??= parse(SOURCE).root.lookupType("Scene");
-  return sceneType;
+  return getTypes().scene;
+}
+
+function getSceneExportType(): Type {
+  return getTypes().sceneExport;
+}
+
+function getTypes() {
+  if (!types) {
+    const root = parse(SOURCE).root;
+    types = { scene: root.lookupType("Scene"), sceneExport: root.lookupType("SceneExport") };
+  }
+  return types;
 }
 
 export function encodeV1Scene(scene: V1Scene): Uint8Array {
@@ -60,6 +76,58 @@ export function decodeV1Scene(bytes: Uint8Array): V1Scene {
     longs: Number,
   }) as Record<string, unknown>;
   return normalizeScene(value);
+}
+
+export function encodeV1SceneExport(sceneExport: V1SceneExport): Uint8Array {
+  if (!sceneExport.scene?.id) throw new Error("Invalid v1 scene export: scene id is required");
+  const fileIds = new Set<string>();
+  for (const file of sceneExport.files) {
+    if (!file.id) throw new Error("Invalid v1 scene export: file id is required");
+    if (!(file.payload instanceof Uint8Array)) throw new Error(`Invalid v1 scene export: file '${file.id}' has no payload`);
+    if (!file.mediaType) throw new Error(`Invalid v1 scene export: file '${file.id}' has no media type`);
+    if (fileIds.has(file.id)) throw new Error(`Invalid v1 scene export: duplicate file '${file.id}'`);
+    fileIds.add(file.id);
+  }
+  const error = getSceneExportType().verify(sceneExport);
+  if (error) throw new Error(`Invalid v1 scene export: ${error}`);
+  return getSceneExportType().encode(getSceneExportType().fromObject(sceneExport)).finish();
+}
+
+export function decodeV1SceneExport(bytes: Uint8Array): V1SceneExport {
+  let decoded: Record<string, unknown>;
+  try {
+    decoded = getSceneExportType().toObject(getSceneExportType().decode(bytes), {
+      arrays: true,
+      objects: true,
+      enums: Number,
+      longs: Number,
+      bytes: Uint8Array,
+    }) as Record<string, unknown>;
+  } catch (cause) {
+    throw new Error("Invalid v1 scene export", { cause });
+  }
+  const scene = record(decoded.scene);
+  if (!scene) throw new Error("Invalid v1 scene export: missing scene");
+  const files = array(decoded.files).map(normalizeExportFile);
+  const fileIds = new Set<string>();
+  for (const file of files) {
+    if (fileIds.has(file.id)) throw new Error(`Invalid v1 scene export: duplicate file '${file.id}'`);
+    fileIds.add(file.id);
+  }
+  const normalizedScene = normalizeScene(scene);
+  if (!normalizedScene.id) throw new Error("Invalid v1 scene export: scene id is required");
+  return { scene: normalizedScene, files };
+}
+
+function normalizeExportFile(value: unknown): V1SceneExportFile {
+  const file = record(value);
+  if (!file) throw new Error("Invalid v1 scene export: malformed file");
+  const id = string(file.id);
+  const mediaType = string(file.mediaType);
+  if (!id) throw new Error("Invalid v1 scene export: file id is required");
+  if (!(file.payload instanceof Uint8Array)) throw new Error(`Invalid v1 scene export: file '${id}' has no payload`);
+  if (!mediaType) throw new Error(`Invalid v1 scene export: file '${id}' has no media type`);
+  return { id, payload: Uint8Array.from(file.payload), mediaType };
 }
 
 function normalizeScene(value: Record<string, unknown>): V1Scene {

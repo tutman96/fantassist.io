@@ -25,6 +25,7 @@ export interface V1Repositories {
   putAsset(id: string, file: File): Promise<void>;
   removeAsset(id: string): Promise<void>;
   getSetting<T>(key: string): Promise<T | null>;
+  putSetting<T>(key: string, value: T): Promise<void>;
   getSceneMetadata(sceneKey: string): Promise<V2SceneMetadata | null>;
   putSceneMetadata(sceneKey: string, metadata: V2SceneMetadata): Promise<void>;
   subscribeScene(key: string, listener: () => void): () => void;
@@ -88,6 +89,10 @@ export function createV1Repositories(): V1Repositories {
     },
     getSetting<T>(key: string) {
       return settings.getItem<T>(key);
+    },
+    async putSetting<T>(key: string, value: T) {
+      await settings.setItem(key, value);
+      signalChange(SETTINGS_DATABASE, key, setter);
     },
     getSceneMetadata(sceneKey) {
       return metadata.getItem<V2SceneMetadata>(sceneKey);

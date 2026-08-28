@@ -12,7 +12,11 @@ The renderer and interaction prototypes initially placed all controls over a ful
 
 The editor uses a compact application command bar followed by a separately measured WebGPU workspace. Header pixels are not part of the editor camera viewport.
 
-The command bar contains project identity, a searchable scene selector, and the table-output action. The scene selector exposes existing v1-compatible scenes with loading, save, conflict, error, and empty/search states. Scene creation and import remain disabled until their compatibility workflows are implemented.
+The command bar contains project identity, a searchable scene selector, and the table-output action. The scene selector exposes existing v1-compatible scenes with loading, save, conflict, error, and empty/search states, plus a route back to campaign and scene management.
+
+Campaign selection uses a full-screen observatory rather than compressing campaign state into the editor command bar. It owns explicit active-campaign state, presents scene cards scoped to that campaign, and keeps empty campaigns useful through blank-scene creation and `.scene` import. The empty archive uses a decorative one-pass vgpu star field behind semantic HTML, with a CSS fallback, reduced-motion still frame, visibility/intersection pausing, and no dependency on the production scene renderer.
+
+Navigation preserves the stable campaign route model while giving `/` a standalone landing experience. The landing CTA creates the first campaign for an empty archive and links returning users to the campaign list at `/campaigns`. Campaign creation uses `/campaigns/new`, campaign scene decks use `/campaigns/[campaignId]`, and editors use `/campaigns/[campaignId]/scenes/[sceneId]`. The legacy `/scenes/[campaignId]/[sceneId]` path redirects to the canonical editor. The root layout owns the decorative canvas, while the campaign layout owns editor providers, so client-side transitions preserve the cosmic surface and campaign/engine state without flashing.
 
 The workspace contains:
 
@@ -32,6 +36,7 @@ Interactive controls use project-generated shadcn primitives rather than reimple
 The React implementation is split by responsibility:
 
 - `EditorShell` composes route chrome and providers.
+- `CampaignGate` and `CampaignObservatory` switch between campaign management and the active editor without duplicating persistence state.
 - `GpuViewport` mounts the canvas and feature compositions.
 - `useSceneViewport` owns canvas measurement and renderer lifecycle.
 - `useEditorInteractions` owns keyboard, pointer, wheel, and touch translation.

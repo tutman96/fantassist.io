@@ -5,11 +5,38 @@ import { getMockGPUDeviceInstrumentation, init, target } from "vgpu/mock";
 import type { Gpu, Texture } from "vgpu";
 
 import { createRenderPlan, SCENE_PASS_ORDER } from "../src/renderer/render-plan";
+import { createCosmicExecutor } from "../src/renderer/vgpu/cosmic-executor";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
 import { createSceneEngine } from "../src/engine/scene-engine";
 import { SAMPLE_ASSET_ID, createSampleSceneDocument, freezeSceneDocument } from "../src/engine/scene-document";
 import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA } from "../src/engine/table-camera";
 import { loadSceneShaders } from "../scripts/load-scene-shaders";
+
+const cosmicTestShader = `
+struct Params { target_size: vec2f, time: f32, intensity: f32 }
+@group(0) @binding(0) var<uniform> params: Params;
+@fragment fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
+  return vec4f(uv, fract(params.time) * params.intensity, 1.0);
+}`;
+
+test("cosmic background reuses one decorative pipeline across frames", async () => {
+  const gpu = await init();
+  try {
+    const output = target(gpu, { size: [48, 32], format: "rgba8unorm" });
+    const executor = createCosmicExecutor(gpu, output, cosmicTestShader);
+    await executor.prewarm();
+    await executor.render(0);
+    await executor.render(1.5);
+    const instrumentation = getMockGPUDeviceInstrumentation(gpu.gpu);
+    assert.equal(instrumentation.calls.createCommandEncoder, 2);
+    assert.equal(
+      instrumentation.calls.createRenderPipeline + instrumentation.calls.createRenderPipelineAsync,
+      1
+    );
+  } finally {
+    gpu.dispose();
+  }
+});
 
 test("shared executor reuses pipelines across scene snapshot frames", async () => {
   const gpu = await init();

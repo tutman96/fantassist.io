@@ -97,6 +97,17 @@ export interface V1Scene {
   readonly layers: readonly V1Layer[];
 }
 
+export interface V1SceneExportFile {
+  readonly id: string;
+  readonly payload: Uint8Array;
+  readonly mediaType: string;
+}
+
+export interface V1SceneExport {
+  readonly scene: V1Scene;
+  readonly files: readonly V1SceneExportFile[];
+}
+
 export interface V1SceneRecord {
   readonly key: string;
   readonly campaignId: string;

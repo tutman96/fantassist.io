@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, ChevronDown, FilePlus2, Upload } from "lucide-react";
+import { Check, ChevronDown, FolderOpen, Settings2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,10 +14,11 @@ import { Separator } from "@/components/ui/separator";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
 
 export function SceneSelector() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const editorScene = useEditorScene();
-  const scenes = editorScene?.scenes ?? [];
+  const scenes = (editorScene?.scenes ?? []).filter((scene) => scene.campaignId === editorScene?.activeCampaignId);
   const activeScene = scenes.find((scene) => scene.key === editorScene?.activeSceneKey) ?? scenes[0];
   const campaign = editorScene?.campaigns.find((item) => item.id === activeScene?.campaignId);
   const status = editorScene?.status ?? "loading";
@@ -42,11 +45,14 @@ export function SceneSelector() {
         collisionPadding={12}
         className="z-40 max-h-[calc(var(--radix-popover-content-available-height)-0.5rem)] w-72 gap-0 overflow-y-auto overscroll-contain rounded-none border border-violet-300/15 bg-[#100d20]/98 p-2 text-white shadow-[0_24px_70px_rgba(0,0,0,0.65)] ring-0 backdrop-blur-xl max-sm:w-[calc(100vw-1.5rem)]"
       >
-        <div className="flex items-center justify-between px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5">
           <div className="min-w-0 flex-1">
             <p className="truncate font-mono text-[9px] font-medium tracking-[0.12em] text-violet-200/60 uppercase" title={campaign?.name}>{campaign?.name ?? "Prototype campaign"}</p>
             <p className="mt-0.5 text-[10px] text-amber-50/65">{status === "prototype" ? "Scenes are not persisted yet" : "Shared with stable Fantassist"}</p>
           </div>
+          <Button asChild variant="ghost" size="icon-sm" className="rounded-none text-violet-200/50 hover:bg-violet-200/10 hover:text-violet-100" title="Choose campaign">
+            <Link href="/campaigns"><FolderOpen className="size-3.5" aria-hidden="true" /><span className="sr-only">Choose campaign</span></Link>
+          </Button>
           <Badge variant="outline" className="h-auto rounded-none border-amber-200/20 bg-amber-100/5 px-1.5 py-0.5 font-mono text-[9px] font-medium tracking-wide text-amber-100/60 uppercase">{status}</Badge>
         </div>
         <Command
@@ -69,7 +75,8 @@ export function SceneSelector() {
                 key={scene.key}
                 value={`${scene.name} ${scene.key}`}
                 onSelect={() => {
-                  void editorScene?.selectScene(scene.key);
+                  const [campaignId, sceneId] = scene.key.split("/", 2);
+                  router.push(`/campaigns/${encodeURIComponent(campaignId)}/scenes/${encodeURIComponent(sceneId)}`);
                   setOpen(false);
                 }}
                 className="rounded-none! border border-transparent px-2.5 py-2.5 data-selected:border-blue-300/20 data-selected:bg-blue-500/15"
@@ -87,14 +94,9 @@ export function SceneSelector() {
         </Command>
         {editorScene?.error ? <p role="alert" className="px-2 pt-2 text-[10px] text-red-300 [overflow-wrap:anywhere]">{editorScene.error}</p> : null}
         <Separator className="mt-2 bg-violet-300/10" />
-        <div className="grid grid-cols-2 gap-1 pt-2">
-          <Button disabled variant="outline" type="button" title="Scene persistence is not available yet" className="h-8 rounded-none border-violet-300/12 bg-transparent text-[10px] text-violet-100/40">
-            <FilePlus2 className="size-3" aria-hidden="true" /> New scene
-          </Button>
-          <Button disabled variant="outline" type="button" title="Scene import is not available yet" className="h-8 rounded-none border-violet-300/12 bg-transparent text-[10px] text-violet-100/40">
-            <Upload className="size-3" aria-hidden="true" /> Import
-          </Button>
-        </div>
+        <Button asChild variant="outline" className="mt-2 h-8 w-full rounded-none border-violet-300/12 bg-transparent text-[10px] text-violet-100/65">
+          <Link href={`/campaigns/${encodeURIComponent(campaign?.id ?? "")}`}><Settings2 className="size-3" aria-hidden="true" /> Campaigns and scenes</Link>
+        </Button>
       </PopoverContent>
     </Popover>
   );
