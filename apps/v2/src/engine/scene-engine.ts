@@ -1,5 +1,5 @@
 import { createSampleSceneDocument, freezeSceneDocument } from "./scene-document";
-import type { AssetTransform, ImageAsset, SceneDocument } from "./scene-document";
+import type { AssetTransform, ImageAsset, SceneDocument, SceneLayer } from "./scene-document";
 import type { GridPoint } from "./table-camera";
 
 export type EngineListener = () => void;
@@ -26,6 +26,7 @@ export type SceneCommand =
       readonly transform: AssetTransform;
     }
   | { readonly type: "asset.insert"; readonly asset: ImageAsset }
+  | { readonly type: "layer.insert"; readonly layer: SceneLayer; readonly index?: number }
   | { readonly type: "selection.set"; readonly assetId: string | null };
 
 export type PreviewCommand = Extract<SceneCommand, { readonly type: "asset.transform" }>;
@@ -67,7 +68,8 @@ export interface SceneEngine {
 
 type HistoryEntry =
   | { readonly kind: "transform"; readonly assetId: string; readonly before: AssetTransform; readonly after: AssetTransform }
-  | { readonly kind: "insert"; readonly asset: ImageAsset };
+  | { readonly kind: "insert"; readonly asset: ImageAsset }
+  | { readonly kind: "insert-layer"; readonly layer: SceneLayer; readonly index: number };
 
 interface ActivePreview {
   readonly token: PreviewToken;
@@ -190,6 +192,24 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (command.type === "layer.insert") {
+        if (committedScene.layers.some((layer) => layer.id === command.layer.id)) {
+          return { ok: false, error: `Layer '${command.layer.id}' already exists`, revision };
+        }
+        if (command.layer.type !== "assets" || command.layer.assetIds.length > 0) {
+          return { ok: false, error: "Only empty asset layers can be inserted", revision };
+        }
+        const index = Math.min(
+          committedScene.layers.length,
+          Math.max(0, command.index ?? committedScene.layers.length)
+        );
+        revision++;
+        committedScene = applyLayerInsert(committedScene, command.layer, index, revision);
+        undoStack = [...undoStack, { kind: "insert-layer", layer: command.layer, index }];
+        redoStack = [];
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       if (command.assetId !== null && !findAsset(committedScene, command.assetId)) {
         return { ok: false, error: `Unknown asset '${command.assetId}'`, revision };
       }
@@ -299,6 +319,12 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (entry.kind === "insert-layer") {
+        revision++;
+        committedScene = applyLayerRemove(committedScene, entry.layer.id, revision);
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       return transformResult(
         { type: "asset.transform", assetId: entry.assetId, transform: entry.before },
         false
@@ -314,6 +340,12 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         revision++;
         committedScene = applyInsert(committedScene, entry.asset, revision);
         selectedAssetId = entry.asset.id;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
+      if (entry.kind === "insert-layer") {
+        revision++;
+        committedScene = applyLayerInsert(committedScene, entry.layer, entry.index, revision);
         publish("all");
         return { ok: true, changed: true, revision };
       }
@@ -547,6 +579,27 @@ function applyRemove(scene: SceneDocument, assetId: string, version: number): Sc
       assetIds: layer.assetIds.filter((id) => id !== assetId),
     })),
     assets: scene.assets.filter((asset) => asset.id !== assetId),
+  });
+}
+
+function applyLayerInsert(
+  scene: SceneDocument,
+  layer: SceneLayer,
+  index: number,
+  version: number
+): SceneDocument {
+  const layers = [...scene.layers];
+  layers.splice(index, 0, layer);
+  return freezeSceneDocument({ ...scene, version, layers });
+}
+
+function applyLayerRemove(scene: SceneDocument, layerId: string, version: number): SceneDocument {
+  const layer = scene.layers.find((candidate) => candidate.id === layerId);
+  if (layer?.assetIds.length) throw new Error("Cannot remove a non-empty layer through insertion undo");
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers: scene.layers.filter((candidate) => candidate.id !== layerId),
   });
 }
 

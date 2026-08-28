@@ -9,7 +9,7 @@ import { createSampleSceneDocument } from "@/engine/scene-document";
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { createV1Repositories } from "@/persistence/v1/repositories";
 import type { V1Repositories } from "@/persistence/v1/repositories";
-import { patchV1SceneTransforms, projectV1Scene } from "@/persistence/v1/scene-adapter";
+import { hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "@/persistence/v1/scene-adapter";
 import { SceneConflictError } from "@/persistence/v1/types";
 import type { V1Campaign, V1SceneRecord } from "@/persistence/v1/types";
 import { createBrowserImageLoader } from "@/renderer/browser-image-loader";
@@ -33,7 +33,9 @@ interface EditorSceneContextValue {
   readonly activeSceneKey: string;
   readonly status: ScenePersistenceStatus;
   readonly error: string | null;
+  getAssetFile(assetId: string): Promise<File | null>;
   selectScene(key: string): Promise<void>;
+  createAssetLayer(): void;
   uploadImages(files: readonly File[], placement: { readonly centerGrid: GridPoint; readonly heightGrid: number; readonly layerId: string }): Promise<void>;
 }
 
@@ -44,6 +46,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   const [engine] = useState(createSceneEngine);
   const [repositories] = useState<V1Repositories>(createV1Repositories);
   const [imageLoader] = useState(() => createBrowserImageLoader((id) => repositories.getAsset(id)));
+  const [getAssetFile] = useState(() => (id: string) => repositories.getAsset(id));
   const [campaigns, setCampaigns] = useState<readonly V1Campaign[]>([]);
   const [scenes, setScenes] = useState<readonly SceneCatalogItem[]>([
     { key: "sample/scene", campaignId: "sample", name: "Astral Clearing", version: 0, prototype: true },
@@ -58,9 +61,10 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   const unsubscribeExternal = useRef<() => void>(() => undefined);
   const hydrating = useRef(false);
 
-  const hydrate = (record: V1SceneRecord) => {
-    const document = projectV1Scene(record.scene);
-    if (!document) throw new Error("This scene does not contain a supported image asset yet");
+  const hydrate = async (record: V1SceneRecord) => {
+    const projected = projectV1Scene(record.scene);
+    if (!projected) throw new Error("This scene does not contain a supported image asset yet");
+    const document = await hydrateAssetDisplayNames(projected, (id) => repositories.getAsset(id));
     hydrating.current = true;
     activeRecord.current = record;
     savedEngineRevision.current = document.version;
@@ -81,7 +85,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   const watchExternalChanges = (key: string, ownGeneration: number) => {
     unsubscribeExternal.current();
     unsubscribeExternal.current = repositories.subscribeScene(key, () => {
-      void repositories.loadScene(key).then((latest) => {
+      void repositories.loadScene(key).then(async (latest) => {
         if (!latest || generation.current !== ownGeneration) return;
         const current = activeRecord.current;
         if (!current || latest.scene.version === current.scene.version) return;
@@ -90,7 +94,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
           setError("This scene changed in another Fantassist tab. Reload it before continuing.");
           return;
         }
-        hydrate(latest);
+        await hydrate(latest);
         setStatus("saved");
       }).catch((cause: unknown) => {
         setStatus("error");
@@ -118,7 +122,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
     try {
       const record = await repositories.loadScene(key);
       if (!record || generation.current !== ownGeneration) return;
-      hydrate(record);
+      await hydrate(record);
       setActiveSceneKey(key);
       setStatus("saved");
       watchExternalChanges(key, ownGeneration);
@@ -208,7 +212,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
         const ownGeneration = ++generation.current;
         setCampaigns((current) => [...current, campaign]);
         setScenes([{ key, campaignId, name: sceneName, version: 0, prototype: false }]);
-        hydrate(record);
+        await hydrate(record);
         const selectedAsset = prepared.at(-1)?.asset;
         if (selectedAsset) engine.dispatch({ type: "selection.set", assetId: selectedAsset.id });
         setActiveSceneKey(key);
@@ -235,6 +239,22 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
         throw new Error(result.error);
       }
     }
+  };
+  const createAssetLayer = () => {
+    if (!activeRecord.current) throw new Error("Upload an image to create a persisted scene first");
+    if (status === "conflict") throw new Error("Resolve the scene conflict before adding a layer");
+    const count = engine.getSnapshot().scene.layers.filter((layer) => layer.type === "assets").length;
+    const result = engine.dispatch({
+      type: "layer.insert",
+      layer: {
+        id: crypto.randomUUID(),
+        name: `Assets ${count + 1}`,
+        type: "assets",
+        visible: true,
+        assetIds: [],
+      },
+    });
+    if (!result.ok) throw new Error(result.error);
   };
   const selectSceneForInitialization = useEffectEvent(selectScene);
 
@@ -315,7 +335,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   }), [engine, repositories, status]);
 
   return (
-    <EditorSceneContext value={{ engine, imageLoader, campaigns, scenes, activeSceneKey, status, error, selectScene, uploadImages }}>
+    <EditorSceneContext value={{ engine, imageLoader, campaigns, scenes, activeSceneKey, status, error, getAssetFile, selectScene, createAssetLayer, uploadImages }}>
       {children}
     </EditorSceneContext>
   );

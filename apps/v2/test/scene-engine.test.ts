@@ -283,3 +283,17 @@ test("asset insertion stays inside its target layer's intermingled paint order",
   ]);
   assert.deepEqual(engine.getSnapshot().scene.layers[0].assetIds, [bottom.id, inserted.id]);
 });
+
+test("asset layer insertion preserves index and supports undo and redo", () => {
+  const engine = createSceneEngine();
+  const layer = { id: "new-assets", name: "Assets 2", type: "assets" as const, visible: true, assetIds: [] };
+  assert.deepEqual(
+    engine.dispatch({ type: "layer.insert", layer, index: 1 }),
+    { ok: true, changed: true, revision: 1 }
+  );
+  assert.equal(engine.getSnapshot().scene.layers[1].id, layer.id);
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 2 });
+  assert.equal(engine.getSnapshot().scene.layers.some((item) => item.id === layer.id), false);
+  assert.deepEqual(engine.redo(), { ok: true, changed: true, revision: 3 });
+  assert.equal(engine.getSnapshot().scene.layers[1].id, layer.id);
+});

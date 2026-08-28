@@ -4,7 +4,7 @@ import test from "node:test";
 import "fake-indexeddb/auto";
 
 import { decodeV1Scene, encodeV1Scene } from "../src/persistence/v1/scene-codec";
-import { patchV1SceneTransforms, projectV1Scene } from "../src/persistence/v1/scene-adapter";
+import { hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "../src/persistence/v1/scene-adapter";
 import { SceneConflictError } from "../src/persistence/v1/types";
 import type { V1Scene } from "../src/persistence/v1/types";
 
@@ -92,6 +92,17 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
 });
 
+test("asset display names hydrate from persisted file names", async () => {
+  const document = projectV1Scene(fullScene);
+  assert.ok(document);
+  const hydrated = await hydrateAssetDisplayNames(document, async (id) =>
+    id === "campaign-1/image-1"
+      ? new File([new Uint8Array([1])], "ForestEncampment_digital_day_grid.png", { type: "image/png" })
+      : null
+  );
+  assert.equal(hydrated.assets[0].name, "ForestEncampment_digital_day_grid");
+});
+
 test("scene adapter adds and removes persisted image records without touching videos", () => {
   const document = projectV1Scene(fullScene);
   assert.ok(document);
@@ -115,6 +126,20 @@ test("scene adapter adds and removes persisted image records without touching vi
   const removed = patchV1SceneTransforms(fullScene, withoutImages, 8);
   assert.equal(removed.layers[0].assetLayer?.assets["campaign-1/image-1"], undefined);
   assert.ok(removed.layers[0].assetLayer?.assets["campaign-1/video-1"]);
+});
+
+test("scene adapter persists new asset layers at their intermingled document index", () => {
+  const document = projectV1Scene(fullScene);
+  assert.ok(document);
+  const layer = { id: "assets-2", name: "Tokens", type: "assets" as const, visible: true, assetIds: [] };
+  const patched = patchV1SceneTransforms(fullScene, {
+    ...document,
+    layers: [document.layers[0], layer, document.layers[1]],
+  }, 8);
+  assert.equal(patched.layers[1].assetLayer?.id, layer.id);
+  assert.equal(patched.layers[1].assetLayer?.name, "Tokens");
+  assert.deepEqual(patched.layers[1].assetLayer?.assets, {});
+  assert.equal(patched.layers[2].fogLayer?.id, "fog-1");
 });
 
 test("v1 repositories use exact stores and reject stale scene saves", async () => {

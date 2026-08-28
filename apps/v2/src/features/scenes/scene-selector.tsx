@@ -40,7 +40,7 @@ export function SceneSelector() {
         align="start"
         sideOffset={8}
         collisionPadding={12}
-        className="z-40 w-72 gap-0 rounded-none border border-violet-300/15 bg-[#100d20]/98 p-2 text-white shadow-[0_24px_70px_rgba(0,0,0,0.65)] ring-0 backdrop-blur-xl max-sm:w-[calc(100vw-1.5rem)]"
+        className="z-40 max-h-[calc(var(--radix-popover-content-available-height)-0.5rem)] w-72 gap-0 overflow-y-auto overscroll-contain rounded-none border border-violet-300/15 bg-[#100d20]/98 p-2 text-white shadow-[0_24px_70px_rgba(0,0,0,0.65)] ring-0 backdrop-blur-xl max-sm:w-[calc(100vw-1.5rem)]"
       >
         <div className="flex items-center justify-between px-2 py-1.5">
           <div className="min-w-0 flex-1">
@@ -60,7 +60,7 @@ export function SceneSelector() {
             aria-label="Search scenes"
             className="text-[11px] text-violet-50 placeholder:text-violet-100/45"
           />
-          <CommandList className="mt-1">
+          <CommandList className="mt-1 max-h-[min(18rem,calc(var(--radix-popover-content-available-height)-11rem))] overscroll-contain">
             <CommandEmpty className="border border-dashed border-violet-300/15 px-3 py-4 text-[10px] text-violet-100/55" aria-live="polite">
               No matching scene
             </CommandEmpty>

@@ -52,6 +52,18 @@ export function projectV1Scene(scene: V1Scene): SceneDocument | null {
   });
 }
 
+export async function hydrateAssetDisplayNames(
+  document: SceneDocument,
+  getFile: (assetId: string) => Promise<File | null>
+): Promise<SceneDocument> {
+  const assets = await Promise.all(document.assets.map(async (asset) => {
+    const file = await getFile(asset.mediaId);
+    if (!file?.name) return asset;
+    return { ...asset, name: file.name.replace(/\.[^.]+$/, "") || asset.name };
+  }));
+  return freezeSceneDocument({ ...document, assets });
+}
+
 export function patchV1SceneTransforms(
   source: V1Scene,
   document: SceneDocument,
@@ -59,18 +71,38 @@ export function patchV1SceneTransforms(
 ): V1Scene {
   const clone = decodeV1Scene(encodeV1Scene(source));
   const images = new Map(document.assets.map((asset) => [asset.id, asset]));
+  const sourceLayers = new Map(clone.layers.map((layer) => [
+    layer.assetLayer?.id ?? layer.fogLayer?.id ?? "",
+    layer,
+  ]));
   return {
     ...clone,
     version,
-    layers: clone.layers.map((layer) => {
-      if (!layer.assetLayer) return layer;
-      return {
-        ...layer,
-        assetLayer: {
-          ...layer.assetLayer,
-          assets: synchronizeAssets(layer.assetLayer.id, layer.assetLayer.assets, images),
-        },
-      };
+    layers: document.layers.map((domainLayer) => {
+      const layer = sourceLayers.get(domainLayer.id);
+      if (layer?.assetLayer) {
+        return {
+          assetLayer: {
+            ...layer.assetLayer,
+            name: domainLayer.name,
+            visible: domainLayer.visible,
+            assets: synchronizeAssets(layer.assetLayer.id, layer.assetLayer.assets, images),
+          },
+        };
+      }
+      if (layer?.fogLayer) return layer;
+      if (domainLayer.type === "assets") {
+        return {
+          assetLayer: {
+            id: domainLayer.id,
+            name: domainLayer.name,
+            visible: domainLayer.visible,
+            type: 0,
+            assets: synchronizeAssets(domainLayer.id, {}, images),
+          },
+        };
+      }
+      throw new Error(`Cannot persist unknown fog layer '${domainLayer.id}'`);
     }),
   };
 }

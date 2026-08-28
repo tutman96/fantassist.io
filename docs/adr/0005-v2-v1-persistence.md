@@ -24,6 +24,8 @@ Scene changes and device recovery reacquire durable files and create new generat
 
 When no shared scene exists, the first direct-v2 image upload creates a local campaign, v1-compatible scene, asset layer, and file records before hydrating the engine. This makes the upload workflow testable and usable at the standalone v2 origin without requiring a v1 gateway or pre-seeded database.
 
+Asset-layer creation is a typed, undoable engine command. New asset layers append at the top of the persisted layer order without separating or moving intervening fog layers. Each asset layer owns its upload action, and inserted images are ordered within that explicit target layer before the complete layer sequence is re-encoded.
+
 ## Consequences
 
 - Existing v1 campaigns and scenes appear in the v2 selector on the same origin.
