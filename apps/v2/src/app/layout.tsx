@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Alegreya, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { VersionSwitchListener } from "@/features/versioning/version-switch";
 
 const geistSans = Geist({
@@ -30,8 +31,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`dark ${geistSans.variable} ${geistMono.variable} ${alegreya.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <VersionSwitchListener />
-        {children}
+        <TooltipProvider>
+          <VersionSwitchListener />
+          {children}
+        </TooltipProvider>
       </body>
     </html>
   );

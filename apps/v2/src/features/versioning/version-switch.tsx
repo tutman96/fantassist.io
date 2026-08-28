@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Spinner } from "@/components/ui/spinner";
 
 const VERSION_SWITCH_CHANNEL = "fantassist:version";
 const VERSION_SWITCH_STORAGE_KEY = "fantassist_version_switch";
@@ -118,12 +120,10 @@ export function StableVersionButton() {
           }
         }}
       >
-        {switching ? "Switching..." : "Return to stable Fantassist"}
+        {switching ? <><Spinner /> Switching...</> : "Return to stable Fantassist"}
       </Button>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
       ) : null}
     </div>
   );

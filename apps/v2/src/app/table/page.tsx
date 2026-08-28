@@ -1,4 +1,4 @@
-import { GpuViewport } from "@/features/scaffold/gpu-viewport";
+import { GpuViewport } from "@/features/editor/gpu-viewport";
 
 export default function TablePage() {
   return (

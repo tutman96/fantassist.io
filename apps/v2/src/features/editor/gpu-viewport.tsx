@@ -1,0 +1,81 @@
+"use client";
+
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+import { createSceneEngine } from "@/engine/scene-engine";
+import { createTableSession } from "@/engine/table-session";
+import { EditorToolbar } from "@/features/editor/editor-toolbar";
+import { useEditorInteractions } from "@/features/editor/use-editor-interactions";
+import { useSceneViewport } from "@/features/editor/use-scene-viewport";
+import { CameraStatus, EditorGestureHints, RendererGate } from "@/features/editor/viewport-status";
+import { WorkspacePanels } from "@/features/editor/workspace-panels";
+import { synchronizeSceneEngine } from "@/features/presentation/scene-session-channel";
+import { synchronizeTableSession } from "@/features/presentation/table-session-channel";
+import { useSharedTableSession } from "@/features/table/table-session-context";
+import type { RenderProfile } from "@/renderer/scene-renderer";
+
+export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sharedSession = useSharedTableSession();
+  const [ownedSession] = useState(createTableSession);
+  const session = sharedSession ?? ownedSession;
+  const [engine] = useState(createSceneEngine);
+  const tableSnapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+  const sceneSnapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
+  const asset = sceneSnapshot.scene.assets[0];
+
+  useEffect(() => synchronizeTableSession(session, profile), [profile, session]);
+  useEffect(() => synchronizeSceneEngine(engine, profile), [engine, profile]);
+
+  const status = useSceneViewport({
+    canvasRef,
+    engine,
+    profile,
+    sceneSnapshot,
+    session,
+    tableSnapshot,
+  });
+  const { cursor, ...canvasEvents } = useEditorInteractions({
+    assetRotation: asset.transform.rotation,
+    engine,
+    profile,
+    session,
+  });
+
+  return (
+    <div className="relative size-full overflow-hidden bg-[#03050d]">
+      <canvas
+        ref={canvasRef}
+        aria-label={profile === "editor" ? "Fantassist scene editor" : "Fantassist table output"}
+        data-scene-revision={sceneSnapshot.revision}
+        data-asset-x={asset.transform.x}
+        data-asset-y={asset.transform.y}
+        data-asset-width={asset.transform.width}
+        data-asset-height={asset.transform.height}
+        data-asset-rotation={asset.transform.rotation}
+        className="block size-full touch-none"
+        style={{ cursor }}
+        {...canvasEvents}
+      />
+
+      {profile === "editor" ? (
+        <>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(59,130,246,0.07),transparent_28%),radial-gradient(circle_at_83%_74%,rgba(217,70,239,0.06),transparent_30%)]" />
+          <EditorToolbar
+            engine={engine}
+            sceneSnapshot={sceneSnapshot}
+            session={session}
+            tableSnapshot={tableSnapshot}
+          />
+          <WorkspacePanels engine={engine} sceneSnapshot={sceneSnapshot} />
+          <EditorGestureHints />
+          {status === "ready" ? (
+            <CameraStatus sceneSnapshot={sceneSnapshot} tableSnapshot={tableSnapshot} />
+          ) : null}
+        </>
+      ) : null}
+
+      <RendererGate status={status} />
+    </div>
+  );
+}
