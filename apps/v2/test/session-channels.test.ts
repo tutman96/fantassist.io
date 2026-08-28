@@ -9,8 +9,10 @@ import { synchronizeSceneEngine } from "../src/features/presentation/scene-sessi
 import type { SceneSessionChannel } from "../src/features/presentation/scene-session-channel";
 import { synchronizeTableSession } from "../src/features/presentation/table-session-channel";
 import type { TableSessionChannel } from "../src/features/presentation/table-session-channel";
+import { hostTableWindow, observeTableWindow } from "../src/features/table/table-window-channel";
+import type { TableWindowChannel } from "../src/features/table/table-window-channel";
 
-type TestChannel = SceneSessionChannel & TableSessionChannel;
+type TestChannel = SceneSessionChannel & TableSessionChannel & TableWindowChannel;
 
 class FakeChannelHub {
   readonly messages: unknown[] = [];
@@ -179,4 +181,42 @@ test("closing channels suppresses all queued mount messages", async () => {
 
   assert.deepEqual(sceneHub.messages, []);
   assert.deepEqual(tableHub.messages, []);
+});
+
+test("editor observers discover an existing table window and can focus it", async () => {
+  const hub = new FakeChannelHub();
+  const commands: unknown[] = [];
+  const host = hostTableWindow((command) => commands.push(command), hub.factory);
+  let presenceCount = 0;
+  const observer = observeTableWindow(() => presenceCount++, hub.factory);
+
+  await flushMicrotasks();
+  assert.ok(presenceCount >= 1);
+
+  observer.focus({
+    route: "/table?fullscreen=auto",
+    bounds: { left: 1920, top: 0, width: 3840, height: 2160 },
+  });
+  assert.deepEqual(commands, [{
+    route: "/table?fullscreen=auto",
+    bounds: { left: 1920, top: 0, width: 3840, height: 2160 },
+  }]);
+
+  observer.close();
+  host.close();
+});
+
+test("table-window channels reject invalid focus routes and bounds", async () => {
+  const hub = new FakeChannelHub();
+  const commands: unknown[] = [];
+  const host = hostTableWindow((command) => commands.push(command), hub.factory);
+  const sender = hub.factory("fantassist-table-window");
+  await flushMicrotasks();
+
+  sender.postMessage({ type: "focus", route: "/not-table", bounds: { left: 0, top: 0, width: 1, height: 1 } });
+  sender.postMessage({ type: "focus", route: "/table?mode=window", bounds: { left: 0, top: 0, width: -1, height: 0 } });
+  assert.deepEqual(commands, [{ route: "/table?mode=window" }]);
+
+  sender.close();
+  host.close();
 });

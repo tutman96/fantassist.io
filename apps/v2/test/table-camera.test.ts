@@ -23,9 +23,9 @@ const close = (actual: number, expected: number, epsilon = 1e-8) =>
 
 test("derives physical display dimensions and ppi", () => {
   const physical = derivePhysicalDisplay(DEFAULT_DISPLAY);
-  close(physical.widthInches, 39.2208991706);
-  close(physical.heightInches, 22.0617557835);
-  close(physical.ppi, 97.906985337);
+  close(physical.widthInches, 43.5787768562);
+  close(physical.heightInches, 24.5130619816);
+  close(physical.ppi, 88.1162868033);
 });
 
 test("invalid display and table values normalize to safe defaults", () => {
@@ -99,7 +99,9 @@ test("output maps table exactly and contains mismatched targets", () => {
     { kind: "output", table, display: DEFAULT_DISPLAY },
     DEFAULT_DISPLAY.resolutionPx
   );
-  assert.deepEqual(gridToTargetPx({ x: bounds.left, y: bounds.top }, exact), { x: 0, y: 0 });
+  const origin = gridToTargetPx({ x: bounds.left, y: bounds.top }, exact);
+  close(origin.x, 0);
+  close(origin.y, 0);
   close(gridToTargetPx({ x: bounds.right, y: bounds.bottom }, exact).x, 3840);
   close(gridToTargetPx({ x: bounds.right, y: bounds.bottom }, exact).y, 2160);
   close(exact.pixelsPerGrid, derivePhysicalDisplay(DEFAULT_DISPLAY).ppi * table.scale);

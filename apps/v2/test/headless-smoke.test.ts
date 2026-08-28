@@ -78,11 +78,11 @@ test("fog feathering spreads outward without weakening opaque coverage", { timeo
   const foggedPixels = await renderHeadlessScene({ ...options, scene: fogged });
   const barePixels = await renderHeadlessScene({ ...options, scene: bare });
   const pixel = (pixels: Uint8Array, x: number, y: number) => [...pixels.slice((y * 768 + x) * 4, (y * 768 + x) * 4 + 3)];
-  const outside = pixel(foggedPixels.pixels, 193, 150);
-  const falloff = pixel(foggedPixels.pixels, 195, 150);
-  const opaque = pixel(foggedPixels.pixels, 196, 150);
-  const source = pixel(barePixels.pixels, 195, 150);
-  assert.deepEqual(outside, pixel(barePixels.pixels, 193, 150));
+  const outside = pixel(foggedPixels.pixels, 174, 150);
+  const falloff = pixel(foggedPixels.pixels, 175, 150);
+  const opaque = pixel(foggedPixels.pixels, 176, 150);
+  const source = pixel(barePixels.pixels, 175, 150);
+  assert.deepEqual(outside, pixel(barePixels.pixels, 174, 150));
   assert.ok(falloff.every((channel, index) => channel > 0 && channel < source[index]));
   assert.deepEqual(opaque, [0, 0, 0]);
 });

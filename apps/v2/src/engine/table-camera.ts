@@ -41,7 +41,7 @@ export interface EditorCamera {
 
 export const DEFAULT_DISPLAY: DisplayConfiguration = Object.freeze({
   resolutionPx: Object.freeze({ width: 3840, height: 2160 }),
-  diagonalInches: 45,
+  diagonalInches: 50,
 });
 
 export const DEFAULT_TABLE_CAMERA: TableCamera = Object.freeze({

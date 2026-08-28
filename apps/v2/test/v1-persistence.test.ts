@@ -353,6 +353,8 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
   assert.equal(await settings.getItem("table_size"), 65);
   assert.equal(signals.at(-1)?.key, "settings_storage_changed");
   assert.equal(JSON.parse(signals.at(-1)?.value ?? "{}").key, "table_size");
+  await repository.putSetting("table_display_target", "screen-1-1512-0-3840x2160");
+  assert.equal(await repository.getSetting("table_display_target"), "screen-1-1512-0-3840x2160");
   if (previousLocalStorage) Object.defineProperty(globalThis, "localStorage", previousLocalStorage);
   else delete (globalThis as { localStorage?: Storage }).localStorage;
   await repository.putSceneMetadata(sceneKey, { assetVisibility: { "campaign-1/image-1": false } });
