@@ -15,6 +15,8 @@ Current implementation progress:
 - Bidirectional scene and `.scene` export compatibility tests run with Node's built-in test runner.
 - Legacy marker layers are discarded safely at the v1 compatibility boundary.
 - The stable application exposes `/beta`, a validated version cookie endpoint, and coordinated tab/output switching.
+- The independent `apps/v2` scaffold uses Next 16, React 19, Tailwind 4, shadcn with Radix, and vgpu.
+- The initial v2 WGSL pass validates against a WebGPU device and renders through a client-only lifecycle adapter.
 
 ## Goals
 
