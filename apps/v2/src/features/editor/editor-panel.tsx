@@ -46,8 +46,8 @@ export function EditorPanel({
           <span className="absolute -top-8 -right-5 size-24 rotate-12 bg-violet-500/10 blur-2xl" />
           <span className="relative min-w-0 flex-1">
             <span className="block font-mono text-[9px] font-medium tracking-[0.12em] text-amber-100/60 uppercase">{eyebrow}</span>
-            <span className="mt-0.5 block truncate font-heading text-lg font-semibold tracking-wide text-amber-50">{title}</span>
-            <span className="mt-0.5 block truncate font-mono text-[9px] tracking-wide text-violet-200/55 uppercase">{detail}</span>
+            <span className="mt-0.5 block truncate font-heading text-lg font-semibold tracking-wide text-amber-50" title={title}>{title}</span>
+            <span className="mt-0.5 block truncate font-mono text-[9px] tracking-wide text-violet-200/55 uppercase" title={detail}>{detail}</span>
           </span>
           <span className="relative flex shrink-0 items-center gap-2 text-fuchsia-300/70 [&_svg]:size-4">
             {icon}

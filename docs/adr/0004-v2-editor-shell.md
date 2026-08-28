@@ -12,7 +12,7 @@ The renderer and interaction prototypes initially placed all controls over a ful
 
 The editor uses a compact application command bar followed by a separately measured WebGPU workspace. Header pixels are not part of the editor camera viewport.
 
-The command bar contains project identity, a searchable scene selector, and the table-output action. The scene selector currently exposes the single prototype scene and honest loading-independent empty/search states. Creation and import remain disabled and explain that persistence is unavailable.
+The command bar contains project identity, a searchable scene selector, and the table-output action. The scene selector exposes existing v1-compatible scenes with loading, save, conflict, error, and empty/search states. Scene creation and import remain disabled until their compatibility workflows are implemented.
 
 The workspace contains:
 
@@ -23,7 +23,7 @@ The workspace contains:
 
 Display configuration is global shared state rather than a scene layer or inspector mode. The Open Table menu owns shared-session calibration, progressive screen discovery, target-screen selection, and the output launch action. Selecting image content dispatches engine selection and reveals transform metadata and interaction guidance. With no asset selected, the inspector shows scene metadata. React owns only panel-navigation and display-menu state; asset selection and mutations remain engine-owned.
 
-The layers scaffold does not pretend that ordered layers, visibility mutation, content insertion, persistence, calibration, or media replacement are implemented. Those controls are omitted or visibly disabled until their engine commands and storage boundaries exist.
+The layers panel reflects persisted ordering and exposes image insertion on each asset layer. Fog and asset layers remain intermingled in their persisted paint order; an upload is never assigned to a layer implicitly. Visibility mutation, layer reordering, calibration, and media replacement remain omitted or visibly disabled until their engine commands and storage boundaries exist.
 
 Desktop opens the inspector and layer stack as separate panels. Mobile uses a horizontal tool strip and keeps both panels collapsed by default; choosing a layer closes the layer sheet and reveals the corresponding inspector, preserving the canvas as the primary surface.
 

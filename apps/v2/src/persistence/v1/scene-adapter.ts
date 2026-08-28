@@ -37,6 +37,7 @@ export function projectV1Scene(scene: V1Scene): SceneDocument | null {
         name: `${assetLayer.name || "Assets"} image ${index + 1}`,
         type: "image" as const,
         visible: assetLayer.visible,
+        intrinsicSize: asset.size ?? { width: asset.transform.width, height: asset.transform.height },
         transform: { ...asset.transform },
       }];
     });
@@ -57,7 +58,7 @@ export function patchV1SceneTransforms(
   version: number
 ): V1Scene {
   const clone = decodeV1Scene(encodeV1Scene(source));
-  const transforms = new Map(document.assets.map((asset) => [asset.id, asset.transform]));
+  const images = new Map(document.assets.map((asset) => [asset.id, asset]));
   return {
     ...clone,
     version,
@@ -67,14 +68,32 @@ export function patchV1SceneTransforms(
         ...layer,
         assetLayer: {
           ...layer.assetLayer,
-          assets: Object.fromEntries(
-            Object.entries(layer.assetLayer.assets).map(([key, asset]) => {
-              const transform = transforms.get(asset.id);
-              return [key, transform ? { ...asset, transform: { ...transform } } : asset];
-            })
-          ),
+          assets: synchronizeAssets(layer.assetLayer.id, layer.assetLayer.assets, images),
         },
       };
     }),
   };
+}
+
+function synchronizeAssets(
+  layerId: string,
+  sourceAssets: Readonly<Record<string, import("./types").V1Asset>>,
+  images: ReadonlyMap<string, SceneDocument["assets"][number]>
+) {
+  const entries = Object.entries(sourceAssets).flatMap(([key, asset]) => {
+    if (asset.type !== 0) return [[key, asset] as const];
+    const image = images.get(asset.id);
+    return image ? [[key, { ...asset, size: image.intrinsicSize, transform: { ...image.transform } }] as const] : [];
+  });
+  const existingIds = new Set(Object.values(sourceAssets).map((asset) => asset.id));
+  for (const image of images.values()) {
+    if (image.layerId !== layerId || existingIds.has(image.id)) continue;
+    entries.push([image.id, {
+      id: image.id,
+      type: 0,
+      size: { ...image.intrinsicSize },
+      transform: { ...image.transform },
+    }]);
+  }
+  return Object.fromEntries(entries);
 }

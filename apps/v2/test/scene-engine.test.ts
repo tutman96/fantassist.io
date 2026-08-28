@@ -239,3 +239,47 @@ test("rotation snapping captures only angles within five degrees of 45-degree in
   assert.equal(applyRotationSnap(-40), -45);
   assert.ok(Math.abs(applyRotationSnap(-39.99) + 39.99) < 1e-10);
 });
+
+test("asset insertion is one committed command with undo and redo", () => {
+  const engine = createSceneEngine();
+  const layerId = engine.getSnapshot().scene.layers.find((layer) => layer.type === "assets")?.id;
+  assert.ok(layerId);
+  const asset = {
+    ...engine.getSnapshot().scene.assets[0],
+    id: "sample/uploaded",
+    mediaId: "sample/uploaded",
+    layerId,
+    name: "Uploaded map",
+    intrinsicSize: { width: 800, height: 600 },
+  };
+  assert.deepEqual(engine.dispatch({ type: "asset.insert", asset }), { ok: true, changed: true, revision: 1 });
+  assert.equal(engine.getSnapshot().scene.assets.at(-1)?.id, asset.id);
+  assert.equal(engine.getSnapshot().selectedAssetId, asset.id);
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 2 });
+  assert.equal(engine.getSnapshot().scene.assets.some((item) => item.id === asset.id), false);
+  assert.deepEqual(engine.redo(), { ok: true, changed: true, revision: 3 });
+  assert.equal(engine.getSnapshot().scene.assets.at(-1)?.id, asset.id);
+});
+
+test("asset insertion stays inside its target layer's intermingled paint order", () => {
+  const base = createSampleSceneDocument();
+  const bottom = { ...base.assets[0], layerId: "bottom", id: "bottom/image", mediaId: "bottom/image" };
+  const top = { ...base.assets[0], layerId: "top", id: "top/image", mediaId: "top/image" };
+  const engine = createSceneEngine(freezeSceneDocument({
+    ...base,
+    layers: [
+      { id: "bottom", name: "Ground", type: "assets", visible: true, assetIds: [bottom.id] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [] },
+      { id: "top", name: "Tokens", type: "assets", visible: true, assetIds: [top.id] },
+    ],
+    assets: [bottom, top],
+  }));
+  const inserted = { ...base.assets[0], layerId: "bottom", id: "bottom/upload", mediaId: "bottom/upload" };
+  assert.equal(engine.dispatch({ type: "asset.insert", asset: inserted }).ok, true);
+  assert.deepEqual(engine.getSnapshot().scene.assets.map((asset) => asset.id), [
+    bottom.id,
+    inserted.id,
+    top.id,
+  ]);
+  assert.deepEqual(engine.getSnapshot().scene.layers[0].assetIds, [bottom.id, inserted.id]);
+});

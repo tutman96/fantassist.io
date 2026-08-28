@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, ImageIcon, Layers3, PlusCircle, Ruler } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import type { SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import { EditorPanel, Metric } from "@/features/editor/editor-panel";
+import { useEditorScene } from "@/features/scenes/editor-scene-context";
+import { useSharedTableSession } from "@/features/table/table-session-context";
 
 export function WorkspacePanels({
   engine,
@@ -19,6 +22,12 @@ export function WorkspacePanels({
 }) {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const uploadLayerId = useRef<string | null>(null);
+  const editorScene = useEditorScene();
+  const tableSession = useSharedTableSession();
   const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
     ?? sceneSnapshot.scene.assets[0];
   const assetSelected = sceneSnapshot.selectedAssetId === asset.id;
@@ -73,16 +82,55 @@ export function WorkspacePanels({
         <div className="p-2.5">
           <div className="mb-2 flex items-center justify-between px-1">
             <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Content</p>
-            <Button disabled variant="ghost" size="icon-sm" type="button" title="Layer creation is not available yet" aria-label="Add layer" className="rounded-none border border-violet-300/12 text-violet-100/35">
-              <PlusCircle className="size-3.5" aria-hidden="true" />
-            </Button>
+            <Input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                const files = [...(event.currentTarget.files ?? [])];
+                event.currentTarget.value = "";
+                const layerId = uploadLayerId.current;
+                if (!editorScene || !tableSession || !layerId || files.length === 0) return;
+                const table = tableSession.getSnapshot();
+                setUploading(true);
+                setUploadError(null);
+                void editorScene.uploadImages(files, {
+                  centerGrid: table.editorCamera.centerGrid,
+                  heightGrid: table.viewportCss.height / table.editorCamera.cssPixelsPerGrid / 2,
+                  layerId,
+                }).catch((cause: unknown) => {
+                  setUploadError(cause instanceof Error ? cause.message : "Unable to upload the image");
+                }).finally(() => setUploading(false));
+              }}
+            />
           </div>
           <div className="grid gap-1">
             {[...sceneSnapshot.scene.layers].reverse().map((layer) => (
               <div key={layer.id} className="border-t border-violet-300/8 first:border-t-0">
-                <div className="flex items-center justify-between px-2 py-1.5">
-                  <span className="truncate text-[11px] font-medium text-violet-50/80">{layer.name}</span>
-                  <span className="font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
+                <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-violet-50/80" title={layer.name}>{layer.name}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <span className="font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
+                    {layer.type === "assets" ? (
+                      <Button
+                        disabled={!editorScene || editorScene.status === "loading" || editorScene.status === "conflict" || uploading}
+                        variant="ghost"
+                        size="icon-sm"
+                        type="button"
+                        title={editorScene?.status === "prototype" ? `Upload images to ${layer.name} and create a local scene` : `Upload images to ${layer.name}`}
+                        aria-label={`Upload images to ${layer.name}`}
+                        onClick={() => {
+                          uploadLayerId.current = layer.id;
+                          uploadInputRef.current?.click();
+                        }}
+                        className="rounded-none border border-violet-300/12 text-violet-100/60"
+                      >
+                        <PlusCircle className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    ) : null}
+                  </span>
                 </div>
                 {layer.assetIds.map((assetId) => {
                   const layerAsset = sceneSnapshot.scene.assets.find((candidate) => candidate.id === assetId);
@@ -103,7 +151,7 @@ export function WorkspacePanels({
                       <span className="grid size-7 shrink-0 place-items-center border border-violet-300/12 bg-black/20 text-violet-200/50 group-aria-pressed/layer:border-blue-300/25 group-aria-pressed/layer:text-blue-200">
                         <ImageIcon className="size-3.5" aria-hidden="true" />
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-mono text-[9px] tracking-wide text-violet-100/60 uppercase">{layerAsset.name}</span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[9px] tracking-wide text-violet-100/60 uppercase" title={layerAsset.name}>{layerAsset.name}</span>
                       <Eye className="size-3.5 text-violet-200/55" aria-label="Visible" />
                     </Button>
                   );
@@ -111,8 +159,9 @@ export function WorkspacePanels({
               </div>
             ))}
           </div>
+          {uploadError ? <p role="alert" className="mt-1.5 px-1 text-[10px] text-red-300 [overflow-wrap:anywhere]">{uploadError}</p> : null}
           <p className="mt-1.5 px-1 text-[10px] leading-4 text-violet-100/50">
-            Ordering, visibility controls, and content insertion arrive with the persisted scene model.
+            Use the + action on an asset layer to store images directly in that layer.
           </p>
         </div>
       </EditorPanel>
@@ -126,9 +175,9 @@ function AssetInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngine
   return (
     <div className="p-3">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Selected image</p>
-          <h3 className="mt-1 font-heading text-base text-amber-50">{asset.name}</h3>
+          <h3 className="mt-1 line-clamp-2 font-heading text-base leading-snug text-amber-50 [overflow-wrap:anywhere]" title={asset.name}>{asset.name}</h3>
         </div>
         <Badge variant="outline" className="h-auto rounded-none border-blue-300/20 bg-blue-400/5 px-1.5 py-0.5 font-mono text-[9px] tracking-wide text-blue-100/65 uppercase">Image</Badge>
       </div>
@@ -159,8 +208,8 @@ function SceneInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngine
     <div className="p-3">
       <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Current scene</p>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="font-heading text-base text-amber-50">{sceneSnapshot.scene.name}</h3>
+        <div className="min-w-0 flex-1">
+          <h3 className="line-clamp-2 font-heading text-base leading-snug text-amber-50 [overflow-wrap:anywhere]" title={sceneSnapshot.scene.name}>{sceneSnapshot.scene.name}</h3>
           <p className="mt-0.5 text-[10px] text-violet-100/55">{sceneSnapshot.scene.id === "sample/scene" ? "Prototype scene · not persisted" : "Shared with stable Fantassist"}</p>
         </div>
         <Badge variant="outline" className="h-auto rounded-none border-violet-300/15 bg-violet-400/5 px-2 py-1 font-mono text-[9px] text-violet-100/65">{sceneSnapshot.scene.assets.length} image{sceneSnapshot.scene.assets.length === 1 ? "" : "s"}</Badge>

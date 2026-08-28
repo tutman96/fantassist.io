@@ -92,6 +92,31 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
 });
 
+test("scene adapter adds and removes persisted image records without touching videos", () => {
+  const document = projectV1Scene(fullScene);
+  assert.ok(document);
+  const uploaded = {
+    ...document.assets[0],
+    id: "campaign-1/uploaded",
+    mediaId: "campaign-1/uploaded",
+    name: "Uploaded",
+    intrinsicSize: { width: 800, height: 600 },
+  };
+  const withUpload = { ...document, assets: [...document.assets, uploaded] };
+  const inserted = patchV1SceneTransforms(fullScene, withUpload, 8);
+  assert.deepEqual(inserted.layers[0].assetLayer?.assets[uploaded.id], {
+    id: uploaded.id,
+    type: 0,
+    size: uploaded.intrinsicSize,
+    transform: uploaded.transform,
+  });
+
+  const withoutImages = { ...document, assets: [] };
+  const removed = patchV1SceneTransforms(fullScene, withoutImages, 8);
+  assert.equal(removed.layers[0].assetLayer?.assets["campaign-1/image-1"], undefined);
+  assert.ok(removed.layers[0].assetLayer?.assets["campaign-1/video-1"]);
+});
+
 test("v1 repositories use exact stores and reject stale scene saves", async () => {
   await Promise.all(["campaign", "scene_2", "asset_file", "settings"].map(deleteDatabase));
   const [{ default: localforage }, { createV1Repositories }] = await Promise.all([
@@ -109,6 +134,11 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
   assert.deepEqual(await repository.listCampaigns(), [{ id: "campaign-1", name: "Campaign One" }]);
   assert.equal((await repository.listScenes("campaign-1"))[0].scene.name, fullScene.name);
   assert.equal(await repository.getSetting("table_size"), 55);
+  const file = new File([new Uint8Array([1, 2, 3])], "map.png", { type: "image/png" });
+  await repository.putAsset("campaign-1/uploaded", file);
+  assert.equal((await repository.getAsset("campaign-1/uploaded"))?.name, "map.png");
+  await repository.removeAsset("campaign-1/uploaded");
+  assert.equal(await repository.getAsset("campaign-1/uploaded"), null);
 
   const saved = await repository.saveScene(
     { key: sceneKey, campaignId: "campaign-1", scene: { ...fullScene, version: 8 } },
@@ -123,6 +153,7 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
     (error) => error instanceof SceneConflictError && error.actualVersion === 8
   );
   assert.deepEqual((await indexedDB.databases()).map((database) => database.name).sort(), [
+    "asset_file",
     "campaign",
     "scene_2",
     "settings",

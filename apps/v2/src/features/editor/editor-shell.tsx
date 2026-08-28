@@ -13,7 +13,7 @@ export function EditorShell() {
       <EditorSceneProvider>
         <main className="flex h-svh flex-col overflow-hidden bg-[#050713] text-white">
         <header className="relative z-20 flex h-12 shrink-0 items-center justify-between border-b border-violet-300/12 bg-[#090817] px-3 shadow-[0_10px_30px_rgba(2,4,14,0.32)] sm:px-4">
-          <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
             <div className="relative grid size-8 shrink-0 place-items-center">
               <div className="absolute inset-0 rotate-12 bg-violet-500/20 blur-lg" />
               <Image

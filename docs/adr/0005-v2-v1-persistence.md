@@ -22,6 +22,8 @@ Stored image `File` values decode with `createImageBitmap`. The browser uploader
 
 Scene changes and device recovery reacquire durable files and create new generation-owned image uploads. The output window owns a separate repository/image loader and reloads the media ID received in committed scene snapshots.
 
+When no shared scene exists, the first direct-v2 image upload creates a local campaign, v1-compatible scene, asset layer, and file records before hydrating the engine. This makes the upload workflow testable and usable at the standalone v2 origin without requiring a v1 gateway or pre-seeded database.
+
 ## Consequences
 
 - Existing v1 campaigns and scenes appear in the v2 selector on the same origin.
@@ -31,3 +33,4 @@ Scene changes and device recovery reacquire durable files and create new generat
 - Real stored images render through WebGPU in both editor and output profiles.
 - Supported images render as ordered draws inside one shared asset pass, reusing one compiled pipeline while retaining independent textures and transforms. Complete persisted fog compilation remains subsequent renderer work.
 - V2 does not migrate, combine, rename, or upgrade existing browser databases.
+- Files inserted by undoable commands remain in `asset_file` after undo so redo can restore them. Orphan collection is deferred until the referencing history entry expires.

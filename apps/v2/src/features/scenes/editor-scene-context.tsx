@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useEffectEvent, useRef, useState 
 
 import { createSceneEngine } from "@/engine/scene-engine";
 import type { SceneEngine } from "@/engine/scene-engine";
+import type { GridPoint } from "@/engine/table-camera";
 import { createSampleSceneDocument } from "@/engine/scene-document";
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { createV1Repositories } from "@/persistence/v1/repositories";
@@ -33,6 +34,7 @@ interface EditorSceneContextValue {
   readonly status: ScenePersistenceStatus;
   readonly error: string | null;
   selectScene(key: string): Promise<void>;
+  uploadImages(files: readonly File[], placement: { readonly centerGrid: GridPoint; readonly heightGrid: number; readonly layerId: string }): Promise<void>;
 }
 
 const EditorSceneContext = createContext<EditorSceneContextValue | null>(null);
@@ -125,6 +127,115 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       setError(cause instanceof Error ? cause.message : "Unable to open the scene");
     }
   };
+  const uploadImages = async (
+    files: readonly File[],
+    placement: { readonly centerGrid: GridPoint; readonly heightGrid: number; readonly layerId: string }
+  ) => {
+    if (status === "conflict") throw new Error("Resolve the scene conflict before uploading media");
+    const existingRecord = activeRecord.current;
+    const campaignId = existingRecord?.campaignId ?? crypto.randomUUID();
+    const layerId = existingRecord ? placement.layerId : crypto.randomUUID();
+    if (!layerId) throw new Error("This scene does not have an asset layer");
+    if (existingRecord && !engine.getSnapshot().scene.layers.some((layer) => layer.id === layerId && layer.type === "assets")) {
+      throw new Error(`Unknown asset layer '${layerId}'`);
+    }
+    const prepared = [];
+    for (const [index, file] of files.entries()) {
+      if (!file.type.startsWith("image/")) throw new Error(`Unsupported media type '${file.type || "unknown"}'`);
+      const dimensions = await readImageDimensions(file);
+      const id = `${campaignId}/${crypto.randomUUID()}`;
+      const height = Math.max(0.25, placement.heightGrid);
+      const width = height * dimensions.width / dimensions.height;
+      prepared.push({
+        file,
+        asset: {
+          id,
+          layerId,
+          mediaId: id,
+          name: file.name.replace(/\.[^.]+$/, "") || "Uploaded image",
+          type: "image" as const,
+          visible: true,
+          intrinsicSize: dimensions,
+          transform: {
+            x: placement.centerGrid.x - width / 2 + index,
+            y: placement.centerGrid.y - height / 2 + index,
+            rotation: 0,
+            width,
+            height,
+          },
+        },
+      });
+    }
+
+    if (!existingRecord) {
+      const key = `${campaignId}/${crypto.randomUUID()}`;
+      const table = tableSession?.getSnapshot().table;
+      const sceneName = prepared[0]?.asset.name || "Untitled Scene";
+      const record: V1SceneRecord = {
+        key,
+        campaignId,
+        scene: {
+          id: key,
+          name: sceneName,
+          version: 0,
+          table: {
+            displayGrid: table?.displayGrid ?? false,
+            offset: table?.originGrid ?? { x: 0, y: 0 },
+            rotation: 0,
+            scale: table?.scale ?? 1,
+          },
+          layers: [{
+            assetLayer: {
+              id: layerId,
+              name: "Assets",
+              visible: true,
+              type: 0,
+              assets: Object.fromEntries(prepared.map(({ asset }) => [asset.id, {
+                id: asset.id,
+                type: 0,
+                size: asset.intrinsicSize,
+                transform: asset.transform,
+              }])),
+            },
+          }],
+        },
+      };
+      try {
+        for (const item of prepared) await repositories.putAsset(item.asset.id, item.file);
+        const campaign = { id: campaignId, name: "Local Campaign" };
+        await repositories.putCampaign(campaign);
+        await repositories.createScene(record);
+        const ownGeneration = ++generation.current;
+        setCampaigns((current) => [...current, campaign]);
+        setScenes([{ key, campaignId, name: sceneName, version: 0, prototype: false }]);
+        hydrate(record);
+        const selectedAsset = prepared.at(-1)?.asset;
+        if (selectedAsset) engine.dispatch({ type: "selection.set", assetId: selectedAsset.id });
+        setActiveSceneKey(key);
+        setStatus("saved");
+        setError(null);
+        watchExternalChanges(key, ownGeneration);
+        return;
+      } catch (cause) {
+        await Promise.all(prepared.map((item) => repositories.removeAsset(item.asset.id)));
+        throw cause;
+      }
+    }
+
+    const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layerId);
+    if (!layer) throw new Error("This scene does not have an asset layer");
+    for (const { file, asset } of prepared) {
+      await repositories.putAsset(asset.id, file);
+      const result = engine.dispatch({
+        type: "asset.insert",
+        asset,
+      });
+      if (!result.ok) {
+        await repositories.removeAsset(asset.id);
+        throw new Error(result.error);
+      }
+    }
+  };
   const selectSceneForInitialization = useEffectEvent(selectScene);
 
   useEffect(() => {
@@ -189,6 +300,9 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       );
       activeRecord.current = saved;
       savedEngineRevision.current = committed.revision;
+      setScenes((current) => current.map((scene) => scene.key === saved.key
+        ? { ...scene, version: saved.scene.version }
+        : scene));
       if (engine.getSnapshot().revision === committed.revision) setStatus("saved");
     }).catch((cause: unknown) => {
       if (cause instanceof SceneConflictError) {
@@ -201,7 +315,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   }), [engine, repositories, status]);
 
   return (
-    <EditorSceneContext value={{ engine, imageLoader, campaigns, scenes, activeSceneKey, status, error, selectScene }}>
+    <EditorSceneContext value={{ engine, imageLoader, campaigns, scenes, activeSceneKey, status, error, selectScene, uploadImages }}>
       {children}
     </EditorSceneContext>
   );
@@ -209,4 +323,14 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
 
 export function useEditorScene(): EditorSceneContextValue | null {
   return useContext(EditorSceneContext);
+}
+
+async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (bitmap.width < 1 || bitmap.height < 1) throw new Error(`Image '${file.name}' has invalid dimensions`);
+    return { width: bitmap.width, height: bitmap.height };
+  } finally {
+    bitmap.close();
+  }
 }

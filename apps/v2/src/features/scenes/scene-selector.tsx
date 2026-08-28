@@ -23,8 +23,8 @@ export function SceneSelector() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" className="h-8 min-w-0 gap-1.5 rounded-none px-1 hover:bg-transparent">
-          <span className="truncate font-heading text-[15px] font-medium tracking-wide text-amber-50/90">
+        <Button variant="ghost" className="h-8 min-w-0 max-w-[min(45vw,24rem)] gap-1.5 rounded-none px-1 hover:bg-transparent" title={activeScene?.name}>
+          <span className="min-w-0 truncate font-heading text-[15px] font-medium tracking-wide text-amber-50/90">
             {activeScene?.name ?? "Loading scenes"}
           </span>
           <ChevronDown className={`size-3 shrink-0 text-violet-200/40 transition ${open ? "rotate-180" : ""}`} aria-hidden="true" />
@@ -43,8 +43,8 @@ export function SceneSelector() {
         className="z-40 w-72 gap-0 rounded-none border border-violet-300/15 bg-[#100d20]/98 p-2 text-white shadow-[0_24px_70px_rgba(0,0,0,0.65)] ring-0 backdrop-blur-xl max-sm:w-[calc(100vw-1.5rem)]"
       >
         <div className="flex items-center justify-between px-2 py-1.5">
-          <div>
-            <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-200/60 uppercase">{campaign?.name ?? "Prototype campaign"}</p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-mono text-[9px] font-medium tracking-[0.12em] text-violet-200/60 uppercase" title={campaign?.name}>{campaign?.name ?? "Prototype campaign"}</p>
             <p className="mt-0.5 text-[10px] text-amber-50/65">{status === "prototype" ? "Scenes are not persisted yet" : "Shared with stable Fantassist"}</p>
           </div>
           <Badge variant="outline" className="h-auto rounded-none border-amber-200/20 bg-amber-100/5 px-1.5 py-0.5 font-mono text-[9px] font-medium tracking-wide text-amber-100/60 uppercase">{status}</Badge>
@@ -78,14 +78,14 @@ export function SceneSelector() {
                   {scene.key === editorScene?.activeSceneKey ? <Check className="size-3.5" aria-hidden="true" /> : null}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-heading text-sm text-amber-50">{scene.name}</span>
+                  <span className="block truncate font-heading text-sm text-amber-50" title={scene.name}>{scene.name}</span>
                   <span className="block font-mono text-[9px] tracking-wide text-violet-200/55 uppercase">{scene.prototype ? "Prototype scene" : `Version ${scene.version}`}</span>
                 </span>
               </CommandItem>
             ))}
           </CommandList>
         </Command>
-        {editorScene?.error ? <p role="alert" className="px-2 pt-2 text-[10px] text-red-300">{editorScene.error}</p> : null}
+        {editorScene?.error ? <p role="alert" className="px-2 pt-2 text-[10px] text-red-300 [overflow-wrap:anywhere]">{editorScene.error}</p> : null}
         <Separator className="mt-2 bg-violet-300/10" />
         <div className="grid grid-cols-2 gap-1 pt-2">
           <Button disabled variant="outline" type="button" title="Scene persistence is not available yet" className="h-8 rounded-none border-violet-300/12 bg-transparent text-[10px] text-violet-100/40">

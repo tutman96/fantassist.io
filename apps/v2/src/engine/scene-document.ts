@@ -13,6 +13,7 @@ export interface ImageAsset {
   readonly name: string;
   readonly type: "image";
   readonly visible: boolean;
+  readonly intrinsicSize: { readonly width: number; readonly height: number };
   readonly transform: AssetTransform;
 }
 
@@ -51,6 +52,7 @@ export function createSampleSceneDocument(): SceneDocument {
         name: "Astral clearing map",
         type: "image",
         visible: true,
+        intrinsicSize: { width: 1600, height: 800 },
         transform: { x: 1.5, y: 2.5, rotation: 0, width: 36, height: 18 },
       },
     ],

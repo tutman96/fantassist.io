@@ -25,6 +25,7 @@ export type SceneCommand =
       readonly assetId: string;
       readonly transform: AssetTransform;
     }
+  | { readonly type: "asset.insert"; readonly asset: ImageAsset }
   | { readonly type: "selection.set"; readonly assetId: string | null };
 
 export type PreviewCommand = Extract<SceneCommand, { readonly type: "asset.transform" }>;
@@ -64,11 +65,9 @@ export interface SceneEngine {
   dispose(): void;
 }
 
-interface HistoryEntry {
-  readonly assetId: string;
-  readonly before: AssetTransform;
-  readonly after: AssetTransform;
-}
+type HistoryEntry =
+  | { readonly kind: "transform"; readonly assetId: string; readonly before: AssetTransform; readonly after: AssetTransform }
+  | { readonly kind: "insert"; readonly asset: ImageAsset };
 
 interface ActivePreview {
   readonly token: PreviewToken;
@@ -154,7 +153,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       return { ok: true, changed: false, revision };
     }
     if (recordHistory) {
-      undoStack = [...undoStack, { assetId: asset.id, before: asset.transform, after: command.transform }];
+      undoStack = [...undoStack, { kind: "transform", assetId: asset.id, before: asset.transform, after: command.transform }];
       redoStack = [];
     }
     revision++;
@@ -174,6 +173,23 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     dispatch(command) {
       if (disposed) return { ok: false, error: "Scene engine is disposed", revision };
       if (command.type === "asset.transform") return transformResult(command, true);
+      if (command.type === "asset.insert") {
+        if (findAsset(committedScene, command.asset.id)) {
+          return { ok: false, error: `Asset '${command.asset.id}' already exists`, revision };
+        }
+        if (!committedScene.layers.some((layer) => layer.id === command.asset.layerId && layer.type === "assets")) {
+          return { ok: false, error: `Unknown asset layer '${command.asset.layerId}'`, revision };
+        }
+        const error = validateTransform(command.asset.transform);
+        if (error) return { ok: false, error, revision };
+        revision++;
+        committedScene = applyInsert(committedScene, command.asset, revision);
+        undoStack = [...undoStack, { kind: "insert", asset: command.asset }];
+        redoStack = [];
+        selectedAssetId = command.asset.id;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       if (command.assetId !== null && !findAsset(committedScene, command.assetId)) {
         return { ok: false, error: `Unknown asset '${command.assetId}'`, revision };
       }
@@ -276,6 +292,13 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       if (!entry) return { ok: true, changed: false, revision };
       undoStack = undoStack.slice(0, -1);
       redoStack = [...redoStack, entry];
+      if (entry.kind === "insert") {
+        revision++;
+        committedScene = applyRemove(committedScene, entry.asset.id, revision);
+        if (selectedAssetId === entry.asset.id) selectedAssetId = null;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       return transformResult(
         { type: "asset.transform", assetId: entry.assetId, transform: entry.before },
         false
@@ -287,6 +310,13 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       if (!entry) return { ok: true, changed: false, revision };
       redoStack = redoStack.slice(0, -1);
       undoStack = [...undoStack, entry];
+      if (entry.kind === "insert") {
+        revision++;
+        committedScene = applyInsert(committedScene, entry.asset, revision);
+        selectedAssetId = entry.asset.id;
+        publish("all");
+        return { ok: true, changed: true, revision };
+      }
       return transformResult(
         { type: "asset.transform", assetId: entry.assetId, transform: entry.after },
         false
@@ -489,6 +519,34 @@ function applyTransform(scene: SceneDocument, command: PreviewCommand, version: 
     assets: scene.assets.map((asset) =>
       asset.id === command.assetId ? { ...asset, transform: command.transform } : asset
     ),
+  });
+}
+
+function applyInsert(scene: SceneDocument, asset: ImageAsset, version: number): SceneDocument {
+  const layers = scene.layers.map((layer) => layer.id === asset.layerId
+    ? { ...layer, assetIds: [...layer.assetIds, asset.id] }
+    : layer);
+  const assetsById = new Map([...scene.assets, asset].map((item) => [item.id, item]));
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers,
+    assets: layers.flatMap((layer) => layer.assetIds.flatMap((id) => {
+      const item = assetsById.get(id);
+      return item ? [item] : [];
+    })),
+  });
+}
+
+function applyRemove(scene: SceneDocument, assetId: string, version: number): SceneDocument {
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers: scene.layers.map((layer) => ({
+      ...layer,
+      assetIds: layer.assetIds.filter((id) => id !== assetId),
+    })),
+    assets: scene.assets.filter((asset) => asset.id !== assetId),
   });
 }
 
