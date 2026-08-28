@@ -6,7 +6,7 @@ import { getMockGPUDeviceInstrumentation, init, target } from "vgpu/mock";
 import { createRenderPlan, SCENE_PASS_ORDER } from "../src/renderer/render-plan";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
 import { createSceneEngine } from "../src/engine/scene-engine";
-import { SAMPLE_ASSET_ID } from "../src/engine/scene-document";
+import { SAMPLE_ASSET_ID, createSampleSceneDocument, freezeSceneDocument } from "../src/engine/scene-document";
 import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA } from "../src/engine/table-camera";
 import { loadSceneShaders } from "../scripts/load-scene-shaders";
 
@@ -14,7 +14,21 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
   const gpu = await init();
   try {
     const output = target(gpu, { size: [64, 36], format: "rgba8unorm" });
-    const engine = createSceneEngine();
+    const base = createSampleSceneDocument();
+    const secondAsset = {
+      ...base.assets[0],
+      id: "sample/second-image",
+      mediaId: "sample/second-image",
+      name: "Second image",
+      transform: { ...base.assets[0].transform, x: 8, y: 6, width: 12, height: 8 },
+    };
+    const engine = createSceneEngine(freezeSceneDocument({
+      ...base,
+      layers: base.layers.map((layer) => layer.type === "assets"
+        ? { ...layer, assetIds: [...layer.assetIds, secondAsset.id] }
+        : layer),
+      assets: [...base.assets, secondAsset],
+    }));
     let imageUploads = 0;
     const executor = createSceneExecutor(
       gpu,
@@ -23,7 +37,7 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
       await loadSceneShaders(),
       { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY },
       engine.getSnapshot(),
-      {
+      [0, 1].map(() => ({
         width: 2,
         height: 2,
         upload(uploadGpu, texture) {
@@ -39,9 +53,9 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
           );
         },
         dispose() {},
-      }
+      }))
     );
-    assert.equal(imageUploads, 1);
+    assert.equal(imageUploads, 2);
 
     await executor.prewarm();
     await executor.render(1.25);

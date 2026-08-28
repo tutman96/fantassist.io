@@ -55,7 +55,7 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
   return (
     <div className="relative size-full overflow-hidden bg-[#03050d]">
       <canvas
-        key={asset.mediaId}
+        key={sceneSnapshot.scene.assets.map((item) => item.mediaId).join("|")}
         ref={canvasRef}
         aria-label={profile === "editor" ? "Fantassist scene editor" : "Fantassist table output"}
         data-scene-revision={sceneSnapshot.revision}

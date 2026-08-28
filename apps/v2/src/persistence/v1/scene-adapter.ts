@@ -36,6 +36,7 @@ export function projectV1Scene(scene: V1Scene): SceneDocument | null {
         mediaId: asset.id,
         name: `${assetLayer.name || "Assets"} image ${index + 1}`,
         type: "image" as const,
+        visible: assetLayer.visible,
         transform: { ...asset.transform },
       }];
     });

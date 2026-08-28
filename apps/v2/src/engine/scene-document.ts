@@ -12,6 +12,7 @@ export interface ImageAsset {
   readonly mediaId: string;
   readonly name: string;
   readonly type: "image";
+  readonly visible: boolean;
   readonly transform: AssetTransform;
 }
 
@@ -49,6 +50,7 @@ export function createSampleSceneDocument(): SceneDocument {
         mediaId: SAMPLE_ASSET_ID,
         name: "Astral clearing map",
         type: "image",
+        visible: true,
         transform: { x: 1.5, y: 2.5, rotation: 0, width: 36, height: 18 },
       },
     ],

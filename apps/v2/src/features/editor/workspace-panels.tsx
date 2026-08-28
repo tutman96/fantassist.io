@@ -21,7 +21,6 @@ export function WorkspacePanels({
   const [layersOpen, setLayersOpen] = useState(false);
   const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
     ?? sceneSnapshot.scene.assets[0];
-  const assetLayer = sceneSnapshot.scene.layers.find((layer) => layer.id === asset.layerId);
   const assetSelected = sceneSnapshot.selectedAssetId === asset.id;
 
   useEffect(() => {
@@ -78,25 +77,40 @@ export function WorkspacePanels({
               <PlusCircle className="size-3.5" aria-hidden="true" />
             </Button>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            aria-pressed={assetSelected}
-            onClick={() => {
-              engine.dispatch({ type: "selection.set", assetId: asset.id });
-              revealInspector();
-            }}
-            className="group/layer min-h-11 w-full justify-start gap-2.5 rounded-none border border-transparent px-2 py-1.5 text-left hover:border-violet-300/12 hover:bg-violet-400/5 aria-pressed:border-blue-300/20 aria-pressed:bg-gradient-to-r aria-pressed:from-blue-500/14 aria-pressed:to-violet-500/8"
-          >
-            <span className="grid size-8 shrink-0 place-items-center border border-violet-300/12 bg-black/20 text-violet-200/50 group-aria-pressed/layer:border-blue-300/25 group-aria-pressed/layer:text-blue-200">
-              <ImageIcon className="size-3.5" aria-hidden="true" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[11px] font-medium text-violet-50/90">{assetLayer?.name ?? asset.name}</span>
-              <span className="block truncate font-mono text-[9px] tracking-wide text-violet-100/50 uppercase">{asset.name} · image</span>
-            </span>
-            <Eye className="size-3.5 text-violet-200/55" aria-label="Visible" />
-          </Button>
+          <div className="grid gap-1">
+            {[...sceneSnapshot.scene.layers].reverse().map((layer) => (
+              <div key={layer.id} className="border-t border-violet-300/8 first:border-t-0">
+                <div className="flex items-center justify-between px-2 py-1.5">
+                  <span className="truncate text-[11px] font-medium text-violet-50/80">{layer.name}</span>
+                  <span className="font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
+                </div>
+                {layer.assetIds.map((assetId) => {
+                  const layerAsset = sceneSnapshot.scene.assets.find((candidate) => candidate.id === assetId);
+                  if (!layerAsset) return null;
+                  const selected = sceneSnapshot.selectedAssetId === layerAsset.id;
+                  return (
+                    <Button
+                      key={layerAsset.id}
+                      type="button"
+                      variant="ghost"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        engine.dispatch({ type: "selection.set", assetId: layerAsset.id });
+                        revealInspector();
+                      }}
+                      className="group/layer min-h-10 w-full justify-start gap-2.5 rounded-none border border-transparent px-2 py-1.5 text-left hover:border-violet-300/12 hover:bg-violet-400/5 aria-pressed:border-blue-300/20 aria-pressed:bg-gradient-to-r aria-pressed:from-blue-500/14 aria-pressed:to-violet-500/8"
+                    >
+                      <span className="grid size-7 shrink-0 place-items-center border border-violet-300/12 bg-black/20 text-violet-200/50 group-aria-pressed/layer:border-blue-300/25 group-aria-pressed/layer:text-blue-200">
+                        <ImageIcon className="size-3.5" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[9px] tracking-wide text-violet-100/60 uppercase">{layerAsset.name}</span>
+                      <Eye className="size-3.5 text-violet-200/55" aria-label="Visible" />
+                    </Button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
           <p className="mt-1.5 px-1 text-[10px] leading-4 text-violet-100/50">
             Ordering, visibility controls, and content insertion arrive with the persisted scene model.
           </p>

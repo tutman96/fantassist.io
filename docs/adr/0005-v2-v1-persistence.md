@@ -29,5 +29,5 @@ Scene changes and device recovery reacquire durable files and create new generat
 - Unedited supported v1 fields survive v2 saves.
 - Concurrent stale writes fail instead of silently overwriting a newer scene version.
 - Real stored images render through WebGPU in both editor and output profiles.
-- The current executor still presents only the first supported image; ordered multi-asset batching and complete fog compilation remain subsequent renderer work.
+- Supported images render as ordered draws inside one shared asset pass, reusing one compiled pipeline while retaining independent textures and transforms. Complete persisted fog compilation remains subsequent renderer work.
 - V2 does not migrate, combine, rename, or upgrade existing browser databases.

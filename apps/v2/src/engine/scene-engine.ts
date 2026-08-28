@@ -460,6 +460,7 @@ export function pickAssetHandle(
 export function pickImageAsset(scene: SceneDocument, pointGrid: GridPoint): ImageAsset | null {
   for (let index = scene.assets.length - 1; index >= 0; index--) {
     const asset = scene.assets[index];
+    if (!asset.visible) continue;
     const transform = asset.transform;
     const centerX = transform.x + transform.width / 2;
     const centerY = transform.y + transform.height / 2;

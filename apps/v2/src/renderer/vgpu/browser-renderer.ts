@@ -3,7 +3,7 @@ import type { Gpu, Surface } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
 import { createFallbackImageUpload } from "../image-texture";
-import type { ImageAssetLoader } from "../image-texture";
+import type { ImageAssetLoader, ImageTextureUpload } from "../image-texture";
 import { createRenderPlan } from "../render-plan";
 import type { RenderView } from "../projection";
 import type { RenderProfile } from "../scene-renderer";
@@ -53,17 +53,16 @@ export async function createBrowserSceneRenderer(
       return;
     }
     let nextSurface: Surface | undefined;
-    let imageUpload: Awaited<ReturnType<ImageAssetLoader["loadImage"]>> | undefined;
+    let imageUploads: ImageTextureUpload[] = [];
     try {
-      imageUpload = imageLoader
-        ? await imageLoader.loadImage(activeSnapshot.scene.assets[0].mediaId)
-        : null;
+      imageUploads = await Promise.all(activeSnapshot.scene.assets.map(async (asset) =>
+        (imageLoader ? await imageLoader.loadImage(asset.mediaId) : null) ?? createFallbackImageUpload()
+      ));
       if (disposed || ownGeneration !== generation) {
-        imageUpload?.dispose();
+        imageUploads.forEach((upload) => upload.dispose());
         nextGpu.dispose();
         return;
       }
-      imageUpload ??= createFallbackImageUpload();
       nextSurface = surface(nextGpu, canvas, { dpr: [1, 2], autoResize: true });
       const executor = createSceneExecutor(
         nextGpu,
@@ -72,10 +71,10 @@ export async function createBrowserSceneRenderer(
         browserSceneShaders,
         activeView,
         activeSnapshot,
-        imageUpload
+        imageUploads
       );
-      imageUpload.dispose();
-      imageUpload = undefined;
+      imageUploads.forEach((upload) => upload.dispose());
+      imageUploads = [];
       executor.setGridVisible(activeGridVisible);
       await executor.prewarm();
       if (disposed || ownGeneration !== generation) {
@@ -136,7 +135,7 @@ export async function createBrowserSceneRenderer(
         queueMicrotask(() => void drain());
       }
     } catch (error) {
-      imageUpload?.dispose();
+      imageUploads.forEach((upload) => upload.dispose());
       nextSurface?.dispose();
       nextGpu.dispose();
       throw error;
