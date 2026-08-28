@@ -17,6 +17,8 @@ Current implementation progress:
 - The stable application exposes `/beta`, a validated version cookie endpoint, and coordinated tab/output switching.
 - The independent `apps/v2` scaffold uses Next 16, React 19, Tailwind 4, shadcn with Radix, and vgpu.
 - The initial v2 WGSL pass validates against a WebGPU device and renders through a client-only lifecycle adapter.
+- The dedicated `fantassist-io-v2` Vercel project is deployed on Node 24.
+- Cookie-selected gateway rewrites are verified for v2 documents, immutable assets, stable API ownership, and stable manifest ownership.
 
 ## Goals
 

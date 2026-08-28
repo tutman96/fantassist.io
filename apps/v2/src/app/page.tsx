@@ -43,7 +43,7 @@ export default function Home() {
             </div>
           </div>
           <Badge variant="outline" className="border-primary/30 text-primary">
-            Foundation preview
+            <Link href="/beta">Beta active</Link>
           </Badge>
         </header>
 
