@@ -8,6 +8,13 @@ import {
   pickAssetHandle,
   pickImageAsset,
 } from "../src/engine/scene-engine";
+import {
+  DEFAULT_DISPLAY,
+  getTableBounds,
+  MAX_TABLE_SCALE,
+  MIN_TABLE_SCALE,
+} from "../src/engine/table-camera";
+import type { GridBounds } from "../src/engine/table-camera";
 
 test("asset dragging uses a replaceable preview and commits one revision", () => {
   const engine = createSceneEngine();
@@ -82,7 +89,234 @@ test("commands validate input and snapshots remain deeply frozen", () => {
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.layers[0].assetIds), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.assets), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.assets[0].transform), true);
+  assert.equal(Object.isFrozen(engine.getSnapshot().scene.table), true);
+  assert.equal(Object.isFrozen(engine.getSnapshot().scene.table.originGrid), true);
 });
+
+test("table dragging previews exact grid deltas and commits one revision", () => {
+  const engine = createSceneEngine();
+  const configured = {
+    originGrid: { x: -10.25, y: 4.5 },
+    scale: 1.75,
+    displayGrid: true,
+  };
+  assert.deepEqual(engine.dispatch({ type: "table.camera", table: configured }), {
+    ok: true,
+    changed: true,
+    revision: 1,
+  });
+  const committed = engine.getCommittedSnapshot();
+  const token = engine.beginTableDrag({ x: -3.5, y: 8.25 });
+  engine.updateTableDrag(token, { x: -5.75, y: 1.5 });
+  engine.updateTableDrag(token, { x: -4.75, y: 2 });
+
+  assert.deepEqual(engine.getSnapshot().scene.table, {
+    originGrid: { x: -11.5, y: -1.75 },
+    scale: 1.75,
+    displayGrid: true,
+  });
+  assert.equal(engine.getSnapshot().revision, 1);
+  assert.equal(engine.getSnapshot().invalidation, "editor");
+  assert.deepEqual(engine.getCommittedSnapshot(), committed);
+  assert.deepEqual(engine.commitPreview(token), { ok: true, changed: true, revision: 2 });
+  assert.equal(engine.getSnapshot().canUndo, true);
+});
+
+test("table drag cancel restores committed values and table history undo/redo is exact", () => {
+  const engine = createSceneEngine();
+  const initial = engine.getSnapshot().scene.table;
+  const canceled = engine.beginTableDrag({ x: 0, y: 0 });
+  engine.updateTableDrag(canceled, { x: -2.125, y: 3.875 });
+  engine.cancelPreview(canceled);
+  assert.deepEqual(engine.getSnapshot().scene.table, initial);
+  assert.equal(engine.getSnapshot().revision, 0);
+
+  const changed = {
+    originGrid: { x: -7.125, y: -0.625 },
+    scale: 2.25,
+    displayGrid: true,
+  };
+  assert.deepEqual(engine.dispatch({ type: "table.camera", table: changed }), {
+    ok: true,
+    changed: true,
+    revision: 1,
+  });
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 2 });
+  assert.deepEqual(engine.getSnapshot().scene.table, initial);
+  assert.deepEqual(engine.redo(), { ok: true, changed: true, revision: 3 });
+  assert.deepEqual(engine.getSnapshot().scene.table, changed);
+});
+
+test("table camera dispatch validates, normalizes immutably, and no-ops when identical", () => {
+  const engine = createSceneEngine();
+  const initial = engine.getSnapshot().scene.table;
+  for (const [table, error] of [
+    [{ ...initial, originGrid: { x: Number.NaN, y: 0 } }, "Table origin must contain finite numbers"],
+    [{ ...initial, scale: 0 }, "Table scale must be a positive finite number"],
+    [{ ...initial, scale: Infinity }, "Table scale must be a positive finite number"],
+    [{ ...initial, displayGrid: 1 }, "Table displayGrid must be a boolean"],
+  ] as const) {
+    assert.deepEqual(
+      engine.dispatch({ type: "table.camera", table: table as typeof initial }),
+      { ok: false, error, revision: 0 }
+    );
+  }
+
+  const mutable = { originGrid: { x: -1.5, y: 2.25 }, scale: 1.5, displayGrid: true };
+  engine.dispatch({ type: "table.camera", table: mutable });
+  mutable.originGrid.x = 99;
+  mutable.scale = 99;
+  assert.deepEqual(engine.getSnapshot().scene.table, {
+    originGrid: { x: -1.5, y: 2.25 }, scale: 1.5, displayGrid: true,
+  });
+  assert.deepEqual(
+    engine.dispatch({ type: "table.camera", table: engine.getSnapshot().scene.table }),
+    { ok: true, changed: false, revision: 1 }
+  );
+});
+
+test("table and asset commands share one globally ordered history", () => {
+  const engine = createSceneEngine();
+  const initialTable = engine.getSnapshot().scene.table;
+  const initialTransform = engine.getSnapshot().scene.assets[0].transform;
+  const table = { ...initialTable, originGrid: { x: -3, y: 6 } };
+  const transform = { ...initialTransform, x: 20 };
+  engine.dispatch({ type: "table.camera", table });
+  engine.dispatch({ type: "asset.transform", assetId: SAMPLE_ASSET_ID, transform });
+
+  engine.undo();
+  assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, initialTransform);
+  assert.deepEqual(engine.getSnapshot().scene.table, table);
+  engine.undo();
+  assert.deepEqual(engine.getSnapshot().scene.table, initialTable);
+  engine.redo();
+  assert.deepEqual(engine.getSnapshot().scene.table, table);
+  engine.redo();
+  assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, transform);
+});
+
+test("table corner handles are screen-stable, prioritized, and move stays inside bounds", () => {
+  const engine = createSceneEngine();
+  const bounds = getTableBounds(engine.getSnapshot().scene.table, DEFAULT_DISPLAY);
+  const corners = [
+    ["north-west", { x: bounds.left, y: bounds.top }],
+    ["north-east", { x: bounds.right, y: bounds.top }],
+    ["south-east", { x: bounds.right, y: bounds.bottom }],
+    ["south-west", { x: bounds.left, y: bounds.bottom }],
+  ] as const;
+  for (const [handle, corner] of corners) {
+    assert.equal(engine.getTableInteractionHandle(corner, 20, DEFAULT_DISPLAY), handle);
+  }
+  assert.equal(engine.getTableInteractionHandle({ x: bounds.left + 9 / 20, y: bounds.top }, 20, DEFAULT_DISPLAY), "north-west");
+  assert.equal(engine.getTableInteractionHandle({ x: bounds.left + 9 / 100, y: bounds.top }, 100, DEFAULT_DISPLAY), "north-west");
+  assert.equal(engine.getTableInteractionHandle({ x: bounds.left - 11 / 20, y: bounds.top }, 20, DEFAULT_DISPLAY), null);
+  assert.equal(engine.getTableInteractionHandle({ x: bounds.left - 11 / 100, y: bounds.top }, 100, DEFAULT_DISPLAY), null);
+  assert.equal(engine.getTableInteractionHandle({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }, 20, DEFAULT_DISPLAY), "move");
+  assert.equal(engine.getTableInteractionHandle({ x: bounds.right + 1, y: bounds.bottom + 1 }, 20, DEFAULT_DISPLAY), null);
+});
+
+test("table interaction delegates interior hits to exact table dragging", () => {
+  const engine = createSceneEngine();
+  const initial = engine.getSnapshot().scene.table;
+  const bounds = getTableBounds(initial, DEFAULT_DISPLAY);
+  const point = { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+  const token = engine.beginTableInteraction(point, 20, DEFAULT_DISPLAY);
+  assert.ok(token);
+  engine.updateTableInteraction(token, { x: point.x - 2.5, y: point.y + 4.25 });
+  assert.deepEqual(engine.getSnapshot().scene.table, {
+    ...initial,
+    originGrid: { x: initial.originGrid.x - 2.5, y: initial.originGrid.y + 4.25 },
+  });
+  engine.cancelPreview(token);
+});
+
+test("every table corner resize preserves aspect ratio and fixes its opposite corner", () => {
+  const handles = ["north-west", "north-east", "south-east", "south-west"] as const;
+  const opposite = {
+    "north-west": "south-east",
+    "north-east": "south-west",
+    "south-east": "north-west",
+    "south-west": "north-east",
+  } as const;
+  for (const handle of handles) {
+    const engine = createSceneEngine();
+    const before = getTableBounds(engine.getSnapshot().scene.table, DEFAULT_DISPLAY);
+    const corner = cornerOf(before, handle);
+    const fixed = cornerOf(before, opposite[handle]);
+    const token = engine.beginTableInteraction(corner, 20, DEFAULT_DISPLAY);
+    assert.ok(token);
+    engine.updateTableInteraction(token, {
+      x: fixed.x + (corner.x - fixed.x) * 1.25,
+      y: fixed.y + (corner.y - fixed.y) * 1.25,
+    });
+    const preview = engine.getSnapshot();
+    const after = getTableBounds(preview.scene.table, DEFAULT_DISPLAY);
+    const fixedAfter = cornerOf(after, opposite[handle]);
+    assert.ok(Math.abs(fixedAfter.x - fixed.x) < 1e-12);
+    assert.ok(Math.abs(fixedAfter.y - fixed.y) < 1e-12);
+    assert.ok(Math.abs(after.width / after.height - before.width / before.height) < 1e-12);
+    assert.ok(Math.abs(preview.scene.table.scale - 0.8) < 1e-12);
+    assert.equal(preview.revision, 0);
+    assert.equal(preview.invalidation, "editor");
+  }
+});
+
+test("table resize avoids handle-offset jumps, commits once, cancels, and undoes", () => {
+  const engine = createSceneEngine();
+  const initial = engine.getSnapshot().scene.table;
+  const bounds = getTableBounds(initial, DEFAULT_DISPLAY);
+  const pointer = { x: bounds.left + 4 / 20, y: bounds.top + 3 / 20 };
+  const token = engine.beginTableInteraction(pointer, 20, DEFAULT_DISPLAY);
+  assert.ok(token);
+  engine.updateTableInteraction(token, pointer);
+  assert.deepEqual(engine.getSnapshot().scene.table, initial);
+
+  engine.updateTableInteraction(token, { x: pointer.x - 2, y: pointer.y - 1 });
+  const resized = engine.getSnapshot().scene.table;
+  assert.notDeepEqual(resized, initial);
+  assert.ok(resized.originGrid.x < 0 && resized.originGrid.y < 0);
+  assert.deepEqual(engine.commitPreview(token), { ok: true, changed: true, revision: 1 });
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 2 });
+  assert.deepEqual(engine.getSnapshot().scene.table, initial);
+
+  const cancelToken = engine.beginTableInteraction(
+    { x: bounds.right, y: bounds.bottom },
+    20,
+    DEFAULT_DISPLAY
+  );
+  assert.ok(cancelToken);
+  engine.updateTableInteraction(cancelToken, { x: bounds.right + 5, y: bounds.bottom + 5 });
+  engine.cancelPreview(cancelToken);
+  assert.deepEqual(engine.getSnapshot().scene.table, initial);
+  assert.equal(engine.getSnapshot().revision, 2);
+});
+
+test("table resize clamps scale at table camera product limits", () => {
+  const engine = createSceneEngine();
+  const bounds = getTableBounds(engine.getSnapshot().scene.table, DEFAULT_DISPLAY);
+  const corner = { x: bounds.left, y: bounds.top };
+  const opposite = { x: bounds.right, y: bounds.bottom };
+  const token = engine.beginTableInteraction(corner, 20, DEFAULT_DISPLAY);
+  assert.ok(token);
+
+  engine.updateTableInteraction(token, {
+    x: opposite.x + (corner.x - opposite.x) * 0.001,
+    y: opposite.y + (corner.y - opposite.y) * 0.001,
+  });
+  assert.equal(engine.getSnapshot().scene.table.scale, MAX_TABLE_SCALE);
+  engine.updateTableInteraction(token, {
+    x: opposite.x + (corner.x - opposite.x) * 100,
+    y: opposite.y + (corner.y - opposite.y) * 100,
+  });
+  assert.equal(engine.getSnapshot().scene.table.scale, MIN_TABLE_SCALE);
+});
+
+function cornerOf(bounds: GridBounds, handle: "north-west" | "north-east" | "south-east" | "south-west") {
+  return {
+    x: handle.endsWith("west") ? bounds.left : bounds.right,
+    y: handle.startsWith("north") ? bounds.top : bounds.bottom,
+  };
+}
 
 test("CPU picking honors rotation and topmost asset order", () => {
   const base = createSampleSceneDocument();

@@ -187,6 +187,25 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
 });
 
+test("scene adapter persists the table camera while preserving v1 rotation", () => {
+  const document = projectV1Scene(fullScene);
+  const patched = patchV1SceneTransforms(fullScene, {
+    ...document,
+    table: {
+      originGrid: { x: -18.25, y: 31.5 },
+      scale: 2.25,
+      displayGrid: false,
+    },
+  }, 8);
+  assert.deepEqual(patched.table, {
+    displayGrid: false,
+    offset: { x: -18.25, y: 31.5 },
+    rotation: fullScene.table?.rotation,
+    scale: 2.25,
+  });
+  assert.deepEqual(patched.layers, fullScene.layers);
+});
+
 test("asset display names hydrate from persisted file names", async () => {
   const document = projectV1Scene(fullScene);
   assert.ok(document);

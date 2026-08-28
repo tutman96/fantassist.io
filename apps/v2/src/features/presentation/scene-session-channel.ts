@@ -8,6 +8,7 @@ type SceneSessionMessage =
 
 export function synchronizeSceneEngine(engine: SceneEngine, profile: RenderProfile): () => void {
   const channel = new BroadcastChannel("fantassist-scene");
+  let closed = false;
   const publish = () => {
     const snapshot = engine.getCommittedSnapshot();
     channel.postMessage({
@@ -23,7 +24,8 @@ export function synchronizeSceneEngine(engine: SceneEngine, profile: RenderProfi
     } else if (
       event.data.type === "scene" &&
       profile === "output" &&
-      event.data.revision >= engine.getSnapshot().revision
+      (event.data.scene.id !== engine.getSnapshot().scene.id ||
+        event.data.revision >= engine.getSnapshot().revision)
     ) {
       engine.replaceCommittedScene(event.data.scene, event.data.revision);
     }
@@ -39,10 +41,13 @@ export function synchronizeSceneEngine(engine: SceneEngine, profile: RenderProfi
       })
     : () => undefined;
   if (profile === "output") {
-    queueMicrotask(() => channel.postMessage({ type: "request-scene" } satisfies SceneSessionMessage));
+    queueMicrotask(() => {
+      if (!closed) channel.postMessage({ type: "request-scene" } satisfies SceneSessionMessage);
+    });
   }
 
   return () => {
+    closed = true;
     unsubscribe();
     channel.close();
   };

@@ -193,6 +193,8 @@ The table camera is separate from editor pan and zoom:
 - Changing table scale changes the visible grid extent while preserving the configured physical display size and aspect ratio.
 - Table scale remains user-configurable: values above `1` zoom the player view in and values below `1` zoom it out.
 - A Reset Table View command restores origin `(0, 0)` and scale `1`.
+- Display View mode renders four screen-sized corner handles. Dragging the interior previews an origin change; dragging a corner previews aspect-preserving scale and origin changes while fixing the opposite corner. Scroll and pinch gestures continue to navigate the editor camera rather than resizing the player view.
+- Table previews live in the scene engine and invalidate only the editor. Commit, cancel, undo, redo, persistence, and player-output synchronization use the same revisioned scene command path as asset edits.
 
 The first bounds slice may render and fit the table camera before table dragging is enabled, but the data model and projection must not prevent free movement later.
 
@@ -206,7 +208,7 @@ The output profile renders only the grid-space rectangle selected by the table c
 - Opaque black fills pixels outside the selected viewport or in letterbox regions.
 - Fog remains opaque black outside clear or illuminated regions.
 - Editor guides, table borders, fog borders, wall guides, light points, and selection UI are never visible.
-- The output grid is controlled by persisted `displayGrid`, independently of the editor diagnostic-grid toggle.
+- The persisted `displayGrid` setting controls both the DM view and player output. The editor toolbar commits the shared scene setting, so both views update together and reload consistently.
 
 When the browser canvas aspect ratio differs from the configured display aspect ratio, the renderer uses uniform contain scaling and black letterboxing. It must never stretch X and Y independently. Browser and operating-system scaling can affect real-world physical accuracy; the renderer guarantees the logical mapping implied by the configured resolution and diagonal.
 

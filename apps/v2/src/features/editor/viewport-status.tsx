@@ -2,16 +2,17 @@ import { Spinner } from "@/components/ui/spinner";
 import type { SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { TableSessionSnapshot } from "@/engine/table-session";
 import type { RendererStatus } from "@/features/editor/use-scene-viewport";
+import type { EditorTool } from "@/features/editor/editor-tool";
 
-export function EditorGestureHints() {
+export function EditorGestureHints({ tool }: { readonly tool: EditorTool }) {
   return (
     <div className="pointer-events-none absolute bottom-3 left-4 hidden items-center gap-2.5 text-[10px] font-medium tracking-[0.08em] text-amber-50/55 uppercase md:flex">
       <span className="text-amber-200/70">✦</span>
-      <span>Drag map to move</span>
+      <span>{tool === "table" ? "Drag display to position" : "Drag map to move"}</span>
       <span className="h-3 w-px bg-violet-300/15" />
-      <span>Space + drag to roam</span>
+      <span>{tool === "table" ? "Drag corners to zoom" : "Space + drag to roam"}</span>
       <span className="h-3 w-px bg-violet-300/15" />
-      <span>Two-finger pan + zoom</span>
+      <span>{tool === "table" ? "Space + drag to roam" : "Two-finger pan + zoom"}</span>
     </div>
   );
 }

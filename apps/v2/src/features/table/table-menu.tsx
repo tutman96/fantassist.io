@@ -10,25 +10,32 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { derivePhysicalDisplay } from "@/engine/table-camera";
+import { useEditorScene } from "@/features/scenes/editor-scene-context";
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { Metric, NumberSettingField } from "@/features/table/table-menu-parts";
 import { useScreenTargets } from "@/features/table/use-screen-targets";
 
 export function TableMenu() {
   const session = useSharedTableSession();
-  if (!session) return null;
-  return <ConnectedTableMenu session={session} />;
+  const editorScene = useEditorScene();
+  if (!session || !editorScene) return null;
+  return <ConnectedTableMenu session={session} engine={editorScene.engine} />;
 }
 
-function ConnectedTableMenu({ session }: { readonly session: NonNullable<ReturnType<typeof useSharedTableSession>> }) {
+function ConnectedTableMenu({ session, engine }: {
+  readonly session: NonNullable<ReturnType<typeof useSharedTableSession>>;
+  readonly engine: NonNullable<ReturnType<typeof useEditorScene>>["engine"];
+}) {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+  const sceneSnapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
+  const table = sceneSnapshot.scene.table;
   const physical = derivePhysicalDisplay(snapshot.display);
   const [open, setOpen] = useState(false);
   const { targets, targetId, setTargetId, status, detectScreens, openTable } = useScreenTargets();
 
   const updateNumber = (kind: "width" | "height" | "diagonal" | "scale", value: number) => {
     if (kind === "scale") {
-      session.updateConfiguration({ table: { scale: value } });
+      engine.dispatch({ type: "table.camera", table: { ...table, scale: value } });
     } else if (kind === "diagonal") {
       session.updateConfiguration({ display: { diagonalInches: value } });
     } else {
@@ -77,14 +84,14 @@ function ConnectedTableMenu({ session }: { readonly session: NonNullable<ReturnT
           <NumberSettingField label="Width" suffix="px" value={snapshot.display.resolutionPx.width} min={320} max={8192} step={1} onChange={(value) => updateNumber("width", value)} />
           <NumberSettingField label="Height" suffix="px" value={snapshot.display.resolutionPx.height} min={240} max={8192} step={1} onChange={(value) => updateNumber("height", value)} />
           <NumberSettingField label="Diagonal" suffix="in" value={snapshot.display.diagonalInches} min={10} max={120} step={0.1} onChange={(value) => updateNumber("diagonal", value)} />
-          <NumberSettingField label="Grid scale" suffix="in" value={snapshot.table.scale} min={0.1} max={10} step={0.1} onChange={(value) => updateNumber("scale", value)} />
+          <NumberSettingField label="Grid scale" suffix="in" value={table.scale} min={0.1} max={10} step={0.1} onChange={(value) => updateNumber("scale", value)} />
         </div>
 
         <Separator className="bg-violet-300/10" />
         <div className="grid grid-cols-3 gap-2 py-2.5">
           <Metric label="Physical" value={`${physical.widthInches.toFixed(1)}×${physical.heightInches.toFixed(1)} in`} />
           <Metric label="Density" value={`${physical.ppi.toFixed(1)} ppi`} />
-          <Metric label="Origin" value={`${snapshot.table.originGrid.x.toFixed(1)}, ${snapshot.table.originGrid.y.toFixed(1)}`} />
+          <Metric label="Origin" value={`${table.originGrid.x.toFixed(1)}, ${table.originGrid.y.toFixed(1)}`} />
         </div>
 
         <Separator className="bg-violet-300/10" />

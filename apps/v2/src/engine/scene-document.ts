@@ -1,3 +1,6 @@
+import { DEFAULT_TABLE_CAMERA } from "./table-camera";
+import type { TableCamera } from "./table-camera";
+
 export interface AssetTransform {
   readonly x: number;
   readonly y: number;
@@ -29,9 +32,12 @@ export interface SceneDocument {
   readonly id: string;
   readonly name: string;
   readonly version: number;
+  readonly table: TableCamera;
   readonly layers: readonly SceneLayer[];
   readonly assets: readonly ImageAsset[];
 }
+
+type SceneDocumentInput = Omit<SceneDocument, "table"> & { readonly table?: TableCamera };
 
 export const SAMPLE_ASSET_ID = "sample/astral-clearing";
 
@@ -40,6 +46,7 @@ export function createSampleSceneDocument(): SceneDocument {
     id: "sample/scene",
     name: "Astral Clearing",
     version: 0,
+    table: DEFAULT_TABLE_CAMERA,
     layers: [
       { id: "sample/assets", name: "Assets", type: "assets", visible: true, assetIds: [SAMPLE_ASSET_ID] },
       { id: "sample/fog", name: "Fog", type: "fog", visible: true, assetIds: [] },
@@ -59,9 +66,14 @@ export function createSampleSceneDocument(): SceneDocument {
   });
 }
 
-export function freezeSceneDocument(scene: SceneDocument): SceneDocument {
+export function freezeSceneDocument(scene: SceneDocumentInput): SceneDocument {
+  const table = scene.table ?? DEFAULT_TABLE_CAMERA;
   return Object.freeze({
     ...scene,
+    table: Object.freeze({
+      ...table,
+      originGrid: Object.freeze({ ...table.originGrid }),
+    }),
     layers: Object.freeze(scene.layers.map((layer) => Object.freeze({ ...layer, assetIds: Object.freeze([...layer.assetIds]) }))),
     assets: Object.freeze(
       scene.assets.map((asset) =>

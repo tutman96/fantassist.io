@@ -17,6 +17,7 @@ struct Params {
   asset_size: vec2f,
   asset_rotation: f32,
   selected: f32,
+  table_editing: f32,
 }
 
 @group(0) @binding(0) var scene: texture_2d<f32>;
@@ -78,6 +79,18 @@ fn box_distance(point: vec2f, center: vec2f, half_size: vec2f) -> f32 {
   let dash = step(0.42, fract((world.x + world.y) * params.pixels_per_grid / 14.0));
   let table_edge = (1.0 - smoothstep(1.0, 2.2, table_edge_distance)) * near_extent * dash * params.show_fog_edges;
   editor_scene = mix(editor_scene, vec3f(1.0, 0.68, 0.25), table_edge);
+  let table_edit_edge = (1.0 - smoothstep(1.0, 2.2, table_edge_distance)) * near_extent * params.table_editing;
+  editor_scene = mix(editor_scene, vec3f(1.0, 0.76, 0.24), table_edit_edge * 0.92);
+  let table_handle_half = vec2f(6.0 / params.pixels_per_grid);
+  var table_handle_distance = box_distance(world, params.table_min, table_handle_half);
+  table_handle_distance = min(table_handle_distance, box_distance(world, vec2f(params.table_max.x, params.table_min.y), table_handle_half));
+  table_handle_distance = min(table_handle_distance, box_distance(world, params.table_max, table_handle_half));
+  table_handle_distance = min(table_handle_distance, box_distance(world, vec2f(params.table_min.x, params.table_max.y), table_handle_half));
+  let table_handle_outer = 1.0 - smoothstep(-0.5, 0.5, table_handle_distance * params.pixels_per_grid);
+  let table_handle_inner_distance = table_handle_distance + 2.75 / params.pixels_per_grid;
+  let table_handle_inner = 1.0 - smoothstep(-0.5, 0.5, table_handle_inner_distance * params.pixels_per_grid);
+  let table_handles = table_handle_outer * (1.0 - table_handle_inner) * params.table_editing;
+  editor_scene = mix(editor_scene, vec3f(1.4, 0.72, 0.08), table_handles);
 
   let red_light = vec2f(11.0 + sin(params.time * 0.7) * 3.0, 8.5 + cos(params.time * 0.7) * 1.5);
   let blue_light = vec2f(28.0 + cos(params.time * 0.6) * 2.4, 14.0 + sin(params.time * 0.6) * 2.0);

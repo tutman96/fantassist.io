@@ -21,7 +21,6 @@ export interface TableSessionSnapshot {
   readonly display: DisplayConfiguration;
   readonly table: TableCamera;
   readonly editorCamera: EditorCamera;
-  readonly editorGridVisible: boolean;
   readonly viewportCss: Size;
 }
 
@@ -32,9 +31,8 @@ export interface TableSession {
   pan(deltaCss: GridPoint): void;
   panZoom(previousCenterCss: GridPoint, centerCss: GridPoint, factor: number): void;
   zoomAt(pointerCss: GridPoint, factor: number): void;
-  fitTable(): void;
+  fitTable(table?: TableCamera): void;
   resetTable(): void;
-  setEditorGridVisible(visible: boolean): void;
   updateConfiguration(value: {
     readonly display?: Partial<DisplayConfiguration>;
     readonly table?: Partial<TableCamera>;
@@ -48,15 +46,14 @@ export function createTableSession(): TableSession {
     display: DEFAULT_DISPLAY,
     table: DEFAULT_TABLE_CAMERA,
     editorCamera: { centerGrid: { x: 0, y: 0 }, cssPixelsPerGrid: 32 },
-    editorGridVisible: true,
     viewportCss: { width: 1, height: 1 },
   };
   const update = (next: TableSessionSnapshot) => {
     snapshot = Object.freeze(next);
     listeners.forEach((listener) => listener());
   };
-  const fittedCamera = () =>
-    fitTableCamera(getTableBounds(snapshot.table, snapshot.display), snapshot.viewportCss);
+  const fittedCamera = (table = snapshot.table) =>
+    fitTableCamera(getTableBounds(table, snapshot.display), snapshot.viewportCss);
   return {
     getSnapshot: () => snapshot,
     subscribe(listener) {
@@ -100,17 +97,17 @@ export function createTableSession(): TableSession {
         ),
       });
     },
-    fitTable() {
-      update({ ...snapshot, editorCamera: fittedCamera() });
+    fitTable(table) {
+      const fittedTable = table ? normalizeTableCamera(table) : snapshot.table;
+      const next = { ...snapshot, table: fittedTable };
+      snapshot = next;
+      update({ ...next, editorCamera: fittedCamera(fittedTable) });
     },
     resetTable() {
       const table = DEFAULT_TABLE_CAMERA;
       const next = { ...snapshot, table };
       snapshot = next;
       update({ ...next, editorCamera: fittedCamera() });
-    },
-    setEditorGridVisible(editorGridVisible) {
-      update({ ...snapshot, editorGridVisible });
     },
     updateConfiguration(value) {
       update({

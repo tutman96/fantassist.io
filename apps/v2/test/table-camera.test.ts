@@ -13,6 +13,7 @@ import {
   panEditorCamera,
   panZoomEditorCamera,
   zoomEditorCameraAt,
+  zoomTableCameraAt,
 } from "../src/engine/table-camera";
 import { compileProjection, gridToTargetPx, targetPxToGrid } from "../src/renderer/projection";
 import { createTableSession } from "../src/engine/table-session";
@@ -112,6 +113,18 @@ test("output maps table exactly and contains mismatched targets", () => {
   close(square.contentMaxPx.y, 781.25);
 });
 
+test("table zoom preserves the chosen grid anchor", () => {
+  const table = normalizeTableCamera({ originGrid: { x: -7, y: 11 }, scale: 1.5, displayGrid: true });
+  const bounds = getTableBounds(table, DEFAULT_DISPLAY);
+  const anchor = { x: bounds.left + bounds.width * 0.3, y: bounds.top + bounds.height * 0.7 };
+  const zoomed = zoomTableCameraAt(table, DEFAULT_DISPLAY, anchor, 2);
+  const nextBounds = getTableBounds(zoomed, DEFAULT_DISPLAY);
+  close((anchor.x - nextBounds.left) / nextBounds.width, 0.3);
+  close((anchor.y - nextBounds.top) / nextBounds.height, 0.7);
+  assert.equal(zoomed.scale, 3);
+  assert.equal(zoomed.displayGrid, true);
+});
+
 test("session resize preserves an explicitly changed editor camera", () => {
   const session = createTableSession();
   session.setViewport({ width: 1000, height: 700 });
@@ -120,4 +133,16 @@ test("session resize preserves an explicitly changed editor camera", () => {
   const camera = session.getSnapshot().editorCamera;
   session.setViewport({ width: 1400, height: 900 });
   assert.deepEqual(session.getSnapshot().editorCamera, camera);
+});
+
+test("a hydrated table fit remains authoritative when the viewport initializes later", () => {
+  const session = createTableSession();
+  const table = normalizeTableCamera({ originGrid: { x: -14, y: 23 }, scale: 1.75 });
+  session.fitTable(table);
+  session.setViewport({ width: 1000, height: 700 });
+  const bounds = getTableBounds(table, DEFAULT_DISPLAY);
+  assert.deepEqual(session.getSnapshot().editorCamera.centerGrid, {
+    x: (bounds.left + bounds.right) / 2,
+    y: (bounds.top + bounds.bottom) / 2,
+  });
 });

@@ -19,6 +19,7 @@ export function useSceneViewport({
   sceneSnapshot,
   session,
   tableSnapshot,
+  tableEditing,
 }: {
   readonly canvasRef: React.RefObject<HTMLCanvasElement | null>;
   readonly engine: SceneEngine;
@@ -27,6 +28,7 @@ export function useSceneViewport({
   readonly sceneSnapshot: SceneEngineSnapshot;
   readonly session: TableSession;
   readonly tableSnapshot: TableSessionSnapshot;
+  readonly tableEditing: boolean;
 }): RendererStatus {
   const rendererRef = useRef<Awaited<ReturnType<typeof createBrowserSceneRenderer>>>(null);
   const [status, setStatus] = useState<RendererStatus>("starting");
@@ -52,7 +54,7 @@ export function useSceneViewport({
 
     queueMicrotask(() => {
       if (disposed) return;
-      const initialView = toRenderView(profile, session.getSnapshot());
+      const initialView = toRenderView(profile, session.getSnapshot(), engine.getSnapshot().scene.table);
       void createBrowserSceneRenderer(canvas, profile, initialView, engine.getSnapshot(), imageLoader, () => {
         if (!disposed) setStatus("unsupported");
       })
@@ -81,24 +83,23 @@ export function useSceneViewport({
   }, [canvasRef, engine, imageLoader, profile, session]);
 
   useEffect(() => {
-    rendererRef.current?.setView(toRenderView(profile, tableSnapshot));
-    rendererRef.current?.setGridVisible(
-      profile === "editor" ? tableSnapshot.editorGridVisible : tableSnapshot.table.displayGrid
-    );
+    rendererRef.current?.setView(toRenderView(profile, tableSnapshot, sceneSnapshot.scene.table));
+    rendererRef.current?.setGridVisible(sceneSnapshot.scene.table.displayGrid);
+    rendererRef.current?.setTableEditing(profile === "editor" && tableEditing);
     rendererRef.current?.setSnapshot(sceneSnapshot);
-  }, [profile, sceneSnapshot, tableSnapshot, status]);
+  }, [profile, sceneSnapshot, tableEditing, tableSnapshot, status]);
 
   return status;
 }
 
-function toRenderView(profile: RenderProfile, snapshot: TableSessionSnapshot): RenderView {
+function toRenderView(profile: RenderProfile, snapshot: TableSessionSnapshot, table: SceneEngineSnapshot["scene"]["table"]): RenderView {
   return profile === "editor"
     ? {
         kind: "editor",
         camera: snapshot.editorCamera,
         viewportCss: snapshot.viewportCss,
-        table: snapshot.table,
+        table,
         display: snapshot.display,
       }
-    : { kind: "output", table: snapshot.table, display: snapshot.display };
+    : { kind: "output", table, display: snapshot.display };
 }

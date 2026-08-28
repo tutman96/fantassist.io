@@ -24,6 +24,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   const editorScene = useEditorScene();
   const importInput = useRef<HTMLInputElement>(null);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
+  const activeCreationMode = creationMode ?? initialCreationMode;
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -41,11 +42,11 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   };
   const submitCreation = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!editorScene || !creationMode || !name.trim()) return;
+    if (!editorScene || !activeCreationMode || !name.trim()) return;
     setBusy(true);
     setLocalError(null);
     try {
-      if (creationMode === "campaign") {
+      if (activeCreationMode === "campaign") {
         const id = await editorScene.createCampaign(name);
         router.push(`/campaigns/${encodeURIComponent(id)}`);
       } else {
@@ -228,7 +229,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
 
       <input ref={importInput} type="file" accept=".scene,application/octet-stream" className="sr-only" aria-label="Import Fantassist scene" onChange={(event) => void importFile(event.target.files?.[0])} />
 
-      <Dialog open={creationMode !== null && !inlineOnboarding} onOpenChange={(open) => {
+      <Dialog open={activeCreationMode !== null && !inlineOnboarding} onOpenChange={(open) => {
         if (!open && !busy) {
           setCreationMode(null);
           if (initialCreationMode) router.replace(activeCampaign ? `/campaigns/${encodeURIComponent(activeCampaign.id)}` : "/campaigns");
@@ -237,12 +238,12 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
         <DialogContent className="rounded-none border border-violet-200/15 bg-[#0c0b1d]/98 text-white shadow-[0_30px_100px_rgba(0,0,0,0.7)] sm:max-w-md" showCloseButton={!busy}>
           <form onSubmit={(event) => void submitCreation(event)}>
             <DialogHeader>
-              <p className="font-mono text-[8px] tracking-[0.24em] text-blue-200/60 uppercase">{creationMode === "campaign" ? "Chart a new world" : "Open a new scene"}</p>
-              <DialogTitle className="font-heading text-3xl text-amber-50">Name your {creationMode}</DialogTitle>
-              <DialogDescription className="text-violet-100/50">{creationMode === "campaign" ? "You can add or import scenes after the campaign is created." : "A blank scene begins with ready-to-use Assets and Fog layers."}</DialogDescription>
+              <p className="font-mono text-[8px] tracking-[0.24em] text-blue-200/60 uppercase">{activeCreationMode === "campaign" ? "Chart a new world" : "Open a new scene"}</p>
+              <DialogTitle className="font-heading text-3xl text-amber-50">Name your {activeCreationMode}</DialogTitle>
+              <DialogDescription className="text-violet-100/50">{activeCreationMode === "campaign" ? "You can add or import scenes after the campaign is created." : "A blank scene begins with ready-to-use Assets and Fog layers."}</DialogDescription>
             </DialogHeader>
             <div className="mt-5 grid gap-2">
-              <Label htmlFor="creation-name" className="font-mono text-[9px] tracking-[0.16em] text-violet-200/55 uppercase">{creationMode} name</Label>
+              <Label htmlFor="creation-name" className="font-mono text-[9px] tracking-[0.16em] text-violet-200/55 uppercase">{activeCreationMode} name</Label>
               <Input id="creation-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={120} className="h-11 rounded-none border-violet-200/15 bg-black/20 font-heading text-lg text-amber-50 selection:bg-blue-400/30" />
             </div>
             {localError ? <p role="alert" className="mt-3 text-xs text-red-300">{localError}</p> : null}
@@ -251,7 +252,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
                 setCreationMode(null);
                 if (initialCreationMode) router.replace(activeCampaign ? `/campaigns/${encodeURIComponent(activeCampaign.id)}` : "/campaigns");
               }}>Cancel</Button>
-              <Button type="submit" className="rounded-none bg-blue-500/75 text-blue-50" disabled={busy || !name.trim()}>{busy ? "Creating..." : `Create ${creationMode}`}</Button>
+              <Button type="submit" className="rounded-none bg-blue-500/75 text-blue-50" disabled={busy || !name.trim()}>{busy ? "Creating..." : `Create ${activeCreationMode}`}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

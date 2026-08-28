@@ -4,13 +4,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { editorCssToGrid } from "@/engine/table-camera";
 import type { GridPoint } from "@/engine/table-camera";
-import type { AssetHandle, PreviewToken, ResizeHandle, SceneEngine } from "@/engine/scene-engine";
+import type { AssetHandle, PreviewToken, ResizeHandle, SceneEngine, TableResizeHandle } from "@/engine/scene-engine";
 import type { TableSession } from "@/engine/table-session";
+import type { EditorTool } from "@/features/editor/editor-tool";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 
 type PointerDrag =
   | { readonly kind: "camera"; readonly x: number; readonly y: number; readonly pointerId: number }
-  | { readonly kind: "asset"; readonly pointerId: number; readonly token: PreviewToken };
+  | { readonly kind: "asset"; readonly pointerId: number; readonly token: PreviewToken }
+  | { readonly kind: "table"; readonly pointerId: number; readonly token: PreviewToken };
 
 interface TouchGesture {
   readonly center: GridPoint;
@@ -22,13 +24,16 @@ export function useEditorInteractions({
   engine,
   profile,
   session,
+  tool,
 }: {
   readonly assetRotation: number;
   readonly engine: SceneEngine;
   readonly profile: RenderProfile;
   readonly session: TableSession;
+  readonly tool: EditorTool;
 }) {
   const [hoveredHandle, setHoveredHandle] = useState<AssetHandle | null>(null);
+  const [tableHandle, setTableHandle] = useState<TableResizeHandle | "move" | null>(null);
   const spacePressed = useRef(false);
   const drag = useRef<PointerDrag | null>(null);
   const touchPoints = useRef(new Map<number, GridPoint>());
@@ -43,7 +48,7 @@ export function useEditorInteractions({
         spacePressed.current = true;
         event.preventDefault();
       }
-      if (event.key === "Escape" && drag.current?.kind === "asset") {
+      if (event.key === "Escape" && (drag.current?.kind === "asset" || drag.current?.kind === "table")) {
         engine.cancelPreview(drag.current.token);
         drag.current = null;
       }
@@ -65,12 +70,15 @@ export function useEditorInteractions({
   }, [engine]);
 
   return {
-    cursor: cursorForHandle(hoveredHandle, assetRotation),
+    cursor: tool === "table" ? cursorForTableHandle(tableHandle) : cursorForHandle(hoveredHandle, assetRotation),
     onContextMenu(event: React.MouseEvent<HTMLCanvasElement>) {
       event.preventDefault();
     },
     onPointerLeave() {
-      if (!drag.current) setHoveredHandle(null);
+      if (!drag.current) {
+        setHoveredHandle(null);
+        setTableHandle(null);
+      }
     },
     onPointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
       if (profile !== "editor") return;
@@ -80,13 +88,15 @@ export function useEditorInteractions({
         touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (touchPoints.current.size >= 2) {
           multiTouchActive.current = true;
-          if (drag.current?.kind === "asset") engine.cancelPreview(drag.current.token);
+          if (drag.current?.kind === "asset" || drag.current?.kind === "table") engine.cancelPreview(drag.current.token);
           drag.current = null;
           touchGesture.current = readTouchGesture(touchPoints.current);
           return;
         }
-        const token = beginAssetInteraction(event, engine, session);
-        drag.current = token ? { kind: "asset", pointerId: event.pointerId, token } : null;
+        const token = tool === "table"
+          ? beginTableInteraction(event, engine, session)
+          : beginAssetInteraction(event, engine, session);
+        drag.current = token ? { kind: tool === "table" ? "table" : "asset", pointerId: event.pointerId, token } : null;
         return;
       }
       const forcePan =
@@ -94,11 +104,13 @@ export function useEditorInteractions({
         event.button === 2 ||
         (event.button === 0 && spacePressed.current);
       if (!forcePan && event.button === 0) {
-        const token = beginAssetInteraction(event, engine, session);
+        const token = tool === "table"
+          ? beginTableInteraction(event, engine, session)
+          : beginAssetInteraction(event, engine, session);
         if (token) {
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
-          drag.current = { kind: "asset", pointerId: event.pointerId, token };
+          drag.current = { kind: tool === "table" ? "table" : "asset", pointerId: event.pointerId, token };
           return;
         }
       }
@@ -112,16 +124,25 @@ export function useEditorInteractions({
       if (profile === "editor" && event.pointerType !== "touch" && !drag.current) {
         const bounds = event.currentTarget.getBoundingClientRect();
         const current = session.getSnapshot();
-        setHoveredHandle(
-          engine.getAssetInteractionHandle(
-            editorCssToGrid(
-              { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
-              current.editorCamera,
-              current.viewportCss
-            ),
-            current.editorCamera.cssPixelsPerGrid
-          )
+        const pointGrid = editorCssToGrid(
+          { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+          current.editorCamera,
+          current.viewportCss
         );
+        if (tool === "table") {
+          setHoveredHandle(null);
+          setTableHandle(engine.getTableInteractionHandle(
+            pointGrid,
+            current.editorCamera.cssPixelsPerGrid,
+            current.display
+          ));
+        } else {
+          setTableHandle(null);
+          setHoveredHandle(engine.getAssetInteractionHandle(
+            pointGrid,
+            current.editorCamera.cssPixelsPerGrid
+          ));
+        }
       }
       if (event.pointerType === "touch") {
         if (!touchPoints.current.has(event.pointerId)) return;
@@ -146,7 +167,7 @@ export function useEditorInteractions({
       if (previous.kind === "camera") {
         session.pan({ x: event.clientX - previous.x, y: event.clientY - previous.y });
         drag.current = { kind: "camera", x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-      } else {
+      } else if (previous.kind === "asset") {
         const bounds = event.currentTarget.getBoundingClientRect();
         const current = session.getSnapshot();
         engine.updateAssetInteraction(
@@ -157,6 +178,17 @@ export function useEditorInteractions({
             current.viewportCss
           ),
           { fromCenter: event.altKey, preserveAspectRatio: event.shiftKey }
+        );
+      } else {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const current = session.getSnapshot();
+        engine.updateTableInteraction(
+          previous.token,
+          editorCssToGrid(
+            { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+            current.editorCamera,
+            current.viewportCss
+          )
         );
       }
     },
@@ -172,7 +204,7 @@ export function useEditorInteractions({
       }
       const current = drag.current;
       if (!current || current.pointerId !== event.pointerId) return;
-      if (current.kind === "asset") engine.commitPreview(current.token);
+      if (current.kind === "asset" || current.kind === "table") engine.commitPreview(current.token);
       drag.current = null;
     },
     onPointerCancel(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -181,7 +213,7 @@ export function useEditorInteractions({
         touchGesture.current = readTouchGesture(touchPoints.current);
         if (touchPoints.current.size === 0) multiTouchActive.current = false;
       }
-      if (drag.current?.kind === "asset" && drag.current.pointerId === event.pointerId) {
+      if ((drag.current?.kind === "asset" || drag.current?.kind === "table") && drag.current.pointerId === event.pointerId) {
         engine.cancelPreview(drag.current.token);
       }
       drag.current = null;
@@ -191,15 +223,32 @@ export function useEditorInteractions({
       event.preventDefault();
       if (event.ctrlKey || event.metaKey) {
         const bounds = event.currentTarget.getBoundingClientRect();
-        session.zoomAt(
-          { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
-          Math.exp(-event.deltaY * 0.0015)
-        );
+        const pointerCss = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+        session.zoomAt(pointerCss, Math.exp(-event.deltaY * 0.0015));
       } else {
         session.pan({ x: -event.deltaX, y: -event.deltaY });
       }
     },
   };
+}
+
+function beginTableInteraction(
+  event: React.PointerEvent<HTMLCanvasElement>,
+  engine: SceneEngine,
+  session: TableSession
+): PreviewToken | null {
+  const bounds = event.currentTarget.getBoundingClientRect();
+  const current = session.getSnapshot();
+  const pointGrid = editorCssToGrid(
+    { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+    current.editorCamera,
+    current.viewportCss
+  );
+  return engine.beginTableInteraction(
+    pointGrid,
+    current.editorCamera.cssPixelsPerGrid,
+    current.display
+  );
 }
 
 function beginAssetInteraction(
@@ -248,4 +297,11 @@ function cursorForHandle(handle: AssetHandle | null, rotation: number): string {
   if (angle < 67.5) return "nwse-resize";
   if (angle < 112.5) return "ns-resize";
   return "nesw-resize";
+}
+
+function cursorForTableHandle(handle: TableResizeHandle | "move" | null): string {
+  if (handle === "move") return "move";
+  if (handle === "north-west" || handle === "south-east") return "nwse-resize";
+  if (handle === "north-east" || handle === "south-west") return "nesw-resize";
+  return "crosshair";
 }

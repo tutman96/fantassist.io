@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createSceneEngine } from "@/engine/scene-engine";
 import { createTableSession } from "@/engine/table-session";
 import { EditorToolbar } from "@/features/editor/editor-toolbar";
+import type { EditorTool } from "@/features/editor/editor-tool";
 import { useEditorInteractions } from "@/features/editor/use-editor-interactions";
 import { useSceneViewport } from "@/features/editor/use-scene-viewport";
 import { CameraStatus, EditorGestureHints, RendererGate } from "@/features/editor/viewport-status";
@@ -22,6 +23,7 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
   const sharedSession = useSharedTableSession();
   const editorScene = useEditorScene();
   const [ownedSession] = useState(createTableSession);
+  const [tool, setTool] = useState<EditorTool>("assets");
   const session = sharedSession ?? ownedSession;
   const [ownedEngine] = useState(createSceneEngine);
   const [ownedImageLoader] = useState(() => {
@@ -44,12 +46,14 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
     sceneSnapshot,
     session,
     tableSnapshot,
+    tableEditing: tool === "table",
   });
   const { cursor, ...canvasEvents } = useEditorInteractions({
     assetRotation: asset?.transform.rotation ?? 0,
     engine,
     profile,
     session,
+    tool,
   });
 
   return (
@@ -63,6 +67,9 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
         data-asset-width={asset?.transform.width}
         data-asset-height={asset?.transform.height}
         data-asset-rotation={asset?.transform.rotation}
+        data-table-origin-x={sceneSnapshot.scene.table.originGrid.x}
+        data-table-origin-y={sceneSnapshot.scene.table.originGrid.y}
+        data-table-scale={sceneSnapshot.scene.table.scale}
         className="block size-full touch-none"
         style={{ cursor }}
         {...canvasEvents}
@@ -76,9 +83,11 @@ export function GpuViewport({ profile }: { readonly profile: RenderProfile }) {
             sceneSnapshot={sceneSnapshot}
             session={session}
             tableSnapshot={tableSnapshot}
+            tool={tool}
+            onToolChange={setTool}
           />
           <WorkspacePanels engine={engine} sceneSnapshot={sceneSnapshot} />
-          <EditorGestureHints />
+          <EditorGestureHints tool={tool} />
           {status === "ready" ? (
             <CameraStatus sceneSnapshot={sceneSnapshot} tableSnapshot={tableSnapshot} />
           ) : null}

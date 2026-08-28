@@ -1,6 +1,7 @@
 import { createSampleSceneDocument, freezeSceneDocument } from "./scene-document";
 import type { AssetTransform, ImageAsset, SceneDocument, SceneLayer } from "./scene-document";
-import type { GridPoint } from "./table-camera";
+import { getTableBounds, MAX_TABLE_SCALE, MIN_TABLE_SCALE } from "./table-camera";
+import type { DisplayConfiguration, GridBounds, GridPoint, TableCamera } from "./table-camera";
 
 export type EngineListener = () => void;
 export type RendererInvalidation = "all" | "editor";
@@ -32,9 +33,10 @@ export type SceneCommand =
   | { readonly type: "layer.remove"; readonly layerId: string }
   | { readonly type: "layer.visibility"; readonly layerId: string; readonly visible: boolean }
   | { readonly type: "layer.move"; readonly layerId: string; readonly toIndex: number }
+  | { readonly type: "table.camera"; readonly table: TableCamera }
   | { readonly type: "selection.set"; readonly assetId: string | null };
 
-export type PreviewCommand = Extract<SceneCommand, { readonly type: "asset.transform" }>;
+export type PreviewCommand = Extract<SceneCommand, { readonly type: "asset.transform" | "table.camera" }>;
 export interface PreviewToken {
   readonly id: number;
 }
@@ -52,6 +54,19 @@ export interface SceneEngine {
   updatePreview(token: PreviewToken, command: PreviewCommand): void;
   commitPreview(token: PreviewToken): CommandResult;
   cancelPreview(token: PreviewToken): void;
+  beginTableDrag(pointGrid: GridPoint): PreviewToken;
+  updateTableDrag(token: PreviewToken, pointGrid: GridPoint): void;
+  getTableInteractionHandle(
+    pointGrid: GridPoint,
+    cssPixelsPerGrid: number,
+    display: DisplayConfiguration
+  ): TableResizeHandle | "move" | null;
+  beginTableInteraction(
+    pointGrid: GridPoint,
+    cssPixelsPerGrid: number,
+    display: DisplayConfiguration
+  ): PreviewToken | null;
+  updateTableInteraction(token: PreviewToken, pointGrid: GridPoint): void;
   beginAssetDrag(pointGrid: GridPoint): PreviewToken | null;
   updateAssetDrag(token: PreviewToken, pointGrid: GridPoint): void;
   beginAssetInteraction(
@@ -79,14 +94,23 @@ type HistoryEntry =
   | { readonly kind: "remove-layer"; readonly layer: SceneLayer; readonly assets: readonly ImageAsset[]; readonly index: number }
   | { readonly kind: "asset-visibility"; readonly assetId: string; readonly before: boolean; readonly after: boolean }
   | { readonly kind: "layer-visibility"; readonly layerId: string; readonly before: boolean; readonly after: boolean }
-  | { readonly kind: "move-layer"; readonly layerId: string; readonly fromIndex: number; readonly toIndex: number };
+  | { readonly kind: "move-layer"; readonly layerId: string; readonly fromIndex: number; readonly toIndex: number }
+  | { readonly kind: "table-camera"; readonly before: TableCamera; readonly after: TableCamera };
 
 interface ActivePreview {
   readonly token: PreviewToken;
   command: PreviewCommand;
   interaction?: AssetInteraction;
+  tableDrag?: { readonly initialPointer: GridPoint; readonly initialOrigin: GridPoint };
+  tableResize?: {
+    readonly initialPointer: GridPoint;
+    readonly initialTable: TableCamera;
+    readonly initialBounds: GridBounds;
+    readonly handle: TableResizeHandle;
+  };
 }
 
+export type TableResizeHandle = "north-west" | "north-east" | "south-east" | "south-west";
 export type ResizeHandle =
   | "north-west"
   | "north"
@@ -131,7 +155,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
   let snapshot = buildSnapshot("all");
 
   function buildSnapshot(invalidation: RendererInvalidation): SceneEngineSnapshot {
-    const scene = preview ? applyTransform(committedScene, preview.command, revision) : committedScene;
+    const scene = preview ? applyPreview(committedScene, preview.command, revision) : committedScene;
     return Object.freeze({
       scene,
       revision,
@@ -152,7 +176,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
   }
 
   function transformResult(
-    command: PreviewCommand,
+    command: Extract<PreviewCommand, { readonly type: "asset.transform" }>,
     recordHistory: boolean,
     publishUnchanged = false
   ): CommandResult {
@@ -174,6 +198,28 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     return { ok: true, changed: true, revision };
   }
 
+  function tableResult(
+    command: Extract<PreviewCommand, { readonly type: "table.camera" }>,
+    recordHistory: boolean,
+    publishUnchanged = false
+  ): CommandResult {
+    const error = validateTable(command.table);
+    if (error) return { ok: false, error, revision };
+    const table = freezeTable(command.table);
+    if (sameTable(committedScene.table, table)) {
+      if (publishUnchanged) publish("all");
+      return { ok: true, changed: false, revision };
+    }
+    if (recordHistory) {
+      undoStack = [...undoStack, { kind: "table-camera", before: committedScene.table, after: table }];
+      redoStack = [];
+    }
+    revision++;
+    committedScene = applyTable(committedScene, table, revision);
+    publish("all");
+    return { ok: true, changed: true, revision };
+  }
+
   const engine: SceneEngine = {
     getSnapshot: () => snapshot,
     getCommittedSnapshot: () => Object.freeze({ scene: committedScene, revision }),
@@ -185,6 +231,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     dispatch(command) {
       if (disposed) return { ok: false, error: "Scene engine is disposed", revision };
       if (command.type === "asset.transform") return transformResult(command, true);
+      if (command.type === "table.camera") return tableResult(command, true);
       if (command.type === "asset.insert") {
         if (findAsset(committedScene, command.asset.id)) {
           return { ok: false, error: `Asset '${command.asset.id}' already exists`, revision };
@@ -295,18 +342,33 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     beginPreview(command) {
       if (disposed) throw new Error("Scene engine is disposed");
       if (preview) throw new Error("A scene preview is already active");
-      const error = validateTransform(command.transform);
-      if (!findAsset(committedScene, command.assetId)) throw new Error(`Unknown asset '${command.assetId}'`);
+      const error = command.type === "asset.transform"
+        ? validateTransform(command.transform)
+        : validateTable(command.table);
+      if (command.type === "asset.transform" && !findAsset(committedScene, command.assetId)) {
+        throw new Error(`Unknown asset '${command.assetId}'`);
+      }
       if (error) throw new Error(error);
       const token = Object.freeze({ id: ++tokenSequence });
-      preview = { token, command };
+      preview = {
+        token,
+        command: command.type === "table.camera"
+          ? { type: "table.camera", table: freezeTable(command.table) }
+          : command,
+      };
       publish("editor");
       return token;
     },
     updatePreview(token, command) {
       if (!preview || preview.token.id !== token.id) return;
-      if (preview.command.assetId !== command.assetId || validateTransform(command.transform)) return;
-      preview.command = command;
+      if (preview.command.type !== command.type) return;
+      if (command.type === "asset.transform") {
+        if (preview.command.type !== "asset.transform" || preview.command.assetId !== command.assetId || validateTransform(command.transform)) return;
+        preview.command = command;
+      } else {
+        if (validateTable(command.table)) return;
+        preview.command = { type: "table.camera", table: freezeTable(command.table) };
+      }
       publish("editor");
     },
     commitPreview(token) {
@@ -315,12 +377,116 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       }
       const command = preview.command;
       preview = undefined;
-      return transformResult(command, true, true);
+      return command.type === "asset.transform"
+        ? transformResult(command, true, true)
+        : tableResult(command, true, true);
     },
     cancelPreview(token) {
       if (!preview || preview.token.id !== token.id) return;
       preview = undefined;
       publish("editor");
+    },
+    beginTableDrag(pointGrid) {
+      if (!Number.isFinite(pointGrid.x) || !Number.isFinite(pointGrid.y)) {
+        throw new Error("Table drag points must contain finite numbers");
+      }
+      const table = committedScene.table;
+      const token = engine.beginPreview({ type: "table.camera", table });
+      if (preview) {
+        preview = {
+          ...preview,
+          tableDrag: {
+            initialPointer: Object.freeze({ ...pointGrid }),
+            initialOrigin: Object.freeze({ ...table.originGrid }),
+          },
+        };
+      }
+      return token;
+    },
+    updateTableDrag(token, pointGrid) {
+      if (
+        !preview ||
+        preview.token.id !== token.id ||
+        preview.command.type !== "table.camera" ||
+        !preview.tableDrag ||
+        !Number.isFinite(pointGrid.x) ||
+        !Number.isFinite(pointGrid.y)
+      ) return;
+      const { initialPointer, initialOrigin } = preview.tableDrag;
+      engine.updatePreview(token, {
+        type: "table.camera",
+        table: {
+          ...preview.command.table,
+          originGrid: {
+            x: initialOrigin.x + pointGrid.x - initialPointer.x,
+            y: initialOrigin.y + pointGrid.y - initialPointer.y,
+          },
+        },
+      });
+    },
+    getTableInteractionHandle(pointGrid, cssPixelsPerGrid, display) {
+      return pickTableInteractionHandle(snapshot.scene.table, pointGrid, cssPixelsPerGrid, display);
+    },
+    beginTableInteraction(pointGrid, cssPixelsPerGrid, display) {
+      const table = committedScene.table;
+      const handle = pickTableInteractionHandle(table, pointGrid, cssPixelsPerGrid, display);
+      if (!handle) return null;
+      if (handle === "move") return engine.beginTableDrag(pointGrid);
+      const initialBounds = getTableBounds(table, display);
+      const token = engine.beginPreview({ type: "table.camera", table });
+      if (preview) {
+        preview = {
+          ...preview,
+          tableResize: {
+            initialPointer: Object.freeze({ ...pointGrid }),
+            initialTable: table,
+            initialBounds: Object.freeze({ ...initialBounds }),
+            handle,
+          },
+        };
+      }
+      return token;
+    },
+    updateTableInteraction(token, pointGrid) {
+      if (!preview || preview.token.id !== token.id || !preview.tableResize) {
+        engine.updateTableDrag(token, pointGrid);
+        return;
+      }
+      if (preview.command.type !== "table.camera" || !isFinitePoint(pointGrid)) return;
+      const { initialPointer, initialTable, initialBounds, handle } = preview.tableResize;
+      const draggedCorner = tableCorner(initialBounds, handle);
+      const oppositeCorner = tableCorner(initialBounds, oppositeTableHandle(handle));
+      const diagonal = {
+        x: draggedCorner.x - oppositeCorner.x,
+        y: draggedCorner.y - oppositeCorner.y,
+      };
+      const effectiveCorner = {
+        x: draggedCorner.x + pointGrid.x - initialPointer.x,
+        y: draggedCorner.y + pointGrid.y - initialPointer.y,
+      };
+      const diagonalLengthSquared = diagonal.x * diagonal.x + diagonal.y * diagonal.y;
+      const sizeFactor = (
+        (effectiveCorner.x - oppositeCorner.x) * diagonal.x +
+        (effectiveCorner.y - oppositeCorner.y) * diagonal.y
+      ) / diagonalLengthSquared;
+      const requestedScale = sizeFactor > 0 ? initialTable.scale / sizeFactor : MAX_TABLE_SCALE;
+      const scale = Math.min(MAX_TABLE_SCALE, Math.max(MIN_TABLE_SCALE, requestedScale));
+      const clampedSizeFactor = initialTable.scale / scale;
+      const corner = {
+        x: oppositeCorner.x + diagonal.x * clampedSizeFactor,
+        y: oppositeCorner.y + diagonal.y * clampedSizeFactor,
+      };
+      engine.updatePreview(token, {
+        type: "table.camera",
+        table: {
+          ...initialTable,
+          scale,
+          originGrid: {
+            x: handle.endsWith("west") ? corner.x : oppositeCorner.x,
+            y: handle.startsWith("north") ? corner.y : oppositeCorner.y,
+          },
+        },
+      });
     },
     beginAssetDrag(pointGrid) {
       const asset = pickImageAsset(committedScene, pointGrid);
@@ -430,6 +596,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (entry.kind === "table-camera") {
+        return tableResult({ type: "table.camera", table: entry.before }, false);
+      }
       return transformResult(
         { type: "asset.transform", assetId: entry.assetId, transform: entry.before },
         false
@@ -486,6 +655,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (entry.kind === "table-camera") {
+        return tableResult({ type: "table.camera", table: entry.after }, false);
+      }
       return transformResult(
         { type: "asset.transform", assetId: entry.assetId, transform: entry.after },
         false
@@ -524,7 +696,12 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     fromCenter = false,
     preserveAspectRatio = false
   ) {
-    if (!preview || preview.token.id !== token.id || !preview.interaction) return;
+    if (
+      !preview ||
+      preview.token.id !== token.id ||
+      preview.command.type !== "asset.transform" ||
+      !preview.interaction
+    ) return;
     const transform = preview.command.transform;
     const interaction = preview.interaction;
     let nextTransform: AssetTransform;
@@ -656,6 +833,52 @@ export function pickAssetHandle(
   return null;
 }
 
+function pickTableInteractionHandle(
+  table: TableCamera,
+  pointGrid: GridPoint,
+  cssPixelsPerGrid: number,
+  display: DisplayConfiguration
+): TableResizeHandle | "move" | null {
+  if (!isFinitePoint(pointGrid) || !Number.isFinite(cssPixelsPerGrid) || cssPixelsPerGrid <= 0) {
+    return null;
+  }
+  const bounds = getTableBounds(table, display);
+  const tolerance = 10 / cssPixelsPerGrid;
+  const handles = ["north-west", "north-east", "south-east", "south-west"] as const;
+  for (const handle of handles) {
+    const corner = tableCorner(bounds, handle);
+    if (Math.hypot(pointGrid.x - corner.x, pointGrid.y - corner.y) <= tolerance) {
+      return handle;
+    }
+  }
+  return (
+    pointGrid.x >= bounds.left &&
+    pointGrid.x <= bounds.right &&
+    pointGrid.y >= bounds.top &&
+    pointGrid.y <= bounds.bottom
+  ) ? "move" : null;
+}
+
+function tableCorner(bounds: GridBounds, handle: TableResizeHandle): GridPoint {
+  return {
+    x: handle.endsWith("west") ? bounds.left : bounds.right,
+    y: handle.startsWith("north") ? bounds.top : bounds.bottom,
+  };
+}
+
+function oppositeTableHandle(handle: TableResizeHandle): TableResizeHandle {
+  switch (handle) {
+    case "north-west": return "south-east";
+    case "north-east": return "south-west";
+    case "south-east": return "north-west";
+    case "south-west": return "north-east";
+  }
+}
+
+function isFinitePoint(point: GridPoint): boolean {
+  return Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
 export function pickImageAsset(scene: SceneDocument, pointGrid: GridPoint): ImageAsset | null {
   for (let index = scene.assets.length - 1; index >= 0; index--) {
     const asset = scene.assets[index];
@@ -682,7 +905,17 @@ function findAsset(scene: SceneDocument, assetId: string): ImageAsset | undefine
   return scene.assets.find((asset) => asset.id === assetId);
 }
 
-function applyTransform(scene: SceneDocument, command: PreviewCommand, version: number): SceneDocument {
+function applyPreview(scene: SceneDocument, command: PreviewCommand, version: number): SceneDocument {
+  return command.type === "asset.transform"
+    ? applyTransform(scene, command, version)
+    : applyTable(scene, command.table, version);
+}
+
+function applyTransform(
+  scene: SceneDocument,
+  command: Extract<PreviewCommand, { readonly type: "asset.transform" }>,
+  version: number
+): SceneDocument {
   return freezeSceneDocument({
     ...scene,
     version,
@@ -690,6 +923,10 @@ function applyTransform(scene: SceneDocument, command: PreviewCommand, version: 
       asset.id === command.assetId ? { ...asset, transform: command.transform } : asset
     ),
   });
+}
+
+function applyTable(scene: SceneDocument, table: TableCamera, version: number): SceneDocument {
+  return freezeSceneDocument({ ...scene, version, table });
 }
 
 function applyInsert(scene: SceneDocument, asset: ImageAsset, version: number): SceneDocument {
@@ -840,6 +1077,34 @@ function validateTransform(transform: AssetTransform): string | null {
   if (!values.every(Number.isFinite)) return "Asset transforms must contain finite numbers";
   if (transform.width <= 0 || transform.height <= 0) return "Asset dimensions must be positive";
   return null;
+}
+
+function validateTable(table: TableCamera): string | null {
+  if (!Number.isFinite(table.originGrid.x) || !Number.isFinite(table.originGrid.y)) {
+    return "Table origin must contain finite numbers";
+  }
+  if (!Number.isFinite(table.scale) || table.scale <= 0) {
+    return "Table scale must be a positive finite number";
+  }
+  if (typeof table.displayGrid !== "boolean") return "Table displayGrid must be a boolean";
+  return null;
+}
+
+function freezeTable(table: TableCamera): TableCamera {
+  return Object.freeze({
+    originGrid: Object.freeze({ ...table.originGrid }),
+    scale: table.scale,
+    displayGrid: table.displayGrid,
+  });
+}
+
+function sameTable(left: TableCamera, right: TableCamera): boolean {
+  return (
+    left.originGrid.x === right.originGrid.x &&
+    left.originGrid.y === right.originGrid.y &&
+    left.scale === right.scale &&
+    left.displayGrid === right.displayGrid
+  );
 }
 
 function sameTransform(left: AssetTransform, right: AssetTransform): boolean {

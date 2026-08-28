@@ -1,5 +1,6 @@
 import { freezeSceneDocument } from "@/engine/scene-document";
 import type { SceneDocument } from "@/engine/scene-document";
+import { normalizeTableCamera } from "@/engine/table-camera";
 
 import { decodeV1Scene, encodeV1Scene } from "./scene-codec";
 import type { V1Scene } from "./types";
@@ -46,6 +47,11 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
     id: scene.id,
     name: scene.name,
     version: scene.version,
+    table: normalizeTableCamera({
+      originGrid: scene.table?.offset,
+      scale: scene.table?.scale,
+      displayGrid: scene.table?.displayGrid,
+    }),
     layers,
     assets,
   });
@@ -91,6 +97,12 @@ export function patchV1SceneTransforms(
   return {
     ...clone,
     version,
+    table: {
+      displayGrid: document.table.displayGrid,
+      offset: { ...document.table.originGrid },
+      rotation: clone.table?.rotation ?? 0,
+      scale: document.table.scale,
+    },
     layers: document.layers.map((domainLayer) => {
       const layer = sourceLayers.get(domainLayer.id);
       if (layer?.assetLayer) {

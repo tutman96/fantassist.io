@@ -85,16 +85,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
     activeRecord.current = record;
     savedEngineRevision.current = document.version;
     engine.replaceCommittedScene(document, document.version);
-    if (record.scene.table && tableSession) {
-      tableSession.updateConfiguration({
-        table: {
-          originGrid: record.scene.table.offset ?? { x: 0, y: 0 },
-          scale: record.scene.table.scale || 1,
-          displayGrid: record.scene.table.displayGrid,
-        },
-      });
-      tableSession.fitTable();
-    }
+    if (tableSession) tableSession.fitTable(document.table);
     hydrating.current = false;
   };
 

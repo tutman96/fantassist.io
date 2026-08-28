@@ -17,6 +17,7 @@ export interface SceneExecutor {
   render(time: number): Promise<void>;
   resize(size: readonly [number, number]): void;
   setGridVisible(visible: boolean): void;
+  setTableEditing(editing: boolean): void;
   setSnapshot(snapshot: SceneEngineSnapshot): void;
   setView(view: RenderView): void;
 }
@@ -39,6 +40,7 @@ export function createSceneExecutor(
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   let gridVisible = plan.showGrid;
+  let tableEditing = false;
   let view = initialView;
   let snapshot = initialSnapshot;
   let renderSize = { width: size[0], height: size[1] };
@@ -62,6 +64,7 @@ export function createSceneExecutor(
       asset_size: [transform.width, transform.height],
       asset_rotation: (transform.rotation * Math.PI) / 180,
       selected: asset && plan.showEditorGrid && snapshot.selectedAssetId === asset.id && asset.visible && layerVisible ? 1 : 0,
+      table_editing: tableEditing && plan.showEditorGrid ? 1 : 0,
     };
   };
   const createAssetEntries = (
@@ -227,6 +230,9 @@ export function createSceneExecutor(
     },
     setGridVisible(visible) {
       gridVisible = visible;
+    },
+    setTableEditing(editing) {
+      tableEditing = editing;
     },
     setSnapshot(nextSnapshot) {
       snapshot = nextSnapshot;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid3X3, LocateFixed, Minus, Move, Plus, Redo2, RotateCcw, Undo2 } from "lucide-react";
+import { Grid3X3, LocateFixed, Minus, Monitor, MousePointer2, Plus, Redo2, RotateCcw, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -10,57 +10,113 @@ import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { TableSession, TableSessionSnapshot } from "@/engine/table-session";
+import { getTableBounds, zoomTableCameraAt } from "@/engine/table-camera";
+import type { EditorTool } from "@/features/editor/editor-tool";
 
 export function EditorToolbar({
   engine,
   sceneSnapshot,
   session,
   tableSnapshot,
+  tool,
+  onToolChange,
 }: {
   readonly engine: SceneEngine;
   readonly sceneSnapshot: SceneEngineSnapshot;
   readonly session: TableSession;
   readonly tableSnapshot: TableSessionSnapshot;
+  readonly tool: EditorTool;
+  readonly onToolChange: (tool: EditorTool) => void;
 }) {
-  const zoomAtCenter = (factor: number) => session.zoomAt(
-    { x: tableSnapshot.viewportCss.width / 2, y: tableSnapshot.viewportCss.height / 2 },
-    factor
-  );
+  const zoomAtCenter = (factor: number) => {
+    if (tool === "assets") {
+      session.zoomAt(
+        { x: tableSnapshot.viewportCss.width / 2, y: tableSnapshot.viewportCss.height / 2 },
+        factor
+      );
+      return;
+    }
+    const table = sceneSnapshot.scene.table;
+    const bounds = getTableBounds(table, tableSnapshot.display);
+    engine.dispatch({
+      type: "table.camera",
+      table: zoomTableCameraAt(
+        table,
+        tableSnapshot.display,
+        { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 },
+        factor
+      ),
+    });
+  };
 
   return (
     <aside aria-label="Editor tools" className="absolute top-3 left-3 z-10 flex items-center gap-1 border border-violet-300/15 bg-[#100d20]/92 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:top-4 sm:left-4 sm:flex-col">
-      <span className="mb-1 hidden size-8 place-items-center border-b border-violet-300/10 text-violet-300/70 sm:grid">
-        <Move className="size-3.5" aria-hidden="true" />
-      </span>
+      <ButtonGroup className="sm:flex-col">
+        <ToolToggle label="Edit assets" pressed={tool === "assets"} onPressedChange={() => onToolChange("assets")}><MousePointer2 /></ToolToggle>
+        <ToolToggle label="Edit display view" pressed={tool === "table"} onPressedChange={() => onToolChange("table")}><Monitor /></ToolToggle>
+      </ButtonGroup>
+      <ToolbarSeparator />
       <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
         <ToolButton label="Undo" shortcut="⌘Z" disabled={!sceneSnapshot.canUndo} onClick={() => engine.undo()}><Undo2 /></ToolButton>
         <ToolButton label="Redo" shortcut="⇧⌘Z" disabled={!sceneSnapshot.canRedo} onClick={() => engine.redo()}><Redo2 /></ToolButton>
       </ButtonGroup>
       <ToolbarSeparator />
       <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
-        <ToolButton label="Fit table" onClick={() => session.fitTable()}><LocateFixed /></ToolButton>
-        <ToolButton label="Reset table" onClick={() => session.resetTable()}><RotateCcw /></ToolButton>
+        <ToolButton label="Fit table" onClick={() => session.fitTable(sceneSnapshot.scene.table)}><LocateFixed /></ToolButton>
+        <ToolButton label="Reset table view" onClick={() => engine.dispatch({
+          type: "table.camera",
+          table: { ...sceneSnapshot.scene.table, originGrid: { x: 0, y: 0 }, scale: 1 },
+        })}><RotateCcw /></ToolButton>
         <Tooltip>
           <TooltipTrigger asChild>
             <Toggle
-              aria-label={`Grid ${tableSnapshot.editorGridVisible ? "on" : "off"}`}
-              pressed={tableSnapshot.editorGridVisible}
-              onPressedChange={(pressed) => session.setEditorGridVisible(pressed)}
+              aria-label={`Grid ${sceneSnapshot.scene.table.displayGrid ? "on" : "off"}`}
+              pressed={sceneSnapshot.scene.table.displayGrid}
+              onPressedChange={(pressed) => {
+                engine.dispatch({
+                  type: "table.camera",
+                  table: { ...sceneSnapshot.scene.table, displayGrid: pressed },
+                });
+              }}
               style={{ borderRadius: 0 }}
               className="size-9 rounded-none border border-transparent text-violet-100/70 hover:border-violet-300/15 hover:bg-violet-400/10 hover:text-white data-[state=on]:border-violet-300/25 data-[state=on]:bg-gradient-to-br data-[state=on]:from-blue-500/25 data-[state=on]:to-fuchsia-500/20 data-[state=on]:text-violet-50"
             >
               <Grid3X3 />
             </Toggle>
           </TooltipTrigger>
-          <TooltipContent side="right" className="rounded-none">Toggle editor grid</TooltipContent>
+          <TooltipContent side="right" className="rounded-none">Toggle DM and player grid</TooltipContent>
         </Tooltip>
       </ButtonGroup>
       <ToolbarSeparator />
       <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
-        <ToolButton label="Zoom in" onClick={() => zoomAtCenter(1.15)}><Plus /></ToolButton>
-        <ToolButton label="Zoom out" onClick={() => zoomAtCenter(1 / 1.15)}><Minus /></ToolButton>
+        <ToolButton label={tool === "table" ? "Zoom display view in" : "Zoom in"} onClick={() => zoomAtCenter(1.15)}><Plus /></ToolButton>
+        <ToolButton label={tool === "table" ? "Zoom display view out" : "Zoom out"} onClick={() => zoomAtCenter(1 / 1.15)}><Minus /></ToolButton>
       </ButtonGroup>
     </aside>
+  );
+}
+
+function ToolToggle({ children, label, pressed, onPressedChange }: {
+  readonly children: React.ReactNode;
+  readonly label: string;
+  readonly pressed: boolean;
+  readonly onPressedChange: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Toggle
+          aria-label={label}
+          pressed={pressed}
+          onPressedChange={onPressedChange}
+          style={{ borderRadius: 0 }}
+          className="size-9 rounded-none border border-transparent text-violet-100/60 hover:border-violet-300/15 hover:bg-violet-400/10 hover:text-white data-[state=on]:border-blue-300/30 data-[state=on]:bg-blue-500/18 data-[state=on]:text-blue-100"
+        >
+          {children}
+        </Toggle>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="rounded-none">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

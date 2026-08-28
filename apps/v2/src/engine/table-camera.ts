@@ -52,6 +52,8 @@ export const DEFAULT_TABLE_CAMERA: TableCamera = Object.freeze({
 
 export const MIN_EDITOR_ZOOM = 2;
 export const MAX_EDITOR_ZOOM = 512;
+export const MIN_TABLE_SCALE = 0.1;
+export const MAX_TABLE_SCALE = 10;
 
 const positiveOr = (value: number | undefined, fallback: number) =>
   typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
@@ -111,6 +113,29 @@ export function getTableBounds(
 
 export function clampEditorZoom(value: number): number {
   return Math.min(MAX_EDITOR_ZOOM, Math.max(MIN_EDITOR_ZOOM, positiveOr(value, MIN_EDITOR_ZOOM)));
+}
+
+export function zoomTableCameraAt(
+  tableValue: TableCamera,
+  display: DisplayConfiguration,
+  anchorGrid: GridPoint,
+  factor: number
+): TableCamera {
+  const table = normalizeTableCamera(tableValue);
+  if (!Number.isFinite(factor) || factor <= 0) return table;
+  const bounds = getTableBounds(table, display);
+  const scale = Math.min(MAX_TABLE_SCALE, Math.max(MIN_TABLE_SCALE, table.scale * factor));
+  const nextBounds = getTableBounds({ ...table, scale }, display);
+  const anchorX = (anchorGrid.x - bounds.left) / bounds.width;
+  const anchorY = (anchorGrid.y - bounds.top) / bounds.height;
+  return {
+    ...table,
+    scale,
+    originGrid: {
+      x: anchorGrid.x - anchorX * nextBounds.width,
+      y: anchorGrid.y - anchorY * nextBounds.height,
+    },
+  };
 }
 
 export function gridToEditorCss(

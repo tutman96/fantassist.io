@@ -13,6 +13,7 @@ import { createSceneExecutor } from "./scene-executor";
 export interface BrowserSceneRenderer {
   render(time?: number): void;
   setGridVisible(visible: boolean): void;
+  setTableEditing(editing: boolean): void;
   setSnapshot(snapshot: SceneEngineSnapshot): void;
   setView(view: RenderView): void;
   startAnimation(fps?: number): () => void;
@@ -38,10 +39,12 @@ export async function createBrowserSceneRenderer(
   let activeView = initialView;
   let activeSnapshot = initialSnapshot;
   let activeGridVisible = profile === "editor";
+  let activeTableEditing = false;
   let requestActiveRender = (time: number) => {
     pendingTime = time;
   };
   let setActiveGridVisible: (visible: boolean) => void = () => undefined;
+  let setActiveTableEditing: (editing: boolean) => void = () => undefined;
   let setActiveSnapshot: (snapshot: SceneEngineSnapshot, assetsChanged: boolean) => boolean = () => true;
   let setActiveView: (view: RenderView) => void = () => undefined;
 
@@ -76,6 +79,7 @@ export async function createBrowserSceneRenderer(
       imageUploads.forEach((upload) => upload.dispose());
       imageUploads = [];
       executor.setGridVisible(activeGridVisible);
+      executor.setTableEditing(activeTableEditing);
       await executor.prewarm();
       if (disposed || ownGeneration !== generation) {
         nextSurface.dispose();
@@ -108,6 +112,7 @@ export async function createBrowserSceneRenderer(
       });
       requestActiveRender = requestRender;
       setActiveGridVisible = (visible: boolean) => executor.setGridVisible(visible);
+      setActiveTableEditing = (editing: boolean) => executor.setTableEditing(editing);
       let replacementRevision = 0;
       let replacementQueue = Promise.resolve();
       setActiveSnapshot = (snapshot: SceneEngineSnapshot, assetsChanged: boolean) => {
@@ -202,6 +207,12 @@ export async function createBrowserSceneRenderer(
       setActiveGridVisible(visible);
       render(lastTime);
     },
+    setTableEditing(editing) {
+      if (disposed) return;
+      activeTableEditing = editing;
+      setActiveTableEditing(editing);
+      render(lastTime);
+    },
     setSnapshot(nextSnapshot) {
       if (disposed) return;
       const assetsChanged = assetKey(activeSnapshot) !== assetKey(nextSnapshot);
@@ -239,6 +250,7 @@ export async function createBrowserSceneRenderer(
       generation++;
       requestActiveRender = () => undefined;
       setActiveGridVisible = () => undefined;
+      setActiveTableEditing = () => undefined;
       setActiveSnapshot = () => true;
       setActiveView = () => undefined;
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
