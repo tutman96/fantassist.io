@@ -120,11 +120,11 @@ export default function BetaEnrollment({
             alignItems={{ sm: "center" }}
           >
             {enrolled ? (
-              <VersionSwitchButton version="stable">
+              <VersionSwitchButton version="stable" returnTo="/campaigns">
                 Return to stable
               </VersionSwitchButton>
             ) : (
-              <VersionSwitchButton version="beta">
+              <VersionSwitchButton version="beta" returnTo="/">
                 Opt in to beta
               </VersionSwitchButton>
             )}
