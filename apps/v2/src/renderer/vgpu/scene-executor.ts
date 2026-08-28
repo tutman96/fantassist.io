@@ -5,7 +5,7 @@ import type { SceneEngineSnapshot } from "../../engine/scene-engine";
 import { fogHandleVertices, outlineFogPolygons, tessellateFogPolygons } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
-import { compileSceneLayerOperations } from "../render-plan";
+import { compileSceneLayerOperations, FOG_EDGE_SPREAD_GRID } from "../render-plan";
 import type { RenderPlan } from "../render-plan";
 import { compileProjection, projectionUniforms } from "../projection";
 import type { RenderView } from "../projection";
@@ -49,6 +49,7 @@ export function createSceneExecutor(
   const sceneA = target(gpu, { size, format: "rgba16float", msaa: 4, label: "scene-a" });
   const sceneB = target(gpu, { size, format: "rgba16float", msaa: 4, label: "scene-b" });
   const fogMaskTarget = target(gpu, { size, format: "rgba8unorm", msaa: 4, label: "fog-mask" });
+  const featheredFogTarget = target(gpu, { size, format: "rgba8unorm", label: "feathered-fog-mask" });
   const compositeTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "editor-composite" });
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
@@ -194,9 +195,21 @@ export function createSceneExecutor(
 
   let assetEntries = createAssetEntries(initialSnapshot, imageUploads);
   let fogEntries = createFogEntries(initialSnapshot);
+  const fogFeather = effect(gpu, shaders.fogFeather, {
+    label: "fog-edge-feather",
+    set: {
+      fog_mask: fogMaskTarget,
+      texture_sampler: linearSampler,
+      params: {
+        target_size: [renderSize.width, renderSize.height],
+        pixels_per_grid: projection.pixelsPerGrid,
+        spread_grid: FOG_EDGE_SPREAD_GRID,
+      },
+    },
+  });
   const fogComposite = effect(gpu, shaders.fogComposite, {
     label: "fog-composite",
-    set: { scene: sceneA, fog_mask: fogMaskTarget, texture_sampler: linearSampler, params: { fog_opacity: plan.fogOpacity } },
+    set: { scene: sceneA, fog_mask: featheredFogTarget, texture_sampler: linearSampler, params: { fog_opacity: plan.fogOpacity } },
   });
   const sceneCopy = effect(gpu, shaders.sceneCopy, {
     label: "scene-layer-copy",
@@ -220,7 +233,7 @@ export function createSceneExecutor(
     sampleCount: 4,
     get estimatedTargetBytes() {
       const [width, height] = destination.size;
-      return width * height * (8 * 5 + 8 * 5 + 4 * 5 + 8 * 5 + 4);
+      return width * height * (8 * 5 + 8 * 5 + 4 * 5 + 4 + 8 * 5 + 4);
     },
     async prewarm() {
       await Promise.all([
@@ -232,6 +245,7 @@ export function createSceneExecutor(
               .map((drawable) => drawable.compile(signature(compositeTarget)))
           : []),
         fogComposite.compile(signature(sceneB)),
+        fogFeather.compile(signature(featheredFogTarget)),
         sceneCopy.compile(signature(sceneB)),
         composite.compile(signature(compositeTarget)),
         present.compile(signature(destination)),
@@ -306,6 +320,14 @@ export function createSceneExecutor(
             if (entry?.fog) pass.draw(entry.fog);
             if (entry?.clear) pass.draw(entry.clear);
           });
+          fogFeather.set({
+            params: {
+              target_size: [renderSize.width, renderSize.height],
+              pixels_per_grid: projection.pixelsPerGrid,
+              spread_grid: FOG_EDGE_SPREAD_GRID,
+            },
+          });
+          currentFrame.pass({ target: featheredFogTarget, clear: [0, 0, 0, 1] }, fogFeather);
           fogComposite.set({ scene: activeScene, params: { fog_opacity: plan.fogOpacity } });
           currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, fogComposite);
           [activeScene, alternateScene] = [alternateScene, activeScene];
@@ -333,6 +355,7 @@ export function createSceneExecutor(
       sceneA.resize(nextSize);
       sceneB.resize(nextSize);
       fogMaskTarget.resize(nextSize);
+      featheredFogTarget.resize(nextSize);
       compositeTarget.resize(nextSize);
     },
     setGridVisible(visible) {

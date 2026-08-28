@@ -4,6 +4,7 @@ export interface SceneShaders {
   readonly assets: string | ShaderSource;
   readonly fogMask: string | ShaderSource;
   readonly fogComposite: string | ShaderSource;
+  readonly fogFeather: string | ShaderSource;
   readonly fogGuide: string | ShaderSource;
   readonly fogHandle: string | ShaderSource;
   readonly composite: string | ShaderSource;

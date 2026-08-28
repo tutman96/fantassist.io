@@ -50,6 +50,9 @@ fn box_distance(point: vec2f, center: vec2f, half_size: vec2f) -> f32 {
     world.x >= params.table_min.x - 0.2 && world.x <= params.table_max.x + 0.2 &&
     world.y >= params.table_min.y - 0.2 && world.y <= params.table_max.y + 0.2
   );
+  let table_dash = step(0.42, fract((world.x + world.y) * params.pixels_per_grid / 14.0));
+  let table_context_edge = (1.0 - smoothstep(1.0, 2.2, table_edge_distance)) * near_table * table_dash * params.show_editor * (1.0 - params.table_editing);
+  color = mix(color, vec3f(1.0, 0.68, 0.25), table_context_edge);
   let table_edge = (1.0 - smoothstep(1.0, 2.2, table_edge_distance)) * near_table * params.table_editing;
   color = mix(color, vec3f(1.0, 0.76, 0.24), table_edge * 0.92);
   let table_handle_half = vec2f(6.0 / params.pixels_per_grid);

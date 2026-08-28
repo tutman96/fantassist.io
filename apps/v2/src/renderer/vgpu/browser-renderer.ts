@@ -9,6 +9,7 @@ import type { RenderView } from "../projection";
 import type { RenderProfile } from "../scene-renderer";
 import { browserSceneShaders } from "./browser-shaders";
 import { createSceneExecutor } from "./scene-executor";
+import type { SceneShaders } from "./scene-shaders";
 
 export interface BrowserSceneRenderer {
   render(time?: number): void;
@@ -26,6 +27,7 @@ export async function createBrowserSceneRenderer(
   initialView: RenderView,
   initialSnapshot: SceneEngineSnapshot,
   imageLoader?: ImageAssetLoader,
+  shaders: SceneShaders = browserSceneShaders,
   onFatalError?: (error: unknown) => void
 ): Promise<BrowserSceneRenderer> {
   let disposed = false;
@@ -71,7 +73,7 @@ export async function createBrowserSceneRenderer(
         nextGpu,
         nextSurface,
         createRenderPlan(profile),
-        browserSceneShaders,
+        shaders,
         activeView,
         activeSnapshot,
         imageUploads

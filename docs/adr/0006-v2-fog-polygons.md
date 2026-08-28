@@ -20,6 +20,8 @@ Sampled sRGB assets are decoded by their `rgba8unorm-srgb` textures, composed in
 
 Asset composition, fog masks, and editor overlays render into native 4x multisampled targets that resolve into ordinary sampleable textures between passes. The final display conversion remains single-sampled because it consumes already-resolved scene color. This anti-aliases geometric edges without filtering or blurring source image interiors.
 
+Resolved fog masks receive a `1/16` grid Gaussian feather before composition. The normalized Gaussian's exterior half is remapped to full edge coverage and then clamped against the original mask, so the transition begins continuously at opaque fog and falls outward without weakening established coverage. Clear polygons receive the inverse visual effect naturally because surrounding fog feathers inward around the clear boundary without weakening the fog itself.
+
 Polygons with `visibleOnTable: false` remain persisted and visible as editor guides but do not contribute to the fog mask. Existing v1 light sources and obstruction polygons remain unchanged by v2 saves but are not rendered or editable in this slice. The previous hard-coded demonstration lights, wall, and fog shapes are removed rather than mixed with persisted scene behavior.
 
 ## Consequences

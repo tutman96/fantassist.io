@@ -6,6 +6,7 @@ export const SCENE_PASS_ORDER = Object.freeze([
   "editor-overlay",
   "present",
 ] as const);
+export const FOG_EDGE_SPREAD_GRID = 1 / 16;
 
 export type ScenePass = (typeof SCENE_PASS_ORDER)[number];
 

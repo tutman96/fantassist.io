@@ -6,6 +6,7 @@ import type { SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { TableSession, TableSessionSnapshot } from "@/engine/table-session";
 import type { RenderView } from "@/renderer/projection";
 import type { RenderProfile } from "@/renderer/scene-renderer";
+import type { SceneShaders } from "@/renderer/vgpu/scene-shaders";
 import { createBrowserSceneRenderer } from "@/renderer/vgpu/browser-renderer";
 import type { ImageAssetLoader } from "@/renderer/image-texture";
 
@@ -17,6 +18,7 @@ export function useSceneViewport({
   imageLoader,
   profile,
   sceneSnapshot,
+  shaders,
   session,
   tableSnapshot,
   tableEditing,
@@ -26,6 +28,7 @@ export function useSceneViewport({
   readonly imageLoader?: ImageAssetLoader;
   readonly profile: RenderProfile;
   readonly sceneSnapshot: SceneEngineSnapshot;
+  readonly shaders: SceneShaders;
   readonly session: TableSession;
   readonly tableSnapshot: TableSessionSnapshot;
   readonly tableEditing: boolean;
@@ -55,7 +58,7 @@ export function useSceneViewport({
     queueMicrotask(() => {
       if (disposed) return;
       const initialView = toRenderView(profile, session.getSnapshot(), engine.getSnapshot().scene.table);
-      void createBrowserSceneRenderer(canvas, profile, initialView, engine.getSnapshot(), imageLoader, () => {
+      void createBrowserSceneRenderer(canvas, profile, initialView, engine.getSnapshot(), imageLoader, shaders, () => {
         if (!disposed) setStatus("unsupported");
       })
         .then((renderer) => {
@@ -80,7 +83,7 @@ export function useSceneViewport({
       disposed = true;
       disposeRenderer?.();
     };
-  }, [canvasRef, engine, imageLoader, profile, session]);
+  }, [canvasRef, engine, imageLoader, profile, session, shaders]);
 
   useEffect(() => {
     rendererRef.current?.setView(toRenderView(profile, tableSnapshot, sceneSnapshot.scene.table));

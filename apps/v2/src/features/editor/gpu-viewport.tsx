@@ -20,6 +20,7 @@ import { createV1Repositories } from "@/persistence/v1/repositories";
 import { createBrowserImageLoader } from "@/renderer/browser-image-loader";
 import type { ImageAssetLoader } from "@/renderer/image-texture";
 import type { RenderProfile } from "@/renderer/scene-renderer";
+import { browserSceneShaders } from "@/renderer/vgpu/browser-shaders";
 
 export function GpuViewport({ profile, engine: providedEngine, imageLoader: providedImageLoader }: {
   readonly profile: RenderProfile;
@@ -54,6 +55,7 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
     imageLoader: providedImageLoader ?? editorScene?.imageLoader ?? ownedImageLoader,
     profile,
     sceneSnapshot,
+    shaders: browserSceneShaders,
     session,
     tableSnapshot,
     tableEditing: tool === "table",
