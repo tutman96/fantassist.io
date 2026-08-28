@@ -3,28 +3,46 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Grid3X3, LocateFixed, Minus, Move, Plus, RotateCcw, Ruler, Tv2 } from "lucide-react";
 
+import { createSceneEngine } from "@/engine/scene-engine";
+import type { AssetHandle, PreviewToken, ResizeHandle } from "@/engine/scene-engine";
 import { createTableSession } from "@/engine/table-session";
+import { synchronizeSceneEngine } from "@/features/scaffold/scene-session-channel";
 import { synchronizeTableSession } from "@/features/scaffold/table-session-channel";
-import { derivePhysicalDisplay, getTableBounds } from "@/engine/table-camera";
+import { derivePhysicalDisplay, editorCssToGrid, getTableBounds } from "@/engine/table-camera";
+import type { GridPoint } from "@/engine/table-camera";
 import type { RenderView } from "@/renderer/projection";
 import type { TableSessionSnapshot } from "@/engine/table-session";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 import { createBrowserSceneRenderer } from "@/renderer/vgpu/browser-renderer";
 
 type RendererStatus = "starting" | "ready" | "unsupported";
+type PointerDrag =
+  | { readonly kind: "camera"; readonly x: number; readonly y: number; readonly pointerId: number }
+  | { readonly kind: "asset"; readonly pointerId: number; readonly token: PreviewToken };
+interface TouchGesture {
+  readonly center: GridPoint;
+  readonly distance: number;
+}
 
 export function GpuViewport({ profile }: { profile: RenderProfile }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Awaited<ReturnType<typeof createBrowserSceneRenderer>>>(null);
   const [session] = useState(createTableSession);
+  const [engine] = useState(createSceneEngine);
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+  const sceneSnapshot = useSyncExternalStore(engine.subscribe, engine.getSnapshot, engine.getSnapshot);
   const [status, setStatus] = useState<RendererStatus>("starting");
+  const [hoveredHandle, setHoveredHandle] = useState<AssetHandle | null>(null);
   const spacePressed = useRef(false);
-  const drag = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const drag = useRef<PointerDrag | null>(null);
+  const touchPoints = useRef(new Map<number, GridPoint>());
+  const touchGesture = useRef<TouchGesture | null>(null);
+  const multiTouchActive = useRef(false);
   const physicalDisplay = derivePhysicalDisplay(snapshot.display);
   const tableBounds = getTableBounds(snapshot.table, snapshot.display);
 
   useEffect(() => synchronizeTableSession(session, profile), [profile, session]);
+  useEffect(() => synchronizeSceneEngine(engine, profile), [engine, profile]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,6 +65,15 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
         spacePressed.current = true;
         event.preventDefault();
       }
+      if (event.key === "Escape" && drag.current?.kind === "asset") {
+        engine.cancelPreview(drag.current.token);
+        drag.current = null;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && !interactive) {
+        event.preventDefault();
+        if (event.shiftKey) engine.redo();
+        else engine.undo();
+      }
     };
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.code === "Space") spacePressed.current = false;
@@ -57,7 +84,7 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [engine]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -69,7 +96,7 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
       if (disposed) return;
       const current = session.getSnapshot();
       const initialView = toRenderView(profile, current);
-      void createBrowserSceneRenderer(canvas, profile, initialView, () => {
+      void createBrowserSceneRenderer(canvas, profile, initialView, engine.getSnapshot(), () => {
         if (!disposed) setStatus("unsupported");
       })
         .then((renderer) => {
@@ -77,11 +104,9 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
             renderer.dispose();
             return;
           }
-          const stopAnimation = renderer.startAnimation(30);
           rendererRef.current = renderer;
           disposeRenderer = () => {
             rendererRef.current = null;
-            stopAnimation();
             renderer.dispose();
           };
           setStatus("ready");
@@ -96,14 +121,15 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
       disposed = true;
       disposeRenderer?.();
     };
-  }, [profile, session]);
+  }, [engine, profile, session]);
 
   useEffect(() => {
     rendererRef.current?.setView(toRenderView(profile, snapshot));
     rendererRef.current?.setGridVisible(
       profile === "editor" ? snapshot.editorGridVisible : snapshot.table.displayGrid
     );
-  }, [profile, snapshot, status]);
+    rendererRef.current?.setSnapshot(sceneSnapshot);
+  }, [profile, sceneSnapshot, snapshot, status]);
 
   const updateNumber = (kind: "width" | "height" | "diagonal" | "scale", value: number) => {
     if (kind === "scale") {
@@ -127,30 +153,155 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
       <canvas
         ref={canvasRef}
         aria-label={profile === "editor" ? "Fantassist scene editor" : "Fantassist table output"}
-        className="block size-full touch-none cursor-crosshair"
+        data-scene-revision={sceneSnapshot.revision}
+        data-asset-x={sceneSnapshot.scene.assets[0].transform.x}
+        data-asset-y={sceneSnapshot.scene.assets[0].transform.y}
+        data-asset-width={sceneSnapshot.scene.assets[0].transform.width}
+        data-asset-height={sceneSnapshot.scene.assets[0].transform.height}
+        data-asset-rotation={sceneSnapshot.scene.assets[0].transform.rotation}
+        className="block size-full touch-none"
+        style={{
+          cursor: cursorForHandle(
+            hoveredHandle,
+            sceneSnapshot.scene.assets[0].transform.rotation
+          ),
+        }}
         onContextMenu={(event) => event.preventDefault()}
+        onPointerLeave={() => {
+          if (!drag.current) setHoveredHandle(null);
+        }}
         onPointerDown={(event) => {
           if (profile !== "editor") return;
-          const shouldPan =
-            event.pointerType === "touch" ||
+          if (event.pointerType === "touch") {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (touchPoints.current.size >= 2) {
+              multiTouchActive.current = true;
+              if (drag.current?.kind === "asset") engine.cancelPreview(drag.current.token);
+              drag.current = null;
+              touchGesture.current = readTouchGesture(touchPoints.current);
+              return;
+            }
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const current = session.getSnapshot();
+            const token = engine.beginAssetInteraction(
+              editorCssToGrid(
+                { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+                current.editorCamera,
+                current.viewportCss
+              ),
+              current.editorCamera.cssPixelsPerGrid,
+              { fromCenter: event.altKey, preserveAspectRatio: event.shiftKey }
+            );
+            drag.current = token ? { kind: "asset", pointerId: event.pointerId, token } : null;
+            return;
+          }
+          const forcePan =
             event.button === 1 ||
             event.button === 2 ||
             (event.button === 0 && spacePressed.current);
-          if (!shouldPan) return;
-          event.preventDefault();
-          event.currentTarget.setPointerCapture(event.pointerId);
-          drag.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+          if (!forcePan && event.button === 0) {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const current = session.getSnapshot();
+            const token = engine.beginAssetInteraction(
+              editorCssToGrid(
+                { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+                current.editorCamera,
+                current.viewportCss
+              ),
+              current.editorCamera.cssPixelsPerGrid,
+              { fromCenter: event.altKey, preserveAspectRatio: event.shiftKey }
+            );
+            if (token) {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              drag.current = { kind: "asset", pointerId: event.pointerId, token };
+              return;
+            }
+          }
+          if (forcePan) {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            drag.current = { kind: "camera", x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+          }
         }}
         onPointerMove={(event) => {
+          if (profile === "editor" && event.pointerType !== "touch" && !drag.current) {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const current = session.getSnapshot();
+            setHoveredHandle(
+              engine.getAssetInteractionHandle(
+                editorCssToGrid(
+                  { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+                  current.editorCamera,
+                  current.viewportCss
+                ),
+                current.editorCamera.cssPixelsPerGrid
+              )
+            );
+          }
+          if (event.pointerType === "touch") {
+            if (!touchPoints.current.has(event.pointerId)) return;
+            touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            if (multiTouchActive.current && touchPoints.current.size >= 2) {
+              const previous = touchGesture.current;
+              const next = readTouchGesture(touchPoints.current);
+              if (previous && next && previous.distance > 0) {
+                const bounds = event.currentTarget.getBoundingClientRect();
+                session.panZoom(
+                  { x: previous.center.x - bounds.left, y: previous.center.y - bounds.top },
+                  { x: next.center.x - bounds.left, y: next.center.y - bounds.top },
+                  next.distance / previous.distance
+                );
+              }
+              touchGesture.current = next;
+              return;
+            }
+          }
           const previous = drag.current;
           if (!previous || previous.pointerId !== event.pointerId) return;
-          session.pan({ x: event.clientX - previous.x, y: event.clientY - previous.y });
-          drag.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+          if (previous.kind === "camera") {
+            session.pan({ x: event.clientX - previous.x, y: event.clientY - previous.y });
+            drag.current = { kind: "camera", x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+          } else {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const current = session.getSnapshot();
+            engine.updateAssetInteraction(
+              previous.token,
+              editorCssToGrid(
+                { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+                current.editorCamera,
+                current.viewportCss
+              ),
+              { fromCenter: event.altKey, preserveAspectRatio: event.shiftKey }
+            );
+          }
         }}
         onPointerUp={(event) => {
-          if (drag.current?.pointerId === event.pointerId) drag.current = null;
+          if (event.pointerType === "touch") {
+            touchPoints.current.delete(event.pointerId);
+            touchGesture.current = readTouchGesture(touchPoints.current);
+            if (multiTouchActive.current) {
+              if (touchPoints.current.size === 0) multiTouchActive.current = false;
+              drag.current = null;
+              return;
+            }
+          }
+          const current = drag.current;
+          if (!current || current.pointerId !== event.pointerId) return;
+          if (current.kind === "asset") engine.commitPreview(current.token);
+          drag.current = null;
         }}
-        onPointerCancel={() => {
+        onPointerCancel={(event) => {
+          if (event.pointerType === "touch") {
+            touchPoints.current.delete(event.pointerId);
+            touchGesture.current = readTouchGesture(touchPoints.current);
+            if (touchPoints.current.size === 0) multiTouchActive.current = false;
+          }
+          if (drag.current?.kind === "asset" && drag.current.pointerId === event.pointerId) {
+            engine.cancelPreview(drag.current.token);
+          }
           drag.current = null;
         }}
         onWheel={(event) => {
@@ -257,9 +408,11 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
 
           <div className="pointer-events-none absolute bottom-4 left-5 hidden items-center gap-3 text-[9px] tracking-[0.12em] text-amber-50/35 uppercase md:flex">
             <span className="text-amber-200/70">✦</span>
+            <span>Drag map to move</span>
+            <span className="h-3 w-px bg-violet-300/15" />
             <span>Space + drag to roam</span>
             <span className="h-3 w-px bg-violet-300/15" />
-            <span>Scroll to zoom</span>
+            <span>Two-finger pan + zoom</span>
           </div>
         </>
       ) : null}
@@ -270,12 +423,21 @@ export function GpuViewport({ profile }: { profile: RenderProfile }) {
           data-camera-x={snapshot.editorCamera.centerGrid.x}
           data-camera-y={snapshot.editorCamera.centerGrid.y}
           data-camera-zoom={snapshot.editorCamera.cssPixelsPerGrid}
+          data-scene-revision={sceneSnapshot.revision}
+          data-selected-asset={sceneSnapshot.selectedAssetId ?? ""}
+          data-asset-x={sceneSnapshot.scene.assets[0].transform.x}
+          data-asset-y={sceneSnapshot.scene.assets[0].transform.y}
+          data-asset-width={sceneSnapshot.scene.assets[0].transform.width}
+          data-asset-height={sceneSnapshot.scene.assets[0].transform.height}
+          data-asset-rotation={sceneSnapshot.scene.assets[0].transform.rotation}
         >
           <span>cam x {snapshot.editorCamera.centerGrid.x.toFixed(2)}</span>
           <span className="text-violet-300/20">/</span>
           <span>y {snapshot.editorCamera.centerGrid.y.toFixed(2)}</span>
           <span className="text-violet-300/20">/</span>
           <span>{snapshot.editorCamera.cssPixelsPerGrid.toFixed(1)} px / grid</span>
+          <span className="text-violet-300/20">/</span>
+          <span>rev {sceneSnapshot.revision}</span>
           <span className="size-1 rotate-45 bg-emerald-300 shadow-[0_0_7px_rgba(110,231,183,0.7)]" />
           <span>gpu live</span>
         </output>
@@ -306,6 +468,36 @@ function toRenderView(profile: RenderProfile, snapshot: TableSessionSnapshot): R
         display: snapshot.display,
       }
     : { kind: "output", table: snapshot.table, display: snapshot.display };
+}
+
+function readTouchGesture(points: ReadonlyMap<number, GridPoint>): TouchGesture | null {
+  const [first, second] = [...points.values()];
+  if (!first || !second) return null;
+  return {
+    center: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+    distance: Math.hypot(second.x - first.x, second.y - first.y),
+  };
+}
+
+const HANDLE_ANGLES: Record<ResizeHandle, number> = {
+  east: 0,
+  "south-east": 45,
+  south: 90,
+  "south-west": 135,
+  west: 180,
+  "north-west": 225,
+  north: 270,
+  "north-east": 315,
+};
+
+function cursorForHandle(handle: AssetHandle | null, rotation: number): string {
+  if (!handle) return "crosshair";
+  if (handle === "rotate") return "grab";
+  const angle = ((HANDLE_ANGLES[handle] + rotation) % 180 + 180) % 180;
+  if (angle < 22.5 || angle >= 157.5) return "ew-resize";
+  if (angle < 67.5) return "nwse-resize";
+  if (angle < 112.5) return "ns-resize";
+  return "nesw-resize";
 }
 
 function ToolbarButton({

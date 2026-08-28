@@ -7,6 +7,7 @@ import { PNG } from "pngjs";
 import { init, target } from "vgpu/node";
 import type { NodeAdapterMode } from "@vgpu/adapter-node";
 
+import { createSceneEngine } from "../src/engine/scene-engine";
 import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA, fitTableCamera, getTableBounds } from "../src/engine/table-camera";
 import type { RenderView } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
@@ -64,7 +65,7 @@ export async function renderHeadlessScene(options: HeadlessRenderOptions): Promi
           display: DEFAULT_DISPLAY,
         }
       : { kind: "output", table: DEFAULT_TABLE_CAMERA, display: DEFAULT_DISPLAY };
-    const executor = createSceneExecutor(gpu, output, plan, shaders, view);
+    const executor = createSceneExecutor(gpu, output, plan, shaders, view, createSceneEngine().getSnapshot());
     const compileStart = performance.now();
     await executor.prewarm();
     const compile = performance.now() - compileStart;

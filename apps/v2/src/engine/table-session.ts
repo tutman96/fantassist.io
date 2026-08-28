@@ -6,6 +6,7 @@ import {
   normalizeDisplayConfiguration,
   normalizeTableCamera,
   panEditorCamera,
+  panZoomEditorCamera,
   zoomEditorCameraAt,
 } from "./table-camera";
 import type {
@@ -29,6 +30,7 @@ export interface TableSession {
   subscribe(listener: () => void): () => void;
   setViewport(viewportCss: Size): void;
   pan(deltaCss: GridPoint): void;
+  panZoom(previousCenterCss: GridPoint, centerCss: GridPoint, factor: number): void;
   zoomAt(pointerCss: GridPoint, factor: number): void;
   fitTable(): void;
   resetTable(): void;
@@ -74,6 +76,18 @@ export function createTableSession(): TableSession {
     },
     pan(deltaCss) {
       update({ ...snapshot, editorCamera: panEditorCamera(snapshot.editorCamera, deltaCss) });
+    },
+    panZoom(previousCenterCss, centerCss, factor) {
+      update({
+        ...snapshot,
+        editorCamera: panZoomEditorCamera(
+          snapshot.editorCamera,
+          previousCenterCss,
+          centerCss,
+          snapshot.viewportCss,
+          factor
+        ),
+      });
     },
     zoomAt(pointerCss, factor) {
       update({

@@ -11,6 +11,7 @@ import {
   normalizeDisplayConfiguration,
   normalizeTableCamera,
   panEditorCamera,
+  panZoomEditorCamera,
   zoomEditorCameraAt,
 } from "../src/engine/table-camera";
 import { compileProjection, gridToTargetPx, targetPxToGrid } from "../src/renderer/projection";
@@ -66,6 +67,19 @@ test("pan and cursor zoom preserve exact interaction geometry", () => {
   const anchor = editorCssToGrid(pointer, camera, viewport);
   const zoomed = zoomEditorCameraAt(camera, pointer, viewport, 50);
   assert.deepEqual(editorCssToGrid(pointer, zoomed, viewport), anchor);
+});
+
+test("two-finger pan and zoom keeps the previous centroid world point under the new centroid", () => {
+  const camera = { centerGrid: { x: -7, y: 12 }, cssPixelsPerGrid: 24 };
+  const viewport = { width: 800, height: 600 };
+  const previousCenter = { x: 300, y: 220 };
+  const center = { x: 350, y: 260 };
+  const anchor = editorCssToGrid(previousCenter, camera, viewport);
+  const next = panZoomEditorCamera(camera, previousCenter, center, viewport, 1.5);
+  const nextAnchor = editorCssToGrid(center, next, viewport);
+  close(nextAnchor.x, anchor.x);
+  close(nextAnchor.y, anchor.y);
+  assert.equal(next.cssPixelsPerGrid, 36);
 });
 
 test("fit table centers bounds with padding and configurable scale", () => {

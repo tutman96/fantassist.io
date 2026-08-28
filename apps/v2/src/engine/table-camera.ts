@@ -145,6 +145,25 @@ export function panEditorCamera(camera: EditorCamera, deltaCss: GridPoint): Edit
   };
 }
 
+export function panZoomEditorCamera(
+  camera: EditorCamera,
+  previousCenterCss: GridPoint,
+  centerCss: GridPoint,
+  viewportCss: Size,
+  factor: number
+): EditorCamera {
+  const panned = panEditorCamera(camera, {
+    x: centerCss.x - previousCenterCss.x,
+    y: centerCss.y - previousCenterCss.y,
+  });
+  return zoomEditorCameraAt(
+    panned,
+    centerCss,
+    viewportCss,
+    panned.cssPixelsPerGrid * factor
+  );
+}
+
 export function zoomEditorCameraAt(
   camera: EditorCamera,
   pointerCss: GridPoint,

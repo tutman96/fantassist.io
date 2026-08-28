@@ -1,6 +1,7 @@
 import { init, surface } from "vgpu";
 import type { Gpu, Surface } from "vgpu";
 
+import type { SceneEngineSnapshot } from "../../engine/scene-engine";
 import { createRenderPlan } from "../render-plan";
 import type { RenderView } from "../projection";
 import type { RenderProfile } from "../scene-renderer";
@@ -10,6 +11,7 @@ import { createSceneExecutor } from "./scene-executor";
 export interface BrowserSceneRenderer {
   render(time?: number): void;
   setGridVisible(visible: boolean): void;
+  setSnapshot(snapshot: SceneEngineSnapshot): void;
   setView(view: RenderView): void;
   startAnimation(fps?: number): () => void;
   dispose(): void;
@@ -19,6 +21,7 @@ export async function createBrowserSceneRenderer(
   canvas: HTMLCanvasElement,
   profile: RenderProfile,
   initialView: RenderView,
+  initialSnapshot: SceneEngineSnapshot,
   onFatalError?: (error: unknown) => void
 ): Promise<BrowserSceneRenderer> {
   let disposed = false;
@@ -30,11 +33,13 @@ export async function createBrowserSceneRenderer(
   let animationFrame: number | undefined;
   let pendingTime: number | undefined;
   let activeView = initialView;
+  let activeSnapshot = initialSnapshot;
   let activeGridVisible = profile === "editor";
   let requestActiveRender = (time: number) => {
     pendingTime = time;
   };
   let setActiveGridVisible: (visible: boolean) => void = () => undefined;
+  let setActiveSnapshot: (snapshot: SceneEngineSnapshot) => void = () => undefined;
   let setActiveView: (view: RenderView) => void = () => undefined;
 
   const initialize = async () => {
@@ -52,7 +57,8 @@ export async function createBrowserSceneRenderer(
         nextSurface,
         createRenderPlan(profile),
         browserSceneShaders,
-        activeView
+        activeView,
+        activeSnapshot
       );
       executor.setGridVisible(activeGridVisible);
       await executor.prewarm();
@@ -87,6 +93,7 @@ export async function createBrowserSceneRenderer(
       });
       requestActiveRender = requestRender;
       setActiveGridVisible = (visible: boolean) => executor.setGridVisible(visible);
+      setActiveSnapshot = (snapshot: SceneEngineSnapshot) => executor.setSnapshot(snapshot);
       setActiveView = (view: RenderView) => executor.setView(view);
       requestRender(0);
 
@@ -148,6 +155,12 @@ export async function createBrowserSceneRenderer(
       setActiveGridVisible(visible);
       render(lastTime);
     },
+    setSnapshot(nextSnapshot) {
+      if (disposed) return;
+      activeSnapshot = nextSnapshot;
+      setActiveSnapshot(nextSnapshot);
+      render(lastTime);
+    },
     setView(view) {
       if (disposed) return;
       activeView = view;
@@ -179,6 +192,7 @@ export async function createBrowserSceneRenderer(
       generation++;
       requestActiveRender = () => undefined;
       setActiveGridVisible = () => undefined;
+      setActiveSnapshot = () => undefined;
       setActiveView = () => undefined;
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();

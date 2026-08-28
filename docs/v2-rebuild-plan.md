@@ -1062,6 +1062,7 @@ Do not begin broad interface work until the first three milestones have passed.
 | Desktop installation | One stable gateway-owned PWA identity |
 | Deployment runtime | Node.js 24 or newer for gateway, v1, and v2 |
 | Headless renderer | `vgpu/node` with Dawn and the production render plan |
+| Engine interaction prototype | Immutable engine snapshots with CPU asset picking and replaceable transform previews |
 
 ## Risks
 

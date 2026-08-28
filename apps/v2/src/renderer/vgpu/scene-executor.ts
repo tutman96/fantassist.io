@@ -1,6 +1,7 @@
 import { draw, effect, frame, sampler, target } from "vgpu";
 import type { Draw, Effect, Gpu, Target, TargetSignature } from "vgpu";
 
+import type { SceneEngineSnapshot } from "../../engine/scene-engine";
 import type { RenderPlan, ScenePass } from "../render-plan";
 import { compileProjection, projectionUniforms } from "../projection";
 import type { RenderView } from "../projection";
@@ -13,6 +14,7 @@ export interface SceneExecutor {
   render(time: number): Promise<void>;
   resize(size: readonly [number, number]): void;
   setGridVisible(visible: boolean): void;
+  setSnapshot(snapshot: SceneEngineSnapshot): void;
   setView(view: RenderView): void;
 }
 
@@ -21,7 +23,8 @@ export function createSceneExecutor(
   destination: Target,
   plan: RenderPlan,
   shaders: SceneShaders,
-  initialView: RenderView
+  initialView: RenderView,
+  initialSnapshot: SceneEngineSnapshot
 ): SceneExecutor {
   const size = destination.size;
   const scene = target(gpu, { size, format: "rgba8unorm", label: "scene-assets" });
@@ -45,9 +48,28 @@ export function createSceneExecutor(
   const mapPixels = new Uint8Array(8 * 8 * 4);
   let gridVisible = plan.showGrid;
   let view = initialView;
+  let snapshot = initialSnapshot;
   let renderSize = { width: size[0], height: size[1] };
   let projection = compileProjection(view, renderSize);
   const spatialParams = (time = 0) => ({ ...projectionUniforms(projection), time });
+  const assetParams = (time = 0) => {
+    const asset = snapshot.scene.assets[0];
+    return {
+      ...spatialParams(time),
+      asset_origin: [asset.transform.x, asset.transform.y],
+      asset_size: [asset.transform.width, asset.transform.height],
+      asset_rotation: (asset.transform.rotation * Math.PI) / 180,
+    };
+  };
+  const selectionParams = () => {
+    const asset = snapshot.scene.assets[0];
+    return {
+      asset_origin: [asset.transform.x, asset.transform.y],
+      asset_size: [asset.transform.width, asset.transform.height],
+      asset_rotation: (asset.transform.rotation * Math.PI) / 180,
+      selected: plan.showEditorGrid && snapshot.selectedAssetId === asset.id ? 1 : 0,
+    };
+  };
   for (let y = 0; y < 8; y++) {
     for (let x = 0; x < 8; x++) {
       const offset = (y * 8 + x) * 4;
@@ -65,13 +87,13 @@ export function createSceneExecutor(
   const assets = draw(gpu, {
     shader: shaders.assets,
     vertices: 6,
-    instances: 4,
+    instances: 1,
     blend: "premultiplied",
     label: "asset-background",
     set: {
       map_texture: mapTexture,
       texture_sampler: repeatingSampler,
-      params: spatialParams(),
+      params: assetParams(),
     },
   });
   const fogMask = effect(gpu, shaders.fogMask, {
@@ -101,6 +123,7 @@ export function createSceneExecutor(
         show_grid: gridVisible ? 1 : 0,
         show_walls: plan.showEditorGrid ? 1 : 0,
         show_lights: plan.showEditorGrid ? 1 : 0,
+        ...selectionParams(),
         time: 0,
       },
     },
@@ -147,7 +170,7 @@ export function createSceneExecutor(
     },
     async render(time) {
       const params = spatialParams(time);
-      assets.set({ params });
+      assets.set({ params: assetParams(time) });
       fogMask.set({ params: projectionUniforms(projection) });
       obstructionShadows.set({ params });
       lightAccumulation.set({ params });
@@ -159,6 +182,7 @@ export function createSceneExecutor(
           show_grid: gridVisible ? 1 : 0,
           show_walls: plan.showEditorGrid ? 1 : 0,
           show_lights: plan.showEditorGrid ? 1 : 0,
+          ...selectionParams(),
           time,
         },
       });
@@ -182,6 +206,9 @@ export function createSceneExecutor(
     },
     setGridVisible(visible) {
       gridVisible = visible;
+    },
+    setSnapshot(nextSnapshot) {
+      snapshot = nextSnapshot;
     },
     setView(nextView) {
       view = nextView;
