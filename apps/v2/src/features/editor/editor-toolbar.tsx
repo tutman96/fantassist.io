@@ -51,7 +51,7 @@ export function EditorToolbar({
 
   return (
     <aside aria-label="Editor tools" className="absolute top-3 left-3 z-10 flex items-center gap-1 border border-violet-300/15 bg-[#100d20]/92 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:top-4 sm:left-4 sm:flex-col">
-      <ButtonGroup className="sm:flex-col">
+      <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l">
         <ToolToggle label="Edit assets" pressed={tool === "assets"} onPressedChange={() => onToolChange("assets")}><MousePointer2 /></ToolToggle>
         <ToolToggle label="Draw fog" pressed={tool === "fog"} onPressedChange={() => onToolChange("fog")}><CloudFog /></ToolToggle>
         <ToolToggle label="Clear fog" pressed={tool === "fog-clear"} onPressedChange={() => onToolChange("fog-clear")}><Eraser /></ToolToggle>
@@ -62,19 +62,19 @@ export function EditorToolbar({
       {sceneSnapshot.fogDrawingActive ? (
         <>
           <ToolbarSeparator />
-          <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
+          <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l [&_[data-slot=tooltip-trigger]]:rounded-none!">
             <ToolButton label={tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => engine.commitActiveFogPolygon()}><Check /></ToolButton>
             <ToolButton label={tool === "wall" ? "Cancel wall" : "Cancel fog polygon"} onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
           </ButtonGroup>
         </>
       ) : null}
       <ToolbarSeparator />
-      <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
+      <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l [&_[data-slot=tooltip-trigger]]:rounded-none!">
         <ToolButton label="Undo" shortcut="⌘Z" disabled={!sceneSnapshot.canUndo} onClick={() => engine.undo()}><Undo2 /></ToolButton>
         <ToolButton label="Redo" shortcut="⇧⌘Z" disabled={!sceneSnapshot.canRedo} onClick={() => engine.redo()}><Redo2 /></ToolButton>
       </ButtonGroup>
       <ToolbarSeparator />
-      <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
+      <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l [&_[data-slot=tooltip-trigger]]:rounded-none!">
         <ToolButton label="Fit table" onClick={() => session.fitTable(sceneSnapshot.scene.table)}><LocateFixed /></ToolButton>
         <ToolButton label="Reset table view" onClick={() => engine.dispatch({
           type: "table.camera",
@@ -101,7 +101,7 @@ export function EditorToolbar({
         </Tooltip>
       </ButtonGroup>
       <ToolbarSeparator />
-      <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
+      <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l [&_[data-slot=tooltip-trigger]]:rounded-none!">
         <ToolButton label={tool === "table" ? "Zoom display view in" : "Zoom in"} onClick={() => zoomAtCenter(1.15)}><Plus /></ToolButton>
         <ToolButton label={tool === "table" ? "Zoom display view out" : "Zoom out"} onClick={() => zoomAtCenter(1 / 1.15)}><Minus /></ToolButton>
       </ButtonGroup>
@@ -123,7 +123,7 @@ function ToolToggle({ children, label, pressed, onPressedChange }: {
           pressed={pressed}
           onPressedChange={onPressedChange}
           style={{ borderRadius: 0 }}
-          className="size-9 rounded-none border border-transparent text-violet-100/60 hover:border-violet-300/15 hover:bg-violet-400/10 hover:text-white data-[state=on]:border-blue-300/30 data-[state=on]:bg-blue-500/18 data-[state=on]:text-blue-100"
+          className="size-9 rounded-none border border-transparent text-violet-100/60 hover:border-violet-300/20 hover:bg-violet-400/12 hover:text-white data-[state=on]:border-sky-200/80 data-[state=on]:bg-blue-500/45 data-[state=on]:text-white data-[state=on]:shadow-[inset_3px_0_0_#7dd3fc,0_0_14px_rgba(59,130,246,0.42)] data-[state=on]:[&_svg]:stroke-white data-[state=on]:[&_svg]:stroke-[2.5] data-[state=on]:[&_svg]:drop-shadow-[0_0_4px_rgba(186,230,253,0.7)]"
         >
           {children}
         </Toggle>

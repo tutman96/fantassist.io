@@ -31,6 +31,8 @@ The layers panel reflects persisted ordering and exposes image insertion on each
 
 Desktop opens the inspector and layer stack as separate panels. Mobile uses a horizontal tool strip and keeps both panels collapsed by default; choosing a layer closes the layer sheet and reveals the corresponding inspector, preserving the canvas as the primary surface.
 
+Escape is a consistent two-level exit. It cancels any active engine preview and clears the selected asset, light, fog polygon, or wall. When no entity is selected, Escape returns the workspace to the standard asset/cursor tool.
+
 Interactive controls use project-generated shadcn primitives rather than reimplementing focus, disclosure, field, selection, and disabled-state behavior. Feature components apply the editor's square fantasy styling without changing generic primitives. Scene and table overlays use controlled `Popover` composition; workspace panels use controlled `Collapsible` and `ScrollArea`; controls use `Button`, `Toggle`, `ButtonGroup`, `Tooltip`, `Badge`, `Field`, `InputGroup`, `NativeSelect`, `Kbd`, `Separator`, and `Spinner` as appropriate.
 
 The React implementation is split by responsibility:

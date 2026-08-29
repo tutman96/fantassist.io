@@ -79,7 +79,7 @@ export type SceneCommand =
   | { readonly type: "selection.set"; readonly assetId: string | null };
 
 export type PreviewCommand = Extract<SceneCommand, {
-  readonly type: "asset.transform" | "table.camera" | "fog.polygon.insert" | "fog.polygon.update" | "light.update";
+  readonly type: "asset.transform" | "table.camera" | "fog.polygon.insert" | "fog.polygon.update" | "light.insert" | "light.update";
 }>;
 export interface PreviewToken {
   readonly id: number;
@@ -685,15 +685,15 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         ? validateTransform(command.transform)
         : command.type === "table.camera"
           ? validateTable(command.table)
-          : command.type === "light.update"
+          : command.type === "light.insert" || command.type === "light.update"
             ? validateLight(command.light)
             : validateFogPolygon(command.polygon, command.collection, true);
       if (command.type === "asset.transform" && !findAsset(committedScene, command.assetId)) {
         throw new Error(`Unknown asset '${command.assetId}'`);
       }
-      if (command.type === "light.update") {
+      if (command.type === "light.insert" || command.type === "light.update") {
         const layer = committedScene.layers.find((candidate) => candidate.id === command.layerId);
-        if (layer?.type !== "fog" || !layer.lightSources[command.lightIndex]) throw new Error("Unknown light");
+        if (layer?.type !== "fog" || (command.type === "light.update" && !layer.lightSources[command.lightIndex])) throw new Error("Unknown light");
       }
       if (error) throw new Error(error);
       const token = Object.freeze({ id: ++tokenSequence });
@@ -715,8 +715,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       } else if (command.type === "table.camera") {
         if (validateTable(command.table)) return;
         preview.command = { type: "table.camera", table: freezeTable(command.table) };
-      } else if (command.type === "light.update") {
-        if (preview.command.type !== "light.update" || preview.command.layerId !== command.layerId || preview.command.lightIndex !== command.lightIndex || validateLight(command.light)) return;
+      } else if (command.type === "light.insert" || command.type === "light.update") {
+        if (preview.command.type !== command.type || preview.command.layerId !== command.layerId || validateLight(command.light)) return;
+        if (command.type === "light.update" && (preview.command.type !== "light.update" || preview.command.lightIndex !== command.lightIndex)) return;
         preview.command = command;
       } else {
         if (validateFogPolygon(command.polygon, command.collection, true)) return;
@@ -732,7 +733,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       preview = undefined;
       if (command.type === "asset.transform") return transformResult(command, true, true);
       if (command.type === "table.camera") return tableResult(command, true, true);
-      if (command.type === "light.update") return lightResult(command, true, true);
+      if (command.type === "light.insert" || command.type === "light.update") return lightResult(command, true, true);
       return fogResult(command, true, true);
     },
     cancelPreview(token) {
@@ -1570,6 +1571,7 @@ function findAsset(scene: SceneDocument, assetId: string): ImageAsset | undefine
 function applyPreview(scene: SceneDocument, command: PreviewCommand, version: number): SceneDocument {
   if (command.type === "asset.transform") return applyTransform(scene, command, version);
   if (command.type === "table.camera") return applyTable(scene, command.table, version);
+  if (command.type === "light.insert") return applyLight(scene, command.layerId, command.index ?? lightCollectionById(scene, command.layerId).length, command.light, version, true);
   if (command.type === "light.update") return applyLight(scene, command.layerId, command.lightIndex, command.light, version);
   return applyFogPolygon(
     scene,
@@ -1820,6 +1822,11 @@ function fogCollectionById(
 ): readonly FogPolygon[] {
   const layer = scene.layers.find((candidate) => candidate.id === layerId);
   return layer?.type === "fog" ? fogCollection(layer, collection) : [];
+}
+
+function lightCollectionById(scene: SceneDocument, layerId: string): readonly SceneLight[] {
+  const layer = scene.layers.find((candidate) => candidate.id === layerId);
+  return layer?.type === "fog" ? layer.lightSources : [];
 }
 
 function selectedFogPolygonValue(scene: SceneDocument, selection: FogPolygonSelection): FogPolygon | undefined {

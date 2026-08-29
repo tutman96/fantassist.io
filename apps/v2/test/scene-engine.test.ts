@@ -921,6 +921,31 @@ test("lights insert, update, drag, remove, and undo as engine-owned state", () =
   assert.equal(current.lightSources.length, 1);
 });
 
+test("light insertion previews full illumination state before one commit", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const initialCount = layer.lightSources.length;
+  const light = { position: { x: 3, y: 4 }, brightLightDistance: 4, dimLightDistance: 8, color: { r: 255, g: 255, b: 255, a: 255 } };
+  const token = engine.beginPreview({ type: "light.insert", layerId: layer.id, index: initialCount, light });
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.equal(current.lightSources.length, initialCount + 1);
+  assert.equal(engine.getSnapshot().revision, 0);
+  engine.updatePreview(token, { type: "light.insert", layerId: layer.id, index: initialCount, light: { ...light, position: { x: 7, y: 9 } } });
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.lightSources.at(-1)?.position, { x: 7, y: 9 });
+  assert.deepEqual(engine.commitPreview(token), { ok: true, changed: true, revision: 1 });
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.equal(current.lightSources.length, initialCount + 1);
+  engine.undo();
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.equal(current.lightSources.length, initialCount);
+});
+
 test("a light hit-test miss preserves fog selection and vertex editing", () => {
   const engine = createSceneEngine();
   const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");

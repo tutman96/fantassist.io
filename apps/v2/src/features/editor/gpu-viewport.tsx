@@ -64,6 +64,7 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
     assetRotation: asset?.transform.rotation ?? 0,
     canvasRef,
     engine,
+    onToolChange: setTool,
     profile,
     session,
     tool,

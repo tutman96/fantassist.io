@@ -29,6 +29,7 @@ export function useEditorInteractions({
   assetRotation,
   canvasRef,
   engine,
+  onToolChange,
   profile,
   session,
   tool,
@@ -36,6 +37,7 @@ export function useEditorInteractions({
   readonly assetRotation: number;
   readonly canvasRef: React.RefObject<HTMLCanvasElement | null>;
   readonly engine: SceneEngine;
+  readonly onToolChange: (tool: EditorTool) => void;
   readonly profile: RenderProfile;
   readonly session: TableSession;
   readonly tool: EditorTool;
@@ -45,6 +47,7 @@ export function useEditorInteractions({
   const spacePressed = useRef(false);
   const drag = useRef<PointerDrag | null>(null);
   const fogDraft = useRef<PreviewToken | null>(null);
+  const lightDraft = useRef<{ readonly token: PreviewToken; readonly layerId: string; readonly index: number } | null>(null);
   const previousTool = useRef(tool);
   const touchPoints = useRef(new Map<number, GridPoint>());
   const touchGesture = useRef<TouchGesture | null>(null);
@@ -59,12 +62,26 @@ export function useEditorInteractions({
         spacePressed.current = true;
         event.preventDefault();
       }
-      if (event.key === "Escape" && fogDraft.current) {
-        engine.cancelPreview(fogDraft.current);
-        fogDraft.current = null;
-      } else if (event.key === "Escape" && (drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table")) {
-        engine.cancelPreview(drag.current.token);
-        drag.current = null;
+      if (event.key === "Escape") {
+        const focused = document.activeElement;
+        if (focused instanceof HTMLElement && focused.closest("[aria-label='Editor tools']")) focused.blur();
+        if (fogDraft.current) {
+          engine.cancelPreview(fogDraft.current);
+          fogDraft.current = null;
+        }
+        if (lightDraft.current) {
+          engine.cancelPreview(lightDraft.current.token);
+          lightDraft.current = null;
+        }
+        if (drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table") {
+          engine.cancelPreview(drag.current.token);
+          drag.current = null;
+        }
+        const snapshot = engine.getSnapshot();
+        if (snapshot.selectedAssetId) engine.dispatch({ type: "selection.set", assetId: null });
+        else if (snapshot.selectedFogPolygon) engine.dispatch({ type: "fog.selection.set", selection: null });
+        else if (snapshot.selectedLight) engine.dispatch({ type: "light.selection.set", selection: null });
+        else onToolChange("assets");
       }
       if (event.key === "Enter" && fogDraft.current && !textEditing) {
         event.preventDefault();
@@ -99,12 +116,16 @@ export function useEditorInteractions({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [engine]);
+  }, [engine, onToolChange]);
 
   useEffect(() => {
     if (tool !== previousTool.current && fogDraft.current) {
       engine.cancelPreview(fogDraft.current);
       fogDraft.current = null;
+    }
+    if (tool !== previousTool.current && lightDraft.current) {
+      engine.cancelPreview(lightDraft.current.token);
+      lightDraft.current = null;
     }
     if (tool !== previousTool.current) engine.setFogCursor(null, "fog");
     previousTool.current = tool;
@@ -112,6 +133,7 @@ export function useEditorInteractions({
 
   useEffect(() => engine.subscribe(() => {
     if (fogDraft.current && !engine.getSnapshot().fogDrawingActive) fogDraft.current = null;
+    if (lightDraft.current && !engine.getSnapshot().previewActive) lightDraft.current = null;
   }), [engine]);
 
   useEffect(() => {
@@ -148,6 +170,10 @@ export function useEditorInteractions({
         setTableHandle(null);
       }
       if (!fogDraft.current && isPolygonTool(tool)) engine.setFogCursor(null, "fog");
+      if (lightDraft.current) {
+        engine.cancelPreview(lightDraft.current.token);
+        lightDraft.current = null;
+      }
     },
     onPointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
       if (profile !== "editor") return;
@@ -175,11 +201,8 @@ export function useEditorInteractions({
           return;
         }
         if (tool === "light") {
-          const scene = engine.getSnapshot();
-          const selected = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog");
-          const layerId = selected?.id ?? ensureFogLayer(engine);
           const point = pointerGrid(event, session);
-          engine.dispatch({ type: "light.insert", layerId, light: defaultLight(scene.scene.table.displayGrid ? snapPointToGrid(point) : point) });
+          commitLightPlacement(engine, lightDraft, point);
           return;
         }
         if (tool === "assets") {
@@ -223,11 +246,8 @@ export function useEditorInteractions({
           return;
         }
         if (tool === "light") {
-          const scene = engine.getSnapshot();
-          const selected = scene.scene.layers.find((candidate) => candidate.id === scene.selectedFogLayerId && candidate.type === "fog");
-          const layerId = selected?.id ?? ensureFogLayer(engine);
           const point = pointerGrid(event, session);
-          engine.dispatch({ type: "light.insert", layerId, light: defaultLight(scene.scene.table.displayGrid ? snapPointToGrid(point) : point) });
+          commitLightPlacement(engine, lightDraft, point);
           event.preventDefault();
           return;
         }
@@ -275,6 +295,7 @@ export function useEditorInteractions({
         if (fogDraft.current) engine.updateFogPolygonCursor(fogDraft.current, point);
         else engine.setFogCursor(point, polygonCollection(tool));
       }
+      if (tool === "light" && !drag.current) updateLightPlacement(engine, lightDraft, pointerGrid(event, session));
       if (profile === "editor" && event.pointerType !== "touch" && !drag.current) {
         const bounds = event.currentTarget.getBoundingClientRect();
         const current = session.getSnapshot();
@@ -413,6 +434,41 @@ function defaultLight(position: GridPoint): SceneLight {
     dimLightDistance: 8,
     color: { r: 255, g: 255, b: 255, a: 255 },
   };
+}
+
+function updateLightPlacement(
+  engine: SceneEngine,
+  draft: React.RefObject<{ readonly token: PreviewToken; readonly layerId: string; readonly index: number } | null>,
+  point: GridPoint
+) {
+  const snapshot = engine.getSnapshot();
+  const position = snapshot.scene.table.displayGrid ? snapPointToGrid(point) : point;
+  if (!draft.current) {
+    const selected = snapshot.scene.layers.find((candidate) => candidate.id === snapshot.selectedFogLayerId && candidate.type === "fog");
+    const layerId = selected?.id ?? ensureFogLayer(engine);
+    const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layerId && candidate.type === "fog");
+    const index = layer?.type === "fog" ? layer.lightSources.length : 0;
+    const token = engine.beginPreview({ type: "light.insert", layerId, index, light: defaultLight(position) });
+    draft.current = { token, layerId, index };
+    return;
+  }
+  engine.updatePreview(draft.current.token, {
+    type: "light.insert",
+    layerId: draft.current.layerId,
+    index: draft.current.index,
+    light: defaultLight(position),
+  });
+}
+
+function commitLightPlacement(
+  engine: SceneEngine,
+  draft: React.RefObject<{ readonly token: PreviewToken; readonly layerId: string; readonly index: number } | null>,
+  point: GridPoint
+) {
+  updateLightPlacement(engine, draft, point);
+  if (!draft.current) return;
+  engine.commitPreview(draft.current.token);
+  draft.current = null;
 }
 
 function beginTableInteraction(
