@@ -323,7 +323,7 @@ export function WorkspacePanels({
                       const selected = sceneSnapshot.selectedLight?.layerId === layer.id && sceneSnapshot.selectedLight.lightIndex === index;
                       return (
                         <div key={`light-${index}`} className={`flex min-h-8 items-center gap-1 border border-transparent px-1 pl-7 text-[9px] transition-colors ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}>
-                          <Lightbulb className="size-3" style={{ color: rgbaCss(light.color) }} />
+                           <Lightbulb className="size-3" style={{ color: rgbHex(light.color) }} />
                           <Button type="button" variant="ghost" aria-pressed={selected} onClick={() => {
                             engine.dispatch({ type: "light.selection.set", selection: { layerId: layer.id, lightIndex: index } });
                             revealInspector();
@@ -501,13 +501,13 @@ function LightInspector({ engine, light, selection }: { readonly engine: SceneEn
   };
   return (
     <div className="space-y-3 p-2.5">
-      <LightRadiusControl light={draft} color={rgbaCss(draft.color)} onStart={beginPreview} onCommit={commit} onChange={(brightLightDistance, dimLightDistance) => update({ ...draft, brightLightDistance, dimLightDistance })} />
+      <LightRadiusControl light={draft} color={rgbHex(draft.color)} onStart={beginPreview} onCommit={commit} onChange={(brightLightDistance, dimLightDistance) => update({ ...draft, brightLightDistance, dimLightDistance })} />
       <fieldset className="space-y-2 border border-violet-300/12 bg-black/15 p-2">
         <legend className="px-1 font-mono text-[9px] tracking-[0.12em] text-violet-100/55 uppercase">Color · {rgbHex(draft.color).toUpperCase()}</legend>
         <ColorSlider label="Hue" value={hsl.h} min={0} max={360} background="linear-gradient(to right,#f43f5e,#f59e0b,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ec4899,#f43f5e)" onStart={beginPreview} onCommit={commit} onChange={(h) => updateHsl({ h })} />
         <ColorSlider label="Saturation" value={hsl.s} min={0} max={100} background={`linear-gradient(to right,hsl(${hsl.h} 0% ${hsl.l}%),hsl(${hsl.h} 100% ${hsl.l}%))`} onStart={beginPreview} onCommit={commit} onChange={(s) => updateHsl({ s })} />
         <ColorSlider label="Lightness" value={hsl.l} min={0} max={100} background={`linear-gradient(to right,#000,hsl(${hsl.h} ${hsl.s}% 50%),#fff)`} onStart={beginPreview} onCommit={commit} onChange={(l) => updateHsl({ l })} />
-        <ColorSlider label="Opacity" value={draft.color.a / 255 * 100} min={0} max={100} background={`linear-gradient(to right,transparent,${rgbHex(draft.color)})`} onStart={beginPreview} onCommit={commit} onChange={(a) => update({ ...draft, color: { ...draft.color, a: Math.round(a / 100 * 255) } })} />
+        <ColorSlider label="Energy" value={draft.color.a / 255 * 100} min={0} max={100} background={`linear-gradient(to right,#000,${rgbHex(draft.color)})`} onStart={beginPreview} onCommit={commit} onChange={(a) => update({ ...draft, color: { ...draft.color, a: Math.round(a / 100 * 255) } })} />
       </fieldset>
       <div className="grid grid-cols-3 gap-1">
         {LIGHT_PRESETS.map((preset) => <Button key={preset.name} type="button" variant="outline" onClick={() => { beginPreview(); update({ ...draft, ...preset.light }); queueMicrotask(commit); }} className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 px-1 text-[9px] text-violet-100/60">{preset.name}</Button>)}
@@ -644,10 +644,6 @@ const LIGHT_PRESETS = [
 
 function rgbHex(color: SceneLight["color"]): string {
   return `#${[color.r, color.g, color.b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function rgbaCss(color: SceneLight["color"]): string {
-  return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`;
 }
 
 function rgbToHsl(color: SceneLight["color"]): { readonly h: number; readonly s: number; readonly l: number } {

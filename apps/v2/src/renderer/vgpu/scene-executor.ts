@@ -2,6 +2,7 @@ import { draw, effect, frame, geometry, sampler, storage, target } from "vgpu";
 import type { Draw, Effect, Geometry, Gpu, StorageBuffer, Target, TargetSignature, Texture } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
+import type { SceneLight } from "../../engine/scene-document";
 import { fogHandleVertices, outlineFogPolygons, outlineWallPolygons, tessellateFogPolygons, wallSegmentVertices } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
@@ -35,9 +36,45 @@ interface FogDrawEntry {
   readonly wallGuide?: Draw;
   readonly handles?: Draw;
   readonly lightEffects: readonly Effect[];
+  readonly lightCoverageEffects: readonly Effect[];
   readonly lightGuides: readonly Effect[];
   readonly wallStorage: StorageBuffer & { destroy(): void };
+  readonly lightStorage: StorageBuffer & { destroy(): void };
+  readonly wallSegmentCount: number;
   readonly geometries: readonly Geometry[];
+}
+
+const RADIANCE_SCALE = 4;
+const MAX_RADIANCE_CASCADES = 6;
+const MAX_JFA_STEPS = 16;
+const INDIRECT_LIGHTING_ENABLED = false;
+
+function radianceConfig(size: readonly [number, number], view: RenderView) {
+  const maxWidth = Math.max(1, Math.ceil(size[0] / RADIANCE_SCALE));
+  const maxHeight = Math.max(1, Math.ceil(size[1] / RADIANCE_SCALE));
+  const tableAspect = view.display.resolutionPx.width / view.display.resolutionPx.height;
+  const field = maxWidth / maxHeight > tableAspect
+    ? [Math.max(1, Math.ceil(maxHeight * tableAspect)), maxHeight] as const
+    : [maxWidth, Math.max(1, Math.ceil(maxWidth / tableAspect))] as const;
+  const cascadeCount = Math.min(MAX_RADIANCE_CASCADES, Math.max(5, Math.ceil(Math.log(1 + 1.5 * Math.hypot(...field)) / Math.log(4))));
+  const spacing = 2 ** (cascadeCount - 1);
+  const atlas = [Math.ceil(field[0] / spacing) * spacing * 2, Math.ceil(field[1] / spacing) * spacing * 2] as const;
+  const jumpCount = Math.ceil(Math.log2(Math.max(...field, 2)));
+  const jumps = [...Array.from({ length: jumpCount }, (_, index) => Math.max(1, 2 ** (jumpCount - index - 1))), 1, 1];
+  return { field, atlas, cascadeCount, jumps };
+}
+
+function radianceLightData(lights: readonly SceneLight[]): Float32Array<ArrayBuffer> {
+  return new Float32Array(lights.flatMap((light) => [
+    light.position.x,
+    light.position.y,
+    light.brightLightDistance,
+    light.dimLightDistance,
+    light.color.r / 255,
+    light.color.g / 255,
+    light.color.b / 255,
+    light.color.a / 255,
+  ]));
 }
 
 export function createSceneExecutor(
@@ -55,7 +92,20 @@ export function createSceneExecutor(
   const fogMaskTarget = target(gpu, { size, format: "rgba8unorm", msaa: 4, label: "fog-mask" });
   const featheredFogTarget = target(gpu, { size, format: "rgba8unorm", label: "feathered-fog-mask" });
   const lightTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "light-accumulation" });
+  const lightCoverageTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "light-coverage" });
   const compositeTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "editor-composite" });
+  let radiance = radianceConfig(size, initialView);
+  const radianceEmitter = target(gpu, { size: radiance.field, format: "rgba16float", label: "radiance-emitter" });
+  const radianceJfa = [
+    target(gpu, { size: radiance.field, format: "rgba32float", label: "radiance-jfa-a" }),
+    target(gpu, { size: radiance.field, format: "rgba32float", label: "radiance-jfa-b" }),
+  ] as const;
+  const radianceSdf = target(gpu, { size: radiance.field, format: "rgba16float", label: "radiance-sdf" });
+  const radianceCascades = [
+    target(gpu, { size: radiance.atlas, format: "rgba16float", label: "radiance-cascade-a" }),
+    target(gpu, { size: radiance.atlas, format: "rgba16float", label: "radiance-cascade-b" }),
+  ] as const;
+  const indirectLightTarget = target(gpu, { size: radiance.field, format: "rgba16float", label: "indirect-light" });
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   let gridVisible = plan.showGrid;
@@ -209,6 +259,9 @@ export function createSceneExecutor(
       const segmentData = wallSegmentVertices(layer.obstructionPolygons);
       const wallStorage = storage(gpu, Math.max(16, segmentData.byteLength)) as StorageBuffer & { destroy(): void };
       if (segmentData.byteLength > 0) wallStorage.write(segmentData);
+      const lightData = radianceLightData(layer.lightSources);
+      const lightStorage = storage(gpu, Math.max(32, lightData.byteLength)) as StorageBuffer & { destroy(): void };
+      if (lightData.byteLength > 0) lightStorage.write(lightData);
       const lightEffects = layer.lightSources.map((light, index) => effect(gpu, shaders.lightAccumulation, {
         label: `light:${layer.id}:${index}`,
         blend: "additive",
@@ -220,9 +273,20 @@ export function createSceneExecutor(
             bright_distance: light.brightLightDistance,
             dim_distance: light.dimLightDistance,
             segment_count: segmentData.length / 4,
-            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, 1],
+            energy: light.color.a / 255,
           },
         },
+      }));
+      const lightCoverageEffects = layer.lightSources.map((light, index) => effect(gpu, shaders.lightCoverage, {
+        label: `light-coverage:${layer.id}:${index}`,
+        blend: "additive",
+        set: { params: {
+          ...spatialParams(),
+          light_position: [light.position.x, light.position.y],
+          bright_distance: light.brightLightDistance,
+          dim_distance: light.dimLightDistance,
+        } },
       }));
       const lightGuides = layer.lightSources.map((light, index) => effect(gpu, shaders.lightGuide, {
         label: `light-guide:${layer.id}:${index}`,
@@ -232,7 +296,8 @@ export function createSceneExecutor(
           position: [light.position.x, light.position.y],
           bright_distance: light.brightLightDistance,
           dim_distance: light.dimLightDistance,
-          color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+          color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, 1],
+          energy: light.color.a / 255,
           selected: sourceSnapshot.selectedLight?.layerId === layer.id && sourceSnapshot.selectedLight.lightIndex === index ? 1 : 0,
         } },
       }));
@@ -245,14 +310,37 @@ export function createSceneExecutor(
         wallGuide,
         handles,
         lightEffects,
+        lightCoverageEffects,
         lightGuides,
         wallStorage,
+        lightStorage,
+        wallSegmentCount: segmentData.length / 4,
         geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry, wallGuideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
       }];
     });
 
   let assetEntries = createAssetEntries(initialSnapshot, imageUploads);
   let fogEntries = createFogEntries(initialSnapshot);
+  const emptyWallStorage = storage(gpu, 16);
+  const emptyLightStorage = storage(gpu, 32);
+  const radianceSpatialParams = () => projectionUniforms(compileProjection(
+    { kind: "output", table: view.table, display: view.display },
+    { width: radiance.field[0], height: radiance.field[1] }
+  ));
+  const fogCompositeParams = (hasLights: number) => {
+    const sceneSpatial = spatialParams();
+    const radianceSpatial = radianceSpatialParams();
+    return {
+      fog_opacity: plan.fogOpacity,
+      has_lights: hasLights,
+      target_size: sceneSpatial.target_size,
+      target_to_grid_offset: sceneSpatial.target_to_grid_offset,
+      pixels_per_grid: sceneSpatial.pixels_per_grid,
+      radiance_target_size: radianceSpatial.target_size,
+      grid_to_radiance_offset: radianceSpatial.grid_to_target_offset,
+      radiance_pixels_per_grid: radianceSpatial.pixels_per_grid,
+    };
+  };
   const fogFeather = effect(gpu, shaders.fogFeather, {
     label: "fog-edge-feather",
     set: {
@@ -265,9 +353,41 @@ export function createSceneExecutor(
       },
     },
   });
+  const radianceSeed = effect(gpu, shaders.radianceSeed, {
+    label: "radiance-wall-seed",
+    set: {
+      segments: emptyWallStorage,
+      lights: emptyLightStorage,
+      params: {
+        target_size: radianceSpatialParams().target_size,
+        target_to_grid_offset: radianceSpatialParams().target_to_grid_offset,
+        pixels_per_grid: radianceSpatialParams().pixels_per_grid,
+        segment_count: 0,
+        light_count: 0,
+        bounce_gain: 0.6,
+        floor_gain: 0.035,
+      },
+    },
+  });
+  const radianceJfaInit = effect(gpu, shaders.radianceJfaInit, { set: { emitter: radianceEmitter } });
+  const radianceJfaSteps = Array.from({ length: MAX_JFA_STEPS }, () => effect(gpu, shaders.radianceJfaPass, {
+    set: { params: { jump: [1, 0, 0, 0] }, seeds: radianceJfa[0] },
+  }));
+  const radianceSdfFinalize = effect(gpu, shaders.radianceSdfFinalize, { set: { seeds: radianceJfa[0] } });
+  const radianceCascadeEffects = Array.from({ length: MAX_RADIANCE_CASCADES }, () => effect(gpu, shaders.radianceCascade, {
+    set: {
+      params: { state: [0, 0, 0, 0] },
+      sdf_tex: radianceSdf,
+      sdf_sampler: linearSampler,
+      emitter_tex: radianceEmitter,
+      emitter_sampler: linearSampler,
+      upper_tex: radianceCascades[1],
+    },
+  }));
+  const radianceResolve = effect(gpu, shaders.radianceResolve, { set: { cascade_tex: radianceCascades[0], field_size: radiance.field } });
   const fogComposite = effect(gpu, shaders.fogComposite, {
     label: "fog-composite",
-    set: { scene: sceneA, fog_mask: featheredFogTarget, light: lightTarget, texture_sampler: linearSampler, params: { fog_opacity: plan.fogOpacity } },
+    set: { scene: sceneA, fog_mask: featheredFogTarget, light: lightTarget, light_coverage: lightCoverageTarget, indirect_light: indirectLightTarget, texture_sampler: linearSampler, params: fogCompositeParams(0) },
   });
   const sceneCopy = effect(gpu, shaders.sceneCopy, {
     label: "scene-layer-copy",
@@ -285,13 +405,32 @@ export function createSceneExecutor(
     label: "linear-to-display-present",
     set: { linear_scene: compositeTarget, texture_sampler: linearSampler },
   });
+  const updateRadianceLayout = (nextSize: readonly [number, number]) => {
+    const next = radianceConfig(nextSize, view);
+    if (next.field[0] !== radiance.field[0] || next.field[1] !== radiance.field[1]) {
+      radianceEmitter.resize(next.field);
+      radianceJfa[0].resize(next.field);
+      radianceJfa[1].resize(next.field);
+      radianceSdf.resize(next.field);
+      indirectLightTarget.resize(next.field);
+    }
+    if (next.atlas[0] !== radiance.atlas[0] || next.atlas[1] !== radiance.atlas[1]) {
+      radianceCascades[0].resize(next.atlas);
+      radianceCascades[1].resize(next.atlas);
+    }
+    radiance = next;
+  };
 
   return {
     lightFormat: "rgba16float",
     sampleCount: 4,
     get estimatedTargetBytes() {
       const [width, height] = destination.size;
-      return width * height * (8 * 5 + 8 * 5 + 4 * 5 + 4 + 8 * 5 + 4);
+      const [fieldWidth, fieldHeight] = radiance.field;
+      const [atlasWidth, atlasHeight] = radiance.atlas;
+      return width * height * (8 * 5 + 8 * 5 + 4 * 5 + 4 + 8 * 5 + 4)
+        + fieldWidth * fieldHeight * (8 * 3 + 16 * 2)
+        + atlasWidth * atlasHeight * 8 * 2;
     },
     async prewarm() {
       await Promise.all([
@@ -299,6 +438,13 @@ export function createSceneExecutor(
         ...fogEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
           .map((drawable) => drawable.compile(signature(fogMaskTarget))),
         ...fogEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))),
+        ...fogEntries.flatMap((entry) => entry.lightCoverageEffects).map((drawable) => drawable.compile(signature(lightCoverageTarget))),
+        radianceSeed.compile(signature(radianceEmitter)),
+        radianceJfaInit.compile(signature(radianceJfa[0])),
+        ...radianceJfaSteps.map((drawable) => drawable.compile(signature(radianceJfa[0]))),
+        radianceSdfFinalize.compile(signature(radianceSdf)),
+        ...radianceCascadeEffects.map((drawable) => drawable.compile(signature(radianceCascades[0]))),
+        radianceResolve.compile(signature(indirectLightTarget)),
         ...(plan.showEditorGrid
           ? [
               ...fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
@@ -327,6 +473,7 @@ export function createSceneExecutor(
       await Promise.all(nextEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
         .map((drawable) => drawable.compile(signature(fogMaskTarget))));
       await Promise.all(nextEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))));
+      await Promise.all(nextEntries.flatMap((entry) => entry.lightCoverageEffects).map((drawable) => drawable.compile(signature(lightCoverageTarget))));
       if (plan.showEditorGrid) {
         await Promise.all([
           ...nextEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
@@ -339,6 +486,7 @@ export function createSceneExecutor(
       snapshot = nextSnapshot;
       previousEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
       previousEntries.forEach((entry) => entry.wallStorage.destroy());
+      previousEntries.forEach((entry) => entry.lightStorage.destroy());
     },
     async render() {
       for (const entry of assetEntries) {
@@ -348,6 +496,7 @@ export function createSceneExecutor(
       for (const entry of fogEntries) {
         const layer = snapshot.scene.layers.find((candidate) => candidate.id === entry.layerId);
         if (layer?.type !== "fog") continue;
+        if (layer.lightSources.length > 0) entry.lightStorage.write(radianceLightData(layer.lightSources));
         entry.fog?.set({ params: { ...spatialParams(), fog_value: 1 } });
         entry.clear?.set({ params: { ...spatialParams(), fog_value: 0 } });
         entry.fogGuide?.set({ params: { ...spatialParams(), color: [0.82, 0.2, 0.95, 0.9] } });
@@ -366,14 +515,22 @@ export function createSceneExecutor(
             light_position: [light.position.x, light.position.y],
             bright_distance: light.brightLightDistance,
             dim_distance: light.dimLightDistance,
-            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, 1],
+            energy: light.color.a / 255,
+          } });
+          entry.lightCoverageEffects[index]?.set({ params: {
+            ...spatialParams(),
+            light_position: [light.position.x, light.position.y],
+            bright_distance: light.brightLightDistance,
+            dim_distance: light.dimLightDistance,
           } });
           entry.lightGuides[index]?.set({ params: {
             ...spatialParams(),
             position: [light.position.x, light.position.y],
             bright_distance: light.brightLightDistance,
             dim_distance: light.dimLightDistance,
-            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, 1],
+            energy: light.color.a / 255,
             selected: snapshot.selectedLight?.layerId === layer.id && snapshot.selectedLight.lightIndex === index ? 1 : 0,
           } });
         });
@@ -383,9 +540,10 @@ export function createSceneExecutor(
       composite.set({
         params: { ...spatialParams(), show_editor: plan.showEditorGrid ? 1 : 0, show_grid: gridVisible ? 1 : 0, ...selectionParams() },
       });
+      const operations = compileSceneLayerOperations(snapshot.scene);
       const submitted = frame(gpu, (currentFrame) => {
         currentFrame.pass({ target: activeScene, clear: [0, 0, 0, 1] }, () => undefined);
-        for (const operation of compileSceneLayerOperations(snapshot.scene)) {
+        for (const operation of operations) {
           if (operation.type === "assets") {
             sceneCopy.set({ scene: activeScene });
             currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, (pass) => {
@@ -416,7 +574,54 @@ export function createSceneExecutor(
           currentFrame.pass({ target: lightTarget, clear: [0, 0, 0, 0] }, (pass) => {
             for (const light of entry?.lightEffects ?? []) pass.draw(light);
           });
-          fogComposite.set({ scene: activeScene, light: lightTarget, params: { fog_opacity: plan.fogOpacity } });
+          const hasIndirect = Boolean(INDIRECT_LIGHTING_ENABLED && entry?.lightEffects.length && entry.wallSegmentCount);
+          if (hasIndirect && entry) {
+            const lowSpatial = radianceSpatialParams();
+            radianceSeed.set({
+              segments: entry.wallStorage,
+              lights: entry.lightStorage,
+              params: {
+                target_size: lowSpatial.target_size,
+                target_to_grid_offset: lowSpatial.target_to_grid_offset,
+                pixels_per_grid: lowSpatial.pixels_per_grid,
+                segment_count: entry.wallSegmentCount,
+                light_count: entry.lightEffects.length,
+              },
+            });
+            currentFrame.pass({ target: radianceEmitter, clear: [0, 0, 0, 0] }, radianceSeed);
+            radianceJfaInit.set({ emitter: radianceEmitter });
+            currentFrame.pass({ target: radianceJfa[0], clear: [0, 0, 0, 0] }, radianceJfaInit);
+            let seedRead = radianceJfa[0];
+            let seedWrite = radianceJfa[1];
+            radiance.jumps.forEach((jump, index) => {
+              const step = radianceJfaSteps[index];
+              step.set({ params: { jump: [jump, 0, 0, 0] }, seeds: seedRead });
+              currentFrame.pass({ target: seedWrite, clear: [0, 0, 0, 0] }, step);
+              [seedRead, seedWrite] = [seedWrite, seedRead];
+            });
+            radianceSdfFinalize.set({ seeds: seedRead });
+            currentFrame.pass({ target: radianceSdf, clear: [0, 0, 0, 0] }, radianceSdfFinalize);
+            let cascadeRead = radianceCascades[1];
+            let cascadeWrite = radianceCascades[0];
+            for (let cascade = radiance.cascadeCount - 1; cascade >= 0; cascade--) {
+              const cascadeEffect = radianceCascadeEffects[cascade];
+              cascadeEffect.set({
+                params: { state: [cascade, cascade < radiance.cascadeCount - 1 ? 1 : 0, 0, 0] },
+                upper_tex: cascadeRead,
+              });
+              currentFrame.pass({ target: cascadeWrite, clear: [0, 0, 0, 0] }, cascadeEffect);
+              [cascadeRead, cascadeWrite] = [cascadeWrite, cascadeRead];
+            }
+            radianceResolve.set({ cascade_tex: cascadeRead, field_size: radiance.field });
+            currentFrame.pass({ target: indirectLightTarget, clear: [0, 0, 0, 0] }, radianceResolve);
+          } else {
+            currentFrame.pass({ target: indirectLightTarget, clear: [0, 0, 0, 0] }, () => undefined);
+          }
+          fogComposite.set({
+            scene: activeScene,
+            light: lightTarget,
+            params: fogCompositeParams(entry?.lightEffects.length ? 1 : 0),
+          });
           currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, fogComposite);
           [activeScene, alternateScene] = [alternateScene, activeScene];
         }
@@ -447,7 +652,9 @@ export function createSceneExecutor(
       fogMaskTarget.resize(nextSize);
       featheredFogTarget.resize(nextSize);
       lightTarget.resize(nextSize);
+      lightCoverageTarget.resize(nextSize);
       compositeTarget.resize(nextSize);
+      updateRadianceLayout(nextSize);
     },
     setGridVisible(visible) {
       gridVisible = visible;
@@ -461,6 +668,7 @@ export function createSceneExecutor(
     setView(nextView) {
       view = nextView;
       projection = compileProjection(view, renderSize);
+      updateRadianceLayout([renderSize.width, renderSize.height]);
     },
   };
 }

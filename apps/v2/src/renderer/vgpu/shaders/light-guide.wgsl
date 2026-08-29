@@ -12,6 +12,7 @@ struct Params {
   bright_distance: f32,
   dim_distance: f32,
   color: vec4f,
+  energy: f32,
   selected: f32,
 }
 
@@ -28,7 +29,7 @@ struct Params {
   let outer = 1.0 - smoothstep(6.0 * css, 7.0 * css, distance_px);
   let core = 1.0 - smoothstep(2.0 * css, 3.0 * css, distance_px);
   let guide = max(bright_ring * 0.35, dim_ring * 0.55) * mix(0.35, 1.0, params.selected);
-  let emitter = max(outer * params.color.a, core);
+  let emitter = max(outer * mix(0.35, 1.0, params.energy), core);
   let rgb = mix(params.color.rgb, vec3f(1.0), core);
   return vec4f(rgb * max(guide, emitter), max(guide, emitter));
 }

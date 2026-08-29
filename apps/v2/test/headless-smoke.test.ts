@@ -87,26 +87,101 @@ test("fog feathering spreads outward without weakening opaque coverage", { timeo
   assert.deepEqual(opaque, [0, 0, 0]);
 });
 
-test("colored lights reveal fog and visible walls occlude them", { timeout: 60_000 }, async () => {
+test("colored lights replace ambient illumination while walls and fog occlude them", { timeout: 60_000 }, async () => {
   const base = createSampleSceneDocument();
   const fogLayer = base.layers.find((layer) => layer.type === "fog");
   assert.ok(fogLayer);
-  const makeScene = (wallVisible: boolean) => freezeSceneDocument({
+  const makeScene = (options: { energy?: number; fogged?: boolean; wallVisible?: boolean; lights?: boolean; whiteLight?: boolean }) => freezeSceneDocument({
     ...base,
     layers: base.layers.map((layer) => layer.id === fogLayer.id ? {
       ...fogLayer,
-      fogPolygons: [{ vertices: [{ x: 0, y: 0 }, { x: 44, y: 0 }, { x: 44, y: 25 }, { x: 0, y: 25 }], visibleOnTable: true }],
+      fogPolygons: options.fogged
+        ? [{ vertices: [{ x: 0, y: 0 }, { x: 44, y: 0 }, { x: 44, y: 25 }, { x: 0, y: 25 }], visibleOnTable: true }]
+        : [],
       fogClearPolygons: [],
-      lightSources: [{ position: { x: 10, y: 10 }, brightLightDistance: 3, dimLightDistance: 12, color: { r: 255, g: 80, b: 40, a: 255 } }],
-      obstructionPolygons: [{ vertices: [{ x: 12, y: 0 }, { x: 12, y: 20 }], visibleOnTable: wallVisible }],
+      lightSources: options.lights === false
+        ? []
+        : [{
+            position: { x: 10, y: 10 },
+            brightLightDistance: 3,
+            dimLightDistance: 12,
+            color: options.whiteLight
+              ? { r: 255, g: 255, b: 255, a: options.energy ?? 255 }
+              : { r: 255, g: 80, b: 40, a: options.energy ?? 255 },
+          }],
+      obstructionPolygons: [{ vertices: [{ x: 12, y: 0 }, { x: 12, y: 20 }], visibleOnTable: options.wallVisible ?? false }],
     } : layer),
   });
   const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
-  const shadowed = await renderHeadlessScene({ ...options, scene: makeScene(true) });
-  const unshadowed = await renderHeadlessScene({ ...options, scene: makeScene(false) });
+  const ambient = await renderHeadlessScene({ ...options, scene: makeScene({}) });
+  const shadowed = await renderHeadlessScene({ ...options, scene: makeScene({ wallVisible: true }) });
+  const white = await renderHeadlessScene({ ...options, scene: makeScene({ whiteLight: true }) });
+  const halfEnergy = await renderHeadlessScene({ ...options, scene: makeScene({ energy: 128 }) });
+  const fogged = await renderHeadlessScene({ ...options, scene: makeScene({ fogged: true }) });
+  const bare = await renderHeadlessScene({ ...options, scene: makeScene({ lights: false }) });
   const sample = (pixels: Uint8Array, x: number, y: number) => [...pixels.slice((y * 256 + x) * 4, (y * 256 + x) * 4 + 3)];
+  const ambientOutside = sample(ambient.pixels, 174, 59);
+  const bareOutside = sample(bare.pixels, 174, 59);
   const behindWall = sample(shadowed.pixels, 88, 59);
-  const withoutWall = sample(unshadowed.pixels, 88, 59);
+  const withoutWall = sample(ambient.pixels, 88, 59);
+  const underWhiteLight = sample(white.pixels, 88, 59);
+  const coloredSource = sample(ambient.pixels, 58, 59);
+  const halfEnergySource = sample(halfEnergy.pixels, 58, 59);
+  const halfEnergyFalloff = sample(halfEnergy.pixels, 88, 59);
+  const revealedSource = sample(fogged.pixels, 58, 59);
+  const concealedOutside = sample(fogged.pixels, 174, 59);
+  const chroma = (color: number[]) => Math.max(...color) - Math.min(...color);
+  assert.ok(ambientOutside.reduce((sum, channel) => sum + channel, 0) < bareOutside.reduce((sum, channel) => sum + channel, 0));
+  assert.ok(chroma(ambientOutside) < chroma(bareOutside), `${ambientOutside} should be less saturated than ${bareOutside}`);
   assert.ok(withoutWall[0] > behindWall[0], `${withoutWall} should be brighter than ${behindWall}`);
-  assert.ok(withoutWall[0] - behindWall[0] > withoutWall[2] - behindWall[2], "the revealed contribution should retain its red color");
+  assert.ok(withoutWall[2] < underWhiteLight[2], `${withoutWall} should retain less blue than white light ${underWhiteLight}`);
+  assert.ok(
+    coloredSource.reduce((sum, channel) => sum + channel, 0) > withoutWall.reduce((sum, channel) => sum + channel, 0),
+    `the bright core ${coloredSource} should not form a dark center inside the falloff ${withoutWall}`,
+  );
+  assert.ok(
+    coloredSource.reduce((sum, channel) => sum + channel, 0) > halfEnergySource.reduce((sum, channel) => sum + channel, 0),
+    `full energy ${coloredSource} should emit more radiance than half energy ${halfEnergySource}`,
+  );
+  assert.ok(
+    halfEnergyFalloff.reduce((sum, channel) => sum + channel, 0) / withoutWall.reduce((sum, channel) => sum + channel, 0)
+      < halfEnergySource.reduce((sum, channel) => sum + channel, 0) / coloredSource.reduce((sum, channel) => sum + channel, 0),
+    `half energy should fall off faster from ${halfEnergySource} to ${halfEnergyFalloff}`,
+  );
+  assert.ok(revealedSource.some((channel) => channel > 0), `${revealedSource} should punch through fog at the light source`);
+  assert.deepEqual(concealedOutside, [0, 0, 0]);
+});
+
+test("direct light stays outside a closed wall loop", { timeout: 60_000 }, async () => {
+  const base = createSampleSceneDocument();
+  const fogLayer = base.layers.find((layer) => layer.type === "fog");
+  assert.ok(fogLayer);
+  const scene = (energy: number) => freezeSceneDocument({
+    ...base,
+    layers: base.layers.map((layer) => layer.id === fogLayer.id ? {
+      ...fogLayer,
+      fogPolygons: [],
+      fogClearPolygons: [],
+      lightSources: [{
+        position: { x: 6, y: 6 },
+        brightLightDistance: 4,
+        dimLightDistance: 12,
+        color: { r: 255, g: 160, b: 80, a: energy },
+      }],
+      obstructionPolygons: [{
+        vertices: [{ x: 8, y: 8 }, { x: 12, y: 8 }, { x: 12, y: 12 }, { x: 8, y: 12 }, { x: 8, y: 8 }],
+        visibleOnTable: true,
+      }],
+    } : layer),
+  });
+  const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
+  const lit = await renderHeadlessScene({ ...options, scene: scene(255) });
+  const dark = await renderHeadlessScene({ ...options, scene: scene(0) });
+  const sample = (pixels: Uint8Array) => [...pixels.slice((59 * 256 + 58) * 4, (59 * 256 + 58) * 4 + 3)];
+  const litOutside = sample(lit.pixels);
+  const darkOutside = sample(dark.pixels);
+  assert.ok(
+    litOutside.every((channel, index) => Math.abs(channel - darkOutside[index]) <= 2),
+    `closed walls should contain direct light: ${litOutside} versus ${darkOutside}`,
+  );
 });
