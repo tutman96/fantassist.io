@@ -23,12 +23,14 @@ interface TouchGesture {
 
 export function useEditorInteractions({
   assetRotation,
+  canvasRef,
   engine,
   profile,
   session,
   tool,
 }: {
   readonly assetRotation: number;
+  readonly canvasRef: React.RefObject<HTMLCanvasElement | null>;
   readonly engine: SceneEngine;
   readonly profile: RenderProfile;
   readonly session: TableSession;
@@ -100,6 +102,25 @@ export function useEditorInteractions({
   useEffect(() => engine.subscribe(() => {
     if (fogDraft.current && !engine.getSnapshot().fogDrawingActive) fogDraft.current = null;
   }), [engine]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || profile !== "editor") return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      if (event.ctrlKey || event.metaKey) {
+        const bounds = canvas.getBoundingClientRect();
+        session.zoomAt(
+          { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+          Math.exp(-event.deltaY * 0.003)
+        );
+      } else {
+        session.pan({ x: -event.deltaX, y: -event.deltaY });
+      }
+    };
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", handleWheel);
+  }, [canvasRef, profile, session]);
 
   return {
     cursor: tool === "table"
@@ -315,17 +336,6 @@ export function useEditorInteractions({
       event.preventDefault();
       engine.commitFogPolygon(fogDraft.current);
       fogDraft.current = null;
-    },
-    onWheel(event: React.WheelEvent<HTMLCanvasElement>) {
-      if (profile !== "editor") return;
-      event.preventDefault();
-      if (event.ctrlKey || event.metaKey) {
-        const bounds = event.currentTarget.getBoundingClientRect();
-        const pointerCss = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
-        session.zoomAt(pointerCss, Math.exp(-event.deltaY * 0.0015));
-      } else {
-        session.pan({ x: -event.deltaX, y: -event.deltaY });
-      }
     },
   };
 }

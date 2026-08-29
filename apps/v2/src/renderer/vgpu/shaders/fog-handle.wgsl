@@ -7,6 +7,7 @@ struct Params {
   table_min: vec2f,
   table_max: vec2f,
   pixels_per_grid: f32,
+  target_pixels_per_css_pixel: f32,
   color: vec4f,
 }
 
@@ -16,7 +17,7 @@ struct Params {
   @location(0) point_grid: vec2f,
   @location(1) corner: vec2f,
 ) -> VertexOutput {
-  let point_target = point_grid * params.pixels_per_grid + params.grid_to_target_offset + corner * 5.5;
+  let point_target = point_grid * params.pixels_per_grid + params.grid_to_target_offset + corner * 5.5 * params.target_pixels_per_css_pixel;
   var output: VertexOutput;
   output.position = vec4f(point_target / params.target_size * vec2f(2.0, -2.0) + vec2f(-1.0, 1.0), 0.0, 1.0);
   output.corner = corner;

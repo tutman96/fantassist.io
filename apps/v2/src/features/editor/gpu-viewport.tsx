@@ -62,6 +62,7 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
   });
   const { cursor, ...canvasEvents } = useEditorInteractions({
     assetRotation: asset?.transform.rotation ?? 0,
+    canvasRef,
     engine,
     profile,
     session,

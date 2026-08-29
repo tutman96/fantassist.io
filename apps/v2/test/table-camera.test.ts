@@ -54,6 +54,7 @@ test("editor projection round trips across negative coordinates and DPR", () => 
     );
     const css = gridToEditorCss(point, camera, viewport);
     const target = gridToTargetPx(point, projection);
+    assert.equal(projection.targetPixelsPerCssPixel, dpr);
     close(target.x / dpr, css.x);
     close(target.y / dpr, css.y);
     close(targetPxToGrid(target, projection).x, point.x);
@@ -105,6 +106,7 @@ test("output maps table exactly and contains mismatched targets", () => {
   close(gridToTargetPx({ x: bounds.right, y: bounds.bottom }, exact).x, 3840);
   close(gridToTargetPx({ x: bounds.right, y: bounds.bottom }, exact).y, 2160);
   close(exact.pixelsPerGrid, derivePhysicalDisplay(DEFAULT_DISPLAY).ppi * table.scale);
+  assert.equal(exact.targetPixelsPerCssPixel, 1);
 
   const square = compileProjection(
     { kind: "output", table, display: DEFAULT_DISPLAY },

@@ -27,6 +27,7 @@ export type RenderView =
 
 export interface CompiledProjection {
   readonly pixelsPerGrid: number;
+  readonly targetPixelsPerCssPixel: number;
   readonly gridToTargetOffset: GridPoint;
   readonly targetToGridOffset: GridPoint;
   readonly contentMinPx: GridPoint;
@@ -41,16 +42,17 @@ export function compileProjection(view: RenderView, targetPx: Size): CompiledPro
   const table = normalizeTableCamera(view.table);
   const bounds = getTableBounds(table, display);
   let pixelsPerGrid: number;
+  let targetPixelsPerCssPixel = 1;
   let gridToTargetOffset: GridPoint;
   let contentMinPx = { x: 0, y: 0 };
   let contentMaxPx = { x: targetPx.width, y: targetPx.height };
 
   if (view.kind === "editor") {
-    const cssToTarget = Math.min(
+    targetPixelsPerCssPixel = Math.min(
       targetPx.width / Math.max(view.viewportCss.width, 1),
       targetPx.height / Math.max(view.viewportCss.height, 1)
     );
-    pixelsPerGrid = view.camera.cssPixelsPerGrid * cssToTarget;
+    pixelsPerGrid = view.camera.cssPixelsPerGrid * targetPixelsPerCssPixel;
     gridToTargetOffset = {
       x: targetPx.width / 2 - view.camera.centerGrid.x * pixelsPerGrid,
       y: targetPx.height / 2 - view.camera.centerGrid.y * pixelsPerGrid,
@@ -69,6 +71,7 @@ export function compileProjection(view: RenderView, targetPx: Size): CompiledPro
 
   return {
     pixelsPerGrid,
+    targetPixelsPerCssPixel,
     gridToTargetOffset,
     targetToGridOffset: {
       x: -gridToTargetOffset.x / pixelsPerGrid,
@@ -112,5 +115,6 @@ export function projectionUniforms(projection: CompiledProjection) {
     table_min: [projection.tableMinGrid.x, projection.tableMinGrid.y] as const,
     table_max: [projection.tableMaxGrid.x, projection.tableMaxGrid.y] as const,
     pixels_per_grid: projection.pixelsPerGrid,
+    target_pixels_per_css_pixel: projection.targetPixelsPerCssPixel,
   };
 }
