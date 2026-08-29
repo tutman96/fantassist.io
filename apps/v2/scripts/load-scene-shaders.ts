@@ -8,7 +8,7 @@ export async function loadSceneShaders(): Promise<SceneShaders> {
   const shaderDirectory = resolve("src/renderer/vgpu/shaders");
   const load = async (name: string) =>
     (await resolveShader({ entry: resolve(shaderDirectory, name), validate: "off" })).wgsl;
-  const [assets, fogMask, fogComposite, fogFeather, fogGuide, fogHandle, composite, present, sceneCopy] =
+  const [assets, fogMask, fogComposite, fogFeather, fogGuide, fogHandle, lightAccumulation, lightGuide, composite, present, sceneCopy] =
     await Promise.all([
       load("assets.wgsl"),
       load("fog-mask.wgsl"),
@@ -16,9 +16,11 @@ export async function loadSceneShaders(): Promise<SceneShaders> {
       load("fog-feather.wgsl"),
       load("fog-guide.wgsl"),
       load("fog-handle.wgsl"),
+      load("light-accumulation.wgsl"),
+      load("light-guide.wgsl"),
       load("composite.wgsl"),
       load("present.wgsl"),
       load("scene-copy.wgsl"),
     ]);
-  return { assets, fogMask, fogComposite, fogFeather, fogGuide, fogHandle, composite, present, sceneCopy };
+  return { assets, fogMask, fogComposite, fogFeather, fogGuide, fogHandle, lightAccumulation, lightGuide, composite, present, sceneCopy };
 }

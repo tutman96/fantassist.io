@@ -5,6 +5,8 @@ import fogComposite from "./shaders/fog-composite.wgsl";
 import fogFeather from "./shaders/fog-feather.wgsl";
 import fogGuide from "./shaders/fog-guide.wgsl";
 import fogHandle from "./shaders/fog-handle.wgsl";
+import lightAccumulation from "./shaders/light-accumulation.wgsl";
+import lightGuide from "./shaders/light-guide.wgsl";
 import present from "./shaders/present.wgsl";
 import sceneCopy from "./shaders/scene-copy.wgsl";
 
@@ -16,6 +18,8 @@ export const browserSceneShaders = {
   fogFeather,
   fogGuide,
   fogHandle,
+  lightAccumulation,
+  lightGuide,
   present,
   sceneCopy,
 };

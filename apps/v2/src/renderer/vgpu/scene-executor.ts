@@ -1,8 +1,8 @@
-import { draw, effect, frame, geometry, sampler, target } from "vgpu";
-import type { Draw, Geometry, Gpu, Target, TargetSignature, Texture } from "vgpu";
+import { draw, effect, frame, geometry, sampler, storage, target } from "vgpu";
+import type { Draw, Effect, Geometry, Gpu, StorageBuffer, Target, TargetSignature, Texture } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
-import { fogHandleVertices, outlineFogPolygons, tessellateFogPolygons } from "../fog-geometry";
+import { fogHandleVertices, outlineFogPolygons, outlineWallPolygons, tessellateFogPolygons, wallSegmentVertices } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
 import { compileSceneLayerOperations, FOG_EDGE_SPREAD_GRID } from "../render-plan";
@@ -32,7 +32,11 @@ interface FogDrawEntry {
   readonly clear?: Draw;
   readonly fogGuide?: Draw;
   readonly clearGuide?: Draw;
+  readonly wallGuide?: Draw;
   readonly handles?: Draw;
+  readonly lightEffects: readonly Effect[];
+  readonly lightGuides: readonly Effect[];
+  readonly wallStorage: StorageBuffer & { destroy(): void };
   readonly geometries: readonly Geometry[];
 }
 
@@ -50,6 +54,7 @@ export function createSceneExecutor(
   const sceneB = target(gpu, { size, format: "rgba16float", msaa: 4, label: "scene-b" });
   const fogMaskTarget = target(gpu, { size, format: "rgba8unorm", msaa: 4, label: "fog-mask" });
   const featheredFogTarget = target(gpu, { size, format: "rgba8unorm", label: "feathered-fog-mask" });
+  const lightTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "light-accumulation" });
   const compositeTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "editor-composite" });
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
@@ -83,6 +88,7 @@ export function createSceneExecutor(
       snap_point: [snapshot.gridSnapPoint?.x ?? 0, snapshot.gridSnapPoint?.y ?? 0],
       interaction_active: snapshot.fogCursorPoint && plan.showEditorGrid ? 1 : 0,
       interaction_clear: snapshot.fogCursorCollection === "clear" ? 1 : 0,
+      interaction_wall: snapshot.fogCursorCollection === "wall" ? 1 : 0,
       snap_active: snapshot.gridSnapPoint && plan.showEditorGrid ? 1 : 0,
     };
   };
@@ -163,11 +169,24 @@ export function createSceneExecutor(
       };
       const fogGuide = makeGuide(layer.fogPolygons, [0.82, 0.2, 0.95, 0.9], `fog-guide:${layer.id}`);
       const clearGuide = makeGuide(layer.fogClearPolygons, [0.12, 0.68, 1, 0.9], `fog-clear-guide:${layer.id}`);
+      const wallVertices = outlineWallPolygons(layer.obstructionPolygons);
+      const wallGuideGeometry = wallVertices ? geometry(gpu, {
+        buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: wallVertices }],
+        topology: "line-list",
+        label: `wall-guide:${layer.id}`,
+      }) : undefined;
+      const wallGuide = wallGuideGeometry ? draw(gpu, {
+        shader: shaders.fogGuide,
+        geometry: wallGuideGeometry,
+        blend: "premultiplied",
+        label: `wall-guide:${layer.id}`,
+        set: { params: { ...spatialParams(), color: [1.0, 0.58, 0.12, 0.95] } },
+      }) : undefined;
       const selection = sourceSnapshot.selectedFogPolygon?.layerId === layer.id
         ? sourceSnapshot.selectedFogPolygon
         : undefined;
       const selectedPolygon = selection
-        ? (selection.collection === "fog" ? layer.fogPolygons : layer.fogClearPolygons)[selection.polygonIndex]
+        ? (selection.collection === "fog" ? layer.fogPolygons : selection.collection === "clear" ? layer.fogClearPolygons : layer.obstructionPolygons)[selection.polygonIndex]
         : undefined;
       const handleGeometry = selectedPolygon ? geometry(gpu, {
         buffers: [{
@@ -185,16 +204,50 @@ export function createSceneExecutor(
         shader: shaders.fogHandle,
         geometry: handleGeometry,
         label: `fog-handles:${layer.id}`,
-        set: { params: { ...spatialParams(), color: selection?.collection === "fog" ? [0.82, 0.2, 0.95, 1] : [0.12, 0.68, 1, 1] } },
+        set: { params: { ...spatialParams(), color: selection?.collection === "fog" ? [0.82, 0.2, 0.95, 1] : selection?.collection === "clear" ? [0.12, 0.68, 1, 1] : [1.0, 0.58, 0.12, 1] } },
       }) : undefined;
+      const segmentData = wallSegmentVertices(layer.obstructionPolygons);
+      const wallStorage = storage(gpu, Math.max(16, segmentData.byteLength)) as StorageBuffer & { destroy(): void };
+      if (segmentData.byteLength > 0) wallStorage.write(segmentData);
+      const lightEffects = layer.lightSources.map((light, index) => effect(gpu, shaders.lightAccumulation, {
+        label: `light:${layer.id}:${index}`,
+        blend: "additive",
+        set: {
+          segments: wallStorage,
+          params: {
+            ...spatialParams(),
+            light_position: [light.position.x, light.position.y],
+            bright_distance: light.brightLightDistance,
+            dim_distance: light.dimLightDistance,
+            segment_count: segmentData.length / 4,
+            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+          },
+        },
+      }));
+      const lightGuides = layer.lightSources.map((light, index) => effect(gpu, shaders.lightGuide, {
+        label: `light-guide:${layer.id}:${index}`,
+        blend: "premultiplied",
+        set: { params: {
+          ...spatialParams(),
+          position: [light.position.x, light.position.y],
+          bright_distance: light.brightLightDistance,
+          dim_distance: light.dimLightDistance,
+          color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+          selected: sourceSnapshot.selectedLight?.layerId === layer.id && sourceSnapshot.selectedLight.lightIndex === index ? 1 : 0,
+        } },
+      }));
       return [{
         layerId: layer.id,
         fog: fog?.drawable,
         clear: clear?.drawable,
         fogGuide: fogGuide?.drawable,
         clearGuide: clearGuide?.drawable,
+        wallGuide,
         handles,
-        geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
+        lightEffects,
+        lightGuides,
+        wallStorage,
+        geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry, wallGuideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
       }];
     });
 
@@ -214,7 +267,7 @@ export function createSceneExecutor(
   });
   const fogComposite = effect(gpu, shaders.fogComposite, {
     label: "fog-composite",
-    set: { scene: sceneA, fog_mask: featheredFogTarget, texture_sampler: linearSampler, params: { fog_opacity: plan.fogOpacity } },
+    set: { scene: sceneA, fog_mask: featheredFogTarget, light: lightTarget, texture_sampler: linearSampler, params: { fog_opacity: plan.fogOpacity } },
   });
   const sceneCopy = effect(gpu, shaders.sceneCopy, {
     label: "scene-layer-copy",
@@ -245,9 +298,12 @@ export function createSceneExecutor(
         ...assetEntries.map((entry) => entry.drawable.compile(signature(sceneA))),
         ...fogEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
           .map((drawable) => drawable.compile(signature(fogMaskTarget))),
+        ...fogEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))),
         ...(plan.showEditorGrid
-          ? fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.handles].filter((item): item is Draw => item !== undefined))
-              .map((drawable) => drawable.compile(signature(compositeTarget)))
+          ? [
+              ...fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
+              ...fogEntries.flatMap((entry) => entry.lightGuides),
+            ].map((drawable) => drawable.compile(signature(compositeTarget)))
           : []),
         fogComposite.compile(signature(sceneB)),
         fogFeather.compile(signature(featheredFogTarget)),
@@ -270,15 +326,19 @@ export function createSceneExecutor(
       const nextEntries = createFogEntries(nextSnapshot);
       await Promise.all(nextEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
         .map((drawable) => drawable.compile(signature(fogMaskTarget))));
+      await Promise.all(nextEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))));
       if (plan.showEditorGrid) {
-        await Promise.all(nextEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.handles].filter((item): item is Draw => item !== undefined))
-          .map((drawable) => drawable.compile(signature(compositeTarget))));
+        await Promise.all([
+          ...nextEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
+          ...nextEntries.flatMap((entry) => entry.lightGuides),
+        ].map((drawable) => drawable.compile(signature(compositeTarget))));
       }
       await gpu.settled();
       const previousEntries = fogEntries;
       fogEntries = nextEntries;
       snapshot = nextSnapshot;
       previousEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
+      previousEntries.forEach((entry) => entry.wallStorage.destroy());
     },
     async render() {
       for (const entry of assetEntries) {
@@ -286,16 +346,36 @@ export function createSceneExecutor(
         if (asset) entry.drawable.set({ params: assetParams(asset) });
       }
       for (const entry of fogEntries) {
+        const layer = snapshot.scene.layers.find((candidate) => candidate.id === entry.layerId);
+        if (layer?.type !== "fog") continue;
         entry.fog?.set({ params: { ...spatialParams(), fog_value: 1 } });
         entry.clear?.set({ params: { ...spatialParams(), fog_value: 0 } });
         entry.fogGuide?.set({ params: { ...spatialParams(), color: [0.82, 0.2, 0.95, 0.9] } });
         entry.clearGuide?.set({ params: { ...spatialParams(), color: [0.12, 0.68, 1, 0.9] } });
+        entry.wallGuide?.set({ params: { ...spatialParams(), color: [1.0, 0.58, 0.12, 0.95] } });
         const handleSelection = snapshot.selectedFogPolygon;
         entry.handles?.set({
           params: {
             ...spatialParams(),
-            color: handleSelection?.collection === "fog" ? [0.82, 0.2, 0.95, 1] : [0.12, 0.68, 1, 1],
+            color: handleSelection?.collection === "fog" ? [0.82, 0.2, 0.95, 1] : handleSelection?.collection === "clear" ? [0.12, 0.68, 1, 1] : [1.0, 0.58, 0.12, 1],
           },
+        });
+        layer.lightSources.forEach((light, index) => {
+          entry.lightEffects[index]?.set({ params: {
+            ...spatialParams(),
+            light_position: [light.position.x, light.position.y],
+            bright_distance: light.brightLightDistance,
+            dim_distance: light.dimLightDistance,
+            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+          } });
+          entry.lightGuides[index]?.set({ params: {
+            ...spatialParams(),
+            position: [light.position.x, light.position.y],
+            bright_distance: light.brightLightDistance,
+            dim_distance: light.dimLightDistance,
+            color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, light.color.a / 255],
+            selected: snapshot.selectedLight?.layerId === layer.id && snapshot.selectedLight.lightIndex === index ? 1 : 0,
+          } });
         });
       }
       let activeScene: Target = sceneA;
@@ -333,7 +413,10 @@ export function createSceneExecutor(
             },
           });
           currentFrame.pass({ target: featheredFogTarget, clear: [0, 0, 0, 1] }, fogFeather);
-          fogComposite.set({ scene: activeScene, params: { fog_opacity: plan.fogOpacity } });
+          currentFrame.pass({ target: lightTarget, clear: [0, 0, 0, 0] }, (pass) => {
+            for (const light of entry?.lightEffects ?? []) pass.draw(light);
+          });
+          fogComposite.set({ scene: activeScene, light: lightTarget, params: { fog_opacity: plan.fogOpacity } });
           currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, fogComposite);
           [activeScene, alternateScene] = [alternateScene, activeScene];
         }
@@ -345,7 +428,9 @@ export function createSceneExecutor(
               if (!snapshot.scene.layers.some((layer) => layer.id === entry.layerId && layer.visible)) continue;
               if (entry.fogGuide) pass.draw(entry.fogGuide);
               if (entry.clearGuide) pass.draw(entry.clearGuide);
+              if (entry.wallGuide) pass.draw(entry.wallGuide);
               if (entry.handles) pass.draw(entry.handles);
+              for (const light of entry.lightGuides) pass.draw(light);
             }
           }
         });
@@ -361,6 +446,7 @@ export function createSceneExecutor(
       sceneB.resize(nextSize);
       fogMaskTarget.resize(nextSize);
       featheredFogTarget.resize(nextSize);
+      lightTarget.resize(nextSize);
       compositeTarget.resize(nextSize);
     },
     setGridVisible(visible) {

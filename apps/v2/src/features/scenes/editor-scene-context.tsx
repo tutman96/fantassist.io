@@ -271,8 +271,10 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
         type: "fog",
         visible: true,
         assetIds: [],
-        fogPolygons: [],
-        fogClearPolygons: [],
+      fogPolygons: [],
+      fogClearPolygons: [],
+      obstructionPolygons: [],
+      lightSources: [],
       },
     });
     if (!result.ok) throw new Error(result.error);

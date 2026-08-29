@@ -34,6 +34,25 @@ export function outlineFogPolygons(polygons: readonly FogPolygon[]): Float32Arra
   return vertices.length > 0 ? new Float32Array(vertices) : null;
 }
 
+export function outlineWallPolygons(polygons: readonly FogPolygon[]): Float32Array<ArrayBuffer> | null {
+  const vertices = wallSegmentVertices(polygons, false);
+  return vertices.length > 0 ? vertices : null;
+}
+
+export function wallSegmentVertices(polygons: readonly FogPolygon[], visibleOnly = true): Float32Array<ArrayBuffer> {
+  const vertices: number[] = [];
+  for (const polygon of polygons) {
+    if (visibleOnly && !polygon.visibleOnTable) continue;
+    for (let index = 0; index < polygon.vertices.length - 1; index++) {
+      const start = polygon.vertices[index];
+      const end = polygon.vertices[index + 1];
+      if (start.x === end.x && start.y === end.y) continue;
+      vertices.push(start.x, start.y, end.x, end.y);
+    }
+  }
+  return new Float32Array(vertices);
+}
+
 export function fogHandleVertices(polygon: FogPolygon): Float32Array<ArrayBuffer> {
   const corners = [[-1, -1], [1, -1], [-1, 1], [-1, 1], [1, -1], [1, 1]] as const;
   return new Float32Array(polygon.vertices.flatMap((point) =>

@@ -209,6 +209,8 @@ test("scene adapter projects and persists fog geometry without changing lights o
   const document = projectV1Scene(fullScene);
   const fog = document.layers.find((layer) => layer.type === "fog");
   assert.ok(fog);
+  assert.deepEqual(fog.lightSources, fullScene.layers[1].fogLayer?.lightSources);
+  assert.deepEqual(fog.obstructionPolygons[0], { vertices: [{ x: 1, y: 2 }, { x: 3, y: 4 }], visibleOnTable: true });
   assert.deepEqual(fog.fogPolygons[0], {
     vertices: [{ x: -1, y: -2 }, { x: 8, y: 4 }],
     visibleOnTable: false,
@@ -229,9 +231,24 @@ test("scene adapter projects and persists fog geometry without changing lights o
   assert.deepEqual(persisted?.obstructionPolygons, fullScene.layers[1].fogLayer?.obstructionPolygons);
 });
 
+test("scene adapter persists edited lights and obstruction walls", () => {
+  const document = projectV1Scene(fullScene);
+  const fog = document.layers.find((layer) => layer.type === "fog");
+  assert.ok(fog);
+  const changed = {
+    ...fog,
+    lightSources: [{ position: { x: -4, y: 8 }, brightLightDistance: 3, dimLightDistance: 9, color: { r: 12, g: 120, b: 255, a: 200 } }],
+    obstructionPolygons: [{ vertices: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 8 }], visibleOnTable: false }],
+  };
+  const patched = patchV1SceneTransforms(fullScene, { ...document, layers: document.layers.map((layer) => layer.id === fog.id ? changed : layer) }, 8);
+  assert.deepEqual(patched.layers[1].fogLayer?.lightSources, changed.lightSources);
+  assert.deepEqual(patched.layers[1].fogLayer?.obstructionPolygons, [{ type: 2, verticies: changed.obstructionPolygons[0].vertices, visibleOnTable: false }]);
+  assert.deepEqual(patched.layers[1].fogLayer?.fogPolygons, fullScene.layers[1].fogLayer?.fogPolygons);
+});
+
 test("scene adapter persists newly created empty fog layers", () => {
   const document = projectV1Scene(fullScene);
-  const fog = { id: "fog-2", name: "Upper fog", type: "fog" as const, visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] };
+  const fog = { id: "fog-2", name: "Upper fog", type: "fog" as const, visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [], obstructionPolygons: [], lightSources: [] };
   const patched = patchV1SceneTransforms(fullScene, { ...document, layers: [...document.layers, fog] }, 8);
   assert.deepEqual(patched.layers.at(-1)?.fogLayer, {
     id: fog.id,

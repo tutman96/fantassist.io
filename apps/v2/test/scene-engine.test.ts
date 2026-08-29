@@ -587,7 +587,7 @@ test("asset insertion stays inside its target layer's intermingled paint order",
     ...base,
     layers: [
       { id: "bottom", name: "Ground", type: "assets", visible: true, assetIds: [bottom.id] },
-      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [], obstructionPolygons: [], lightSources: [] },
       { id: "top", name: "Tokens", type: "assets", visible: true, assetIds: [top.id] },
     ],
     assets: [bottom, top],
@@ -645,7 +645,7 @@ test("layer moves rebuild asset paint order and undo exactly", () => {
     ...base,
     layers: [
       { id: "bottom", name: "Bottom", type: "assets", visible: true, assetIds: [bottom.id] },
-      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [], obstructionPolygons: [], lightSources: [] },
       { id: "top", name: "Top", type: "assets", visible: true, assetIds: [top.id] },
     ],
     assets: [bottom, top],
@@ -835,6 +835,8 @@ test("fog tools create and select one empty fog layer only when needed", () => {
     assetIds: [],
     fogPolygons: [],
     fogClearPolygons: [],
+    obstructionPolygons: [],
+    lightSources: [],
   });
   assert.equal(ensureFogLayer(engine, () => "unused"), id);
   assert.equal(engine.getSnapshot().scene.layers.filter((layer) => layer.type === "fog").length, 1);
@@ -889,6 +891,77 @@ test("fog polygon translation snaps the closest eligible vertex without distorti
   const current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
   assert.ok(current?.type === "fog");
   assert.deepEqual(current.fogPolygons[0].vertices, layer.fogPolygons[0].vertices.map((vertex) => ({ x: vertex.x + 2, y: vertex.y - 4 })));
+});
+
+test("lights insert, update, drag, remove, and undo as engine-owned state", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const light = { position: { x: 4, y: 5 }, brightLightDistance: 4, dimLightDistance: 8, color: { r: 255, g: 120, b: 40, a: 220 } };
+  assert.deepEqual(engine.dispatch({ type: "light.insert", layerId: layer.id, light }), { ok: true, changed: true, revision: 1 });
+  assert.deepEqual(engine.getSnapshot().selectedLight, { layerId: layer.id, lightIndex: 0 });
+  assert.equal(Object.isFrozen((engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id) as typeof layer).lightSources[0].color), true);
+  const token = engine.beginLightDrag({ x: 4, y: 5 }, 20);
+  assert.ok(token);
+  engine.updateLightDrag(token, { x: 7.04, y: 9.02 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, null);
+  assert.deepEqual(engine.commitPreview(token), { ok: true, changed: true, revision: 2 });
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.lightSources[0].position, { x: 7.04, y: 9.02 });
+  engine.undo();
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.lightSources[0], light);
+  engine.redo();
+  assert.equal(engine.dispatch({ type: "light.remove", layerId: layer.id, lightIndex: 0 }).ok, true);
+  engine.undo();
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.equal(current.lightSources.length, 1);
+});
+
+test("a light hit-test miss preserves fog selection and vertex editing", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const selection = { layerId: layer.id, collection: "clear" as const, polygonIndex: 0 };
+  engine.dispatch({ type: "fog.selection.set", selection });
+  const vertex = layer.fogClearPolygons[0].vertices[0];
+  assert.equal(engine.beginLightDrag(vertex, 20), null);
+  assert.deepEqual(engine.getSnapshot().selectedFogPolygon, selection);
+  const interaction = engine.beginFogSelectionInteraction(vertex, 20);
+  assert.ok(interaction.token);
+  engine.updateFogSelectionInteraction(interaction.token, { x: vertex.x - 2, y: vertex.y + 3 });
+  const current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogClearPolygons[0].vertices[0], { x: vertex.x - 2, y: vertex.y + 3 });
+});
+
+test("wall drafts commit open two-point geometry and use existing vertex editing", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const token = engine.beginFogPolygon(layer.id, "wall", { x: 1, y: 2 });
+  engine.appendFogPolygonVertex(token, { x: 6, y: 2 });
+  assert.deepEqual(engine.commitFogPolygon(token), { ok: true, changed: true, revision: 1 });
+  const current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons.at(-1), { vertices: [{ x: 1, y: 2 }, { x: 6, y: 2 }], visibleOnTable: true });
+  assert.deepEqual(pickFogPolygonEdge(engine.getSnapshot().scene, { x: 3, y: 2 }, 20), { layerId: layer.id, collection: "wall", polygonIndex: current.obstructionPolygons.length - 1 });
+
+  const interaction = engine.beginFogSelectionInteraction({ x: 1, y: 2 }, 20);
+  assert.ok(interaction.token);
+  engine.updateFogSelectionInteraction(interaction.token, { x: -2.5, y: 4.25 });
+  let edited = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(edited?.type === "fog");
+  assert.deepEqual(edited.obstructionPolygons.at(-1)?.vertices, [{ x: -2.5, y: 4.25 }, { x: 6, y: 2 }]);
+  assert.equal(engine.getSnapshot().revision, 1);
+  assert.deepEqual(engine.commitPreview(interaction.token), { ok: true, changed: true, revision: 2 });
+  engine.undo();
+  edited = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(edited?.type === "fog");
+  assert.deepEqual(edited.obstructionPolygons.at(-1)?.vertices, [{ x: 1, y: 2 }, { x: 6, y: 2 }]);
 });
 
 test("clicking away from a selected fog polygon clears polygon selection", () => {

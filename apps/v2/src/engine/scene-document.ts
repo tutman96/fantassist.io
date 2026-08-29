@@ -33,6 +33,13 @@ export interface FogPolygon {
   readonly visibleOnTable: boolean;
 }
 
+export interface SceneLight {
+  readonly position: { readonly x: number; readonly y: number };
+  readonly brightLightDistance: number;
+  readonly dimLightDistance: number;
+  readonly color: { readonly r: number; readonly g: number; readonly b: number; readonly a: number };
+}
+
 interface SceneLayerBase {
   readonly id: string;
   readonly name: string;
@@ -49,6 +56,8 @@ export interface FogSceneLayer extends SceneLayerBase {
   readonly assetIds: readonly string[];
   readonly fogPolygons: readonly FogPolygon[];
   readonly fogClearPolygons: readonly FogPolygon[];
+  readonly obstructionPolygons: readonly FogPolygon[];
+  readonly lightSources: readonly SceneLight[];
 }
 
 export type SceneLayer = AssetSceneLayer | FogSceneLayer;
@@ -88,6 +97,8 @@ export function createSampleSceneDocument(): SceneDocument {
           vertices: [{ x: 8, y: 8 }, { x: 14, y: 8 }, { x: 14, y: 14 }, { x: 8, y: 14 }],
           visibleOnTable: true,
         }],
+        obstructionPolygons: [],
+        lightSources: [],
       },
     ],
     assets: [
@@ -120,6 +131,12 @@ export function freezeSceneDocument(scene: SceneDocumentInput): SceneDocument {
           assetIds: Object.freeze([]),
           fogPolygons: freezePolygons(layer.fogPolygons),
           fogClearPolygons: freezePolygons(layer.fogClearPolygons),
+          obstructionPolygons: freezePolygons(layer.obstructionPolygons),
+          lightSources: Object.freeze(layer.lightSources.map((light) => Object.freeze({
+            ...light,
+            position: Object.freeze({ ...light.position }),
+            color: Object.freeze({ ...light.color }),
+          }))),
         }))),
     assets: Object.freeze(
       scene.assets.map((asset) =>

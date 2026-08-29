@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fogHandleVertices, tessellateFogPolygons } from "../src/renderer/fog-geometry";
+import { fogHandleVertices, tessellateFogPolygons, wallSegmentVertices } from "../src/renderer/fog-geometry";
 
 test("fog tessellation supports concave polygons and skips editor-only geometry", () => {
   const mesh = tessellateFogPolygons([
@@ -39,4 +39,13 @@ test("fog handle geometry creates one independent ring quad per vertex", () => {
   assert.deepEqual([...vertices.slice(0, 4)], [1, 2, -1, -1]);
   assert.deepEqual([...vertices.slice(24, 28)], [5, 7, -1, -1]);
   assert.deepEqual([...vertices.slice(48, 52)], [-3, 4, -1, -1]);
+});
+
+test("wall segments stay open, skip duplicates, and respect table visibility", () => {
+  const walls = [
+    { vertices: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 5 }], visibleOnTable: true },
+    { vertices: [{ x: 10, y: 10 }, { x: 20, y: 20 }], visibleOnTable: false },
+  ];
+  assert.deepEqual([...wallSegmentVertices(walls)], [0, 0, 4, 0, 4, 0, 4, 5]);
+  assert.deepEqual([...wallSegmentVertices(walls, false)], [0, 0, 4, 0, 4, 0, 4, 5, 10, 10, 20, 20]);
 });

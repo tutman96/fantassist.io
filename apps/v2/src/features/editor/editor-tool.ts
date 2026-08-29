@@ -1,6 +1,6 @@
 import type { SceneEngine } from "@/engine/scene-engine";
 
-export type EditorTool = "assets" | "fog" | "fog-clear" | "table";
+export type EditorTool = "assets" | "fog" | "fog-clear" | "wall" | "light" | "table";
 
 export function ensureFogLayer(engine: SceneEngine, createId: () => string = () => crypto.randomUUID()): string {
   const existing = [...engine.getSnapshot().scene.layers].reverse().find((layer) => layer.type === "fog");
@@ -19,6 +19,8 @@ export function ensureFogLayer(engine: SceneEngine, createId: () => string = () 
       assetIds: [],
       fogPolygons: [],
       fogClearPolygons: [],
+      obstructionPolygons: [],
+      lightSources: [],
     },
   });
   if (!result.ok) throw new Error(result.error);

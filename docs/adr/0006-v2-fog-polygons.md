@@ -22,11 +22,11 @@ Asset composition, fog masks, and editor overlays render into native 4x multisam
 
 Resolved fog masks receive a `1/16` grid Gaussian feather before composition. The normalized Gaussian's exterior half is remapped to full edge coverage and then clamped against the original mask, so the transition begins continuously at opaque fog and falls outward without weakening established coverage. Clear polygons receive the inverse visual effect naturally because surrounding fog feathers inward around the clear boundary without weakening the fog itself.
 
-Polygons with `visibleOnTable: false` remain persisted and visible as editor guides but do not contribute to the fog mask. Existing v1 light sources and obstruction polygons remain unchanged by v2 saves but are not rendered or editable in this slice. The previous hard-coded demonstration lights, wall, and fog shapes are removed rather than mixed with persisted scene behavior.
+Polygons with `visibleOnTable: false` remain persisted and visible as editor guides but do not contribute to the fog mask. Scene-driven light sources and obstruction walls are projected and edited as members of their persisted fog layer; their renderer and interaction decisions are recorded in ADR 0009. The previous hard-coded demonstration lights, wall, and fog shapes remain removed.
 
 ## Consequences
 
 - Shared `scene_2` protobuf records remain readable and editable by v1 without an IndexedDB migration.
 - Fog broadcasts to the named table window as part of the committed scene document.
 - Renderer targets that accumulate scene content must explicitly use load semantics (`clear: false`) because vgpu clears omitted pass options by default.
-- Dynamic lights and obstruction walls require a later scene-driven renderer and editor decision.
+- Dense-light performance beyond the initial scene-driven GPU path requires representative 4K benchmarking.

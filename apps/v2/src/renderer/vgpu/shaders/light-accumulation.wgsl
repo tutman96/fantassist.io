@@ -1,0 +1,59 @@
+struct Segment { a: vec2f, b: vec2f }
+
+struct Params {
+  target_size: vec2f,
+  grid_to_target_offset: vec2f,
+  target_to_grid_offset: vec2f,
+  content_min: vec2f,
+  content_max: vec2f,
+  table_min: vec2f,
+  table_max: vec2f,
+  pixels_per_grid: f32,
+  target_pixels_per_css_pixel: f32,
+  light_position: vec2f,
+  bright_distance: f32,
+  dim_distance: f32,
+  segment_count: u32,
+  color: vec4f,
+}
+
+@group(0) @binding(0) var<storage, read> segments: array<Segment>;
+@group(0) @binding(1) var<uniform> params: Params;
+
+fn cross2(a: vec2f, b: vec2f) -> f32 { return a.x * b.y - a.y * b.x; }
+
+fn blocked(point: vec2f, segment: Segment) -> bool {
+  let ray = point - params.light_position;
+  let wall = segment.b - segment.a;
+  let denominator = cross2(ray, wall);
+  if (abs(denominator) < 0.00001) { return false; }
+  let delta = segment.a - params.light_position;
+  let ray_t = cross2(delta, wall) / denominator;
+  let wall_t = cross2(delta, ray) / denominator;
+  return ray_t > 0.0 && ray_t < 1.0 && wall_t >= 0.0 && wall_t <= 1.0;
+}
+
+fn srgb_to_linear(value: vec3f) -> vec3f {
+  let low = value / 12.92;
+  let high = pow((value + 0.055) / 1.055, vec3f(2.4));
+  return select(high, low, value <= vec3f(0.04045));
+}
+
+@fragment fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let world = uv * params.target_size / params.pixels_per_grid + params.target_to_grid_offset;
+  let radius = max(params.bright_distance, params.dim_distance);
+  let light_distance = distance(world, params.light_position);
+  if (radius <= 0.0 || light_distance >= radius) { return vec4f(0.0); }
+  for (var index = 0u; index < params.segment_count; index++) {
+    if (blocked(world, segments[index])) { return vec4f(0.0); }
+  }
+  let bright = min(params.bright_distance, radius);
+  var attenuation: f32;
+  if (bright > 0.0 && light_distance <= bright) {
+    attenuation = mix(1.0, 0.7, light_distance / bright);
+  } else {
+    attenuation = 0.7 * (1.0 - smoothstep(bright, radius, light_distance));
+  }
+  let linear_color = srgb_to_linear(clamp(params.color.rgb, vec3f(0.0), vec3f(1.0)));
+  return vec4f(linear_color * attenuation * params.color.a, attenuation * params.color.a);
+}

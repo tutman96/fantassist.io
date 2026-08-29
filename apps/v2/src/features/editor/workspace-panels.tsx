@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, ListPlus, MousePointer2, Trash2 } from "lucide-react";
+import { BrickWall, CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, Lightbulb, ListPlus, MousePointer2, Trash2 } from "lucide-react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import type { SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
+import type { PreviewToken, SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
+import type { LightSelection } from "@/engine/scene-engine";
+import type { SceneLight } from "@/engine/scene-document";
 import { EditorPanel, Metric } from "@/features/editor/editor-panel";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
 import { useSharedTableSession } from "@/features/table/table-session-context";
@@ -40,8 +42,13 @@ export function WorkspacePanels({
     ? sceneSnapshot.scene.layers.find((layer) => layer.id === fogSelection.layerId && layer.type === "fog")
     : undefined;
   const selectedFogPolygon = selectedFogLayer?.type === "fog" && fogSelection
-    ? (fogSelection.collection === "fog" ? selectedFogLayer.fogPolygons : selectedFogLayer.fogClearPolygons)[fogSelection.polygonIndex]
+    ? (fogSelection.collection === "fog" ? selectedFogLayer.fogPolygons : fogSelection.collection === "clear" ? selectedFogLayer.fogClearPolygons : selectedFogLayer.obstructionPolygons)[fogSelection.polygonIndex]
     : undefined;
+  const lightSelection = sceneSnapshot.selectedLight;
+  const selectedLightLayer = lightSelection
+    ? sceneSnapshot.scene.layers.find((layer) => layer.id === lightSelection.layerId && layer.type === "fog")
+    : undefined;
+  const selectedLight = selectedLightLayer?.type === "fog" && lightSelection ? selectedLightLayer.lightSources[lightSelection.lightIndex] : undefined;
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 640px)");
@@ -67,9 +74,9 @@ export function WorkspacePanels({
         open={inspectorOpen}
         onOpenChange={setInspectorOpen}
         eyebrow="Inspector"
-        title={assetSelected ? asset.name : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : "Clear"} polygon ${fogSelection.polygonIndex + 1}` : "Nothing selected"}
-        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
-        icon={assetSelected ? <ImageIcon /> : selectedFogPolygon ? <CloudFog /> : <MousePointer2 />}
+        title={assetSelected ? asset.name : selectedLight && lightSelection ? `Light ${lightSelection.lightIndex + 1}` : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : fogSelection.collection === "clear" ? "Clear" : "Wall"} ${fogSelection.collection === "wall" ? "" : "polygon "}${fogSelection.polygonIndex + 1}` : "Nothing selected"}
+        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedLight ? `Colored light · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
+        icon={assetSelected ? <ImageIcon /> : selectedLight ? <Lightbulb /> : selectedFogPolygon ? fogSelection?.collection === "wall" ? <BrickWall /> : <CloudFog /> : <MousePointer2 />}
         className="top-20 right-3 left-3 max-h-[55%] sm:pointer-events-auto sm:relative sm:top-auto sm:right-auto sm:left-auto sm:flex sm:max-h-[55%] sm:w-full sm:shrink-0 sm:flex-col"
         contentClassName="max-h-[calc(55svh-5rem)] sm:h-full sm:max-h-none"
       >
@@ -78,6 +85,8 @@ export function WorkspacePanels({
             engine={engine}
             sceneSnapshot={sceneSnapshot}
           />
+        ) : selectedLight && lightSelection ? (
+          <LightInspector key={`${lightSelection.layerId}:${lightSelection.lightIndex}:${sceneSnapshot.revision}`} engine={engine} selection={lightSelection} light={selectedLight} />
         ) : selectedFogPolygon && fogSelection ? (
           <FogPolygonInspector engine={engine} selection={fogSelection} polygon={selectedFogPolygon} />
         ) : (
@@ -310,7 +319,23 @@ export function WorkspacePanels({
                   );
                 }) : (
                   <div className="grid gap-0.5 pb-1">
+                    {layer.lightSources.map((light, index) => {
+                      const selected = sceneSnapshot.selectedLight?.layerId === layer.id && sceneSnapshot.selectedLight.lightIndex === index;
+                      return (
+                        <div key={`light-${index}`} className={`flex min-h-8 items-center gap-1 border border-transparent px-1 pl-7 text-[9px] transition-colors ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}>
+                          <Lightbulb className="size-3" style={{ color: rgbaCss(light.color) }} />
+                          <Button type="button" variant="ghost" aria-pressed={selected} onClick={() => {
+                            engine.dispatch({ type: "light.selection.set", selection: { layerId: layer.id, lightIndex: index } });
+                            revealInspector();
+                          }} className="h-7 min-w-0 flex-1 justify-start rounded-none px-1 font-mono text-[9px] tracking-wide text-violet-100/60 uppercase hover:bg-transparent aria-pressed:text-blue-100">
+                            Light {index + 1} · {light.dimLightDistance * 5} ft
+                          </Button>
+                          <LayerIconButton label={`Delete light ${index + 1}`} onClick={() => engine.dispatch({ type: "light.remove", layerId: layer.id, lightIndex: index })}><Trash2 /></LayerIconButton>
+                        </div>
+                      );
+                    })}
                     {([
+                      ...layer.obstructionPolygons.map((polygon, index) => ({ polygon, index, collection: "wall" as const })),
                       ...layer.fogPolygons.map((polygon, index) => ({ polygon, index, collection: "fog" as const })),
                       ...layer.fogClearPolygons.map((polygon, index) => ({ polygon, index, collection: "clear" as const })),
                     ]).map(({ polygon, index, collection }) => {
@@ -320,7 +345,7 @@ export function WorkspacePanels({
                           key={`${collection}-${index}`}
                           className={`flex min-h-8 items-center gap-1 border border-transparent px-1 pl-7 text-[9px] text-violet-100/60 transition-colors [&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}
                         >
-                          {collection === "fog" ? <CloudFog className="size-3 text-fuchsia-200/65" /> : <Eraser className="size-3 text-sky-200/65" />}
+                          {collection === "fog" ? <CloudFog className="size-3 text-fuchsia-200/65" /> : collection === "clear" ? <Eraser className="size-3 text-sky-200/65" /> : <BrickWall className="size-3 text-amber-200/65" />}
                           <Button
                             type="button"
                             variant="ghost"
@@ -331,7 +356,7 @@ export function WorkspacePanels({
                             }}
                             className="h-7 min-w-0 flex-1 justify-start rounded-none px-1 font-mono text-[9px] tracking-wide text-violet-100/60 uppercase hover:bg-transparent aria-pressed:text-blue-100"
                           >
-                            <span className="truncate">{collection === "fog" ? "Fog" : "Clear"} {index + 1} · {polygon.vertices.length} points</span>
+                            <span className="truncate">{collection === "fog" ? "Fog" : collection === "clear" ? "Clear" : "Wall"} {index + 1} · {polygon.vertices.length} points</span>
                           </Button>
                           <LayerIconButton
                             label={polygon.visibleOnTable ? "Hide polygon on table" : "Show polygon on table"}
@@ -448,6 +473,87 @@ function AssetInspector({ engine, sceneSnapshot }: { readonly engine: SceneEngin
   );
 }
 
+function LightInspector({ engine, light, selection }: { readonly engine: SceneEngine; readonly light: SceneLight; readonly selection: LightSelection }) {
+  const [draft, setDraft] = useState(light);
+  const previewToken = useRef<PreviewToken | null>(null);
+  const beginPreview = () => {
+    if (previewToken.current) return;
+    const layer = engine.getCommittedSnapshot().scene.layers.find((candidate) => candidate.id === selection.layerId);
+    const current = layer?.type === "fog" ? layer.lightSources[selection.lightIndex] : undefined;
+    if (current) previewToken.current = engine.beginPreview({ type: "light.update", ...selection, light: current });
+  };
+  const update = (next: SceneLight) => {
+    beginPreview();
+    setDraft(next);
+    if (previewToken.current) engine.updatePreview(previewToken.current, { type: "light.update", ...selection, light: next });
+  };
+  const commit = () => {
+    if (!previewToken.current) return;
+    engine.commitPreview(previewToken.current);
+    previewToken.current = null;
+  };
+  useEffect(() => () => {
+    if (previewToken.current) engine.cancelPreview(previewToken.current);
+  }, [engine]);
+  const hsl = rgbToHsl(draft.color);
+  const updateHsl = (next: Partial<typeof hsl>) => {
+    update({ ...draft, color: { ...draft.color, ...hslToRgb({ ...hsl, ...next }) } });
+  };
+  return (
+    <div className="space-y-3 p-2.5">
+      <LightRadiusControl light={draft} color={rgbaCss(draft.color)} onStart={beginPreview} onCommit={commit} onChange={(brightLightDistance, dimLightDistance) => update({ ...draft, brightLightDistance, dimLightDistance })} />
+      <fieldset className="space-y-2 border border-violet-300/12 bg-black/15 p-2">
+        <legend className="px-1 font-mono text-[9px] tracking-[0.12em] text-violet-100/55 uppercase">Color · {rgbHex(draft.color).toUpperCase()}</legend>
+        <ColorSlider label="Hue" value={hsl.h} min={0} max={360} background="linear-gradient(to right,#f43f5e,#f59e0b,#eab308,#22c55e,#06b6d4,#3b82f6,#8b5cf6,#ec4899,#f43f5e)" onStart={beginPreview} onCommit={commit} onChange={(h) => updateHsl({ h })} />
+        <ColorSlider label="Saturation" value={hsl.s} min={0} max={100} background={`linear-gradient(to right,hsl(${hsl.h} 0% ${hsl.l}%),hsl(${hsl.h} 100% ${hsl.l}%))`} onStart={beginPreview} onCommit={commit} onChange={(s) => updateHsl({ s })} />
+        <ColorSlider label="Lightness" value={hsl.l} min={0} max={100} background={`linear-gradient(to right,#000,hsl(${hsl.h} ${hsl.s}% 50%),#fff)`} onStart={beginPreview} onCommit={commit} onChange={(l) => updateHsl({ l })} />
+        <ColorSlider label="Opacity" value={draft.color.a / 255 * 100} min={0} max={100} background={`linear-gradient(to right,transparent,${rgbHex(draft.color)})`} onStart={beginPreview} onCommit={commit} onChange={(a) => update({ ...draft, color: { ...draft.color, a: Math.round(a / 100 * 255) } })} />
+      </fieldset>
+      <div className="grid grid-cols-3 gap-1">
+        {LIGHT_PRESETS.map((preset) => <Button key={preset.name} type="button" variant="outline" onClick={() => { beginPreview(); update({ ...draft, ...preset.light }); queueMicrotask(commit); }} className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 px-1 text-[9px] text-violet-100/60">{preset.name}</Button>)}
+      </div>
+      <Button type="button" variant="destructive" onClick={() => engine.dispatch({ type: "light.remove", layerId: selection.layerId, lightIndex: selection.lightIndex })} className="h-8 w-full rounded-none text-[10px]"><Trash2 /> Delete light</Button>
+    </div>
+  );
+}
+
+function LightRadiusControl({ color, light, onChange, onCommit, onStart }: {
+  readonly color: string;
+  readonly light: SceneLight;
+  readonly onChange: (bright: number, dim: number) => void;
+  readonly onCommit: () => void;
+  readonly onStart: () => void;
+}) {
+  const maximum = 24;
+  const bright = Math.min(maximum, light.brightLightDistance);
+  const dim = Math.min(maximum, light.dimLightDistance);
+  const rangeClass = "pointer-events-none absolute inset-0 h-8 w-full appearance-none bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/80 [&::-webkit-slider-thumb]:bg-[#100d20] [&::-webkit-slider-thumb]:shadow-[0_0_0_1px_rgba(0,0,0,0.8)]";
+  return (
+    <fieldset className="space-y-1">
+      <legend className="font-mono text-[9px] tracking-[0.12em] text-violet-100/55 uppercase">Light radius</legend>
+      <div className="flex justify-between font-mono text-[9px] text-violet-100/50"><span>Bright {Math.round(light.brightLightDistance * 5)} ft</span><span>Dim {Math.round(light.dimLightDistance * 5)} ft</span></div>
+      <div className="relative h-8">
+        <div className="absolute top-3 right-0 left-0 h-2 border border-white/10" style={{ background: `linear-gradient(to right, ${color} 0%, ${color} ${bright / maximum * 100}%, color-mix(in srgb, ${color} 45%, transparent) ${bright / maximum * 100}%, transparent ${dim / maximum * 100}%)` }} />
+        <input aria-label="Bright light radius" type="range" min="0" max={maximum} step="0.1" value={bright} onPointerDown={onStart} onPointerUp={onCommit} onKeyDown={onStart} onKeyUp={onCommit} onChange={(event) => onChange(Math.min(Number(event.currentTarget.value), light.dimLightDistance), light.dimLightDistance)} className={`${rangeClass} z-20`} />
+        <input aria-label="Dim light radius" type="range" min="0" max={maximum} step="0.1" value={dim} onPointerDown={onStart} onPointerUp={onCommit} onKeyDown={onStart} onKeyUp={onCommit} onChange={(event) => onChange(light.brightLightDistance, Math.max(Number(event.currentTarget.value), light.brightLightDistance))} className={`${rangeClass} z-10`} />
+      </div>
+    </fieldset>
+  );
+}
+
+function ColorSlider({ background, label, max, min, onChange, onCommit, onStart, value }: {
+  readonly background: string;
+  readonly label: string;
+  readonly max: number;
+  readonly min: number;
+  readonly onChange: (value: number) => void;
+  readonly onCommit: () => void;
+  readonly onStart: () => void;
+  readonly value: number;
+}) {
+  return <label className="grid gap-1 font-mono text-[8px] tracking-[0.08em] text-violet-100/45 uppercase">{label}<input type="range" min={min} max={max} step="1" value={value} onPointerDown={onStart} onPointerUp={onCommit} onKeyDown={onStart} onKeyUp={onCommit} onChange={(event) => onChange(Number(event.currentTarget.value))} className="h-3 w-full cursor-ew-resize appearance-none border border-white/10 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-[#100d20]" style={{ background }} /></label>;
+}
+
 function FogPolygonInspector({
   engine,
   selection,
@@ -460,12 +566,12 @@ function FogPolygonInspector({
   return (
     <div className="p-2.5">
       <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-        <Metric label="Type" value={selection.collection === "fog" ? "Conceal" : "Clear"} />
+        <Metric label="Type" value={selection.collection === "fog" ? "Conceal" : selection.collection === "clear" ? "Clear" : "Light wall"} />
         <Metric label="Vertices" value={String(polygon.vertices.length)} />
         <Metric label="Table" value={polygon.visibleOnTable ? "Visible" : "Editor only"} />
       </div>
       <Separator className="my-2 bg-violet-300/10" />
-      <p className="text-[10px] leading-5 text-violet-100/60">Drag a vertex ring to reshape this polygon, or drag inside it to move the whole shape. Click its outline or layer entry to select it.</p>
+      <p className="text-[10px] leading-5 text-violet-100/60">Drag a vertex ring to reshape this {selection.collection === "wall" ? "wall" : "polygon"}, or drag {selection.collection === "wall" ? "its line" : "inside it"} to move the whole shape. Click its outline or layer entry to select it.</p>
       <Separator className="my-2 bg-violet-300/10" />
       <div className="grid gap-1.5">
         <Button
@@ -481,7 +587,7 @@ function FogPolygonInspector({
           onClick={() => engine.dispatch({ type: "fog.polygon.remove", ...selection })}
           className="h-8 rounded-none text-[10px]"
         >
-          <Trash2 /> Delete polygon
+          <Trash2 /> Delete {selection.collection === "wall" ? "wall" : "polygon"}
         </Button>
       </div>
     </div>
@@ -522,8 +628,49 @@ function SceneInspector() {
   return (
     <div className="p-2.5">
       <p className="text-[10px] leading-4 text-violet-100/60">
-        Select an image or fog polygon on the canvas or in the layer stack to inspect and edit it.
+        Select an image, light, wall, or fog polygon on the canvas or in the layer stack to inspect and edit it.
       </p>
     </div>
   );
+}
+
+const LIGHT_PRESETS = [
+  { name: "Torch", light: { brightLightDistance: 4, dimLightDistance: 8, color: { r: 255, g: 255, b: 255, a: 255 } } },
+  { name: "Lantern", light: { brightLightDistance: 6, dimLightDistance: 12, color: { r: 255, g: 255, b: 255, a: 255 } } },
+  { name: "Flame", light: { brightLightDistance: 2, dimLightDistance: 4, color: { r: 255, g: 167, b: 117, a: 255 } } },
+  { name: "Dancing", light: { brightLightDistance: 0, dimLightDistance: 2, color: { r: 190, g: 190, b: 255, a: 255 } } },
+  { name: "Daylight", light: { brightLightDistance: 12, dimLightDistance: 24, color: { r: 200, g: 240, b: 255, a: 255 } } },
+] as const;
+
+function rgbHex(color: SceneLight["color"]): string {
+  return `#${[color.r, color.g, color.b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function rgbaCss(color: SceneLight["color"]): string {
+  return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`;
+}
+
+function rgbToHsl(color: SceneLight["color"]): { readonly h: number; readonly s: number; readonly l: number } {
+  const [r, g, b] = [color.r, color.g, color.b].map((value) => value / 255);
+  const maximum = Math.max(r, g, b);
+  const minimum = Math.min(r, g, b);
+  const delta = maximum - minimum;
+  const l = (maximum + minimum) / 2;
+  const h = delta === 0 ? 0 : maximum === r ? 60 * (((g - b) / delta) % 6) : maximum === g ? 60 * ((b - r) / delta + 2) : 60 * ((r - g) / delta + 4);
+  return {
+    h: Math.round(h < 0 ? h + 360 : h),
+    s: Math.round(delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1)) * 100),
+    l: Math.round(l * 100),
+  };
+}
+
+function hslToRgb({ h, l, s }: { readonly h: number; readonly s: number; readonly l: number }) {
+  const saturation = s / 100;
+  const lightness = l / 100;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const section = h / 60;
+  const x = chroma * (1 - Math.abs(section % 2 - 1));
+  const [r, g, b] = section < 1 ? [chroma, x, 0] : section < 2 ? [x, chroma, 0] : section < 3 ? [0, chroma, x] : section < 4 ? [0, x, chroma] : section < 5 ? [x, 0, chroma] : [chroma, 0, x];
+  const match = lightness - chroma / 2;
+  return { r: Math.round((r + match) * 255), g: Math.round((g + match) * 255), b: Math.round((b + match) * 255) };
 }

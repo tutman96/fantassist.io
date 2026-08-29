@@ -284,6 +284,10 @@ function fogKey(snapshot: SceneEngineSnapshot): string {
     ...layer.fogPolygons.flatMap((polygon) => [polygon.visibleOnTable ? "1" : "0", ...polygon.vertices.flatMap((vertex) => [vertex.x, vertex.y])]),
     "/",
     ...layer.fogClearPolygons.flatMap((polygon) => [polygon.visibleOnTable ? "1" : "0", ...polygon.vertices.flatMap((vertex) => [vertex.x, vertex.y])]),
+    "/walls/",
+    ...layer.obstructionPolygons.flatMap((polygon) => [polygon.visibleOnTable ? "1" : "0", ...polygon.vertices.flatMap((vertex) => [vertex.x, vertex.y])]),
+    "/lights/",
+    layer.lightSources.length,
     ] : []),
   ].join(":");
 }

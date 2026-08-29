@@ -86,3 +86,27 @@ test("fog feathering spreads outward without weakening opaque coverage", { timeo
   assert.ok(falloff.every((channel, index) => channel > 0 && channel < source[index]));
   assert.deepEqual(opaque, [0, 0, 0]);
 });
+
+test("colored lights reveal fog and visible walls occlude them", { timeout: 60_000 }, async () => {
+  const base = createSampleSceneDocument();
+  const fogLayer = base.layers.find((layer) => layer.type === "fog");
+  assert.ok(fogLayer);
+  const makeScene = (wallVisible: boolean) => freezeSceneDocument({
+    ...base,
+    layers: base.layers.map((layer) => layer.id === fogLayer.id ? {
+      ...fogLayer,
+      fogPolygons: [{ vertices: [{ x: 0, y: 0 }, { x: 44, y: 0 }, { x: 44, y: 25 }, { x: 0, y: 25 }], visibleOnTable: true }],
+      fogClearPolygons: [],
+      lightSources: [{ position: { x: 10, y: 10 }, brightLightDistance: 3, dimLightDistance: 12, color: { r: 255, g: 80, b: 40, a: 255 } }],
+      obstructionPolygons: [{ vertices: [{ x: 12, y: 0 }, { x: 12, y: 20 }], visibleOnTable: wallVisible }],
+    } : layer),
+  });
+  const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
+  const shadowed = await renderHeadlessScene({ ...options, scene: makeScene(true) });
+  const unshadowed = await renderHeadlessScene({ ...options, scene: makeScene(false) });
+  const sample = (pixels: Uint8Array, x: number, y: number) => [...pixels.slice((y * 256 + x) * 4, (y * 256 + x) * 4 + 3)];
+  const behindWall = sample(shadowed.pixels, 88, 59);
+  const withoutWall = sample(unshadowed.pixels, 88, 59);
+  assert.ok(withoutWall[0] > behindWall[0], `${withoutWall} should be brighter than ${behindWall}`);
+  assert.ok(withoutWall[0] - behindWall[0] > withoutWall[2] - behindWall[2], "the revealed contribution should retain its red color");
+});

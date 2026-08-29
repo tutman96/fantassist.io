@@ -19,7 +19,7 @@ test("scene layer operations preserve intermingled fog composition barriers", ()
     ...base,
     layers: [
       { id: "bottom", name: "Bottom", type: "assets", visible: true, assetIds: [base.assets[0].id] },
-      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [] },
+      { id: "fog", name: "Fog", type: "fog", visible: true, assetIds: [], fogPolygons: [], fogClearPolygons: [], obstructionPolygons: [], lightSources: [] },
       { id: "hidden", name: "Hidden", type: "assets", visible: false, assetIds: [] },
       { id: "top", name: "Top", type: "assets", visible: true, assetIds: [] },
     ],

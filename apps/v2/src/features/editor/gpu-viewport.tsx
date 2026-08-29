@@ -102,7 +102,7 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
             tableSnapshot={tableSnapshot}
             tool={tool}
             onToolChange={(nextTool) => {
-              if ((nextTool === "fog" || nextTool === "fog-clear") && !sceneSnapshot.scene.layers.some((layer) => layer.type === "fog")) {
+              if ((nextTool === "fog" || nextTool === "fog-clear" || nextTool === "wall" || nextTool === "light") && !sceneSnapshot.scene.layers.some((layer) => layer.type === "fog")) {
                 ensureFogLayer(engine);
               }
               setTool(nextTool);

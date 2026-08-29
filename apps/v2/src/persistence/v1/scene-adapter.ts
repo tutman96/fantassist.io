@@ -27,6 +27,13 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
       assetIds: [] as const,
       fogPolygons: projectPolygons(fogLayer?.fogPolygons ?? []),
       fogClearPolygons: projectPolygons(fogLayer?.fogClearPolygons ?? []),
+      obstructionPolygons: projectPolygons(fogLayer?.obstructionPolygons ?? []),
+      lightSources: (fogLayer?.lightSources ?? []).map((light) => ({
+        position: { ...(light.position ?? { x: 0, y: 0 }) },
+        brightLightDistance: light.brightLightDistance,
+        dimLightDistance: light.dimLightDistance,
+        color: { ...(light.color ?? { r: 255, g: 255, b: 255, a: 255 }) },
+      })),
     };
   });
   const assets = scene.layers.flatMap((layer) => {
@@ -128,6 +135,13 @@ export function patchV1SceneTransforms(
             visible: domainLayer.visible,
             fogPolygons: persistPolygons(domainLayer.fogPolygons, 0),
             fogClearPolygons: persistPolygons(domainLayer.fogClearPolygons, 1),
+            obstructionPolygons: persistPolygons(domainLayer.obstructionPolygons, 2),
+            lightSources: domainLayer.lightSources.map((light) => ({
+              position: { ...light.position },
+              brightLightDistance: light.brightLightDistance,
+              dimLightDistance: light.dimLightDistance,
+              color: { ...light.color },
+            })),
           },
         };
       }
@@ -167,7 +181,7 @@ function projectPolygons(polygons: readonly import("./types").V1Polygon[]) {
 
 function persistPolygons(
   polygons: readonly import("@/engine/scene-document").FogPolygon[],
-  type: 0 | 1
+  type: 0 | 1 | 2
 ) {
   return polygons.map((polygon) => ({
     type,

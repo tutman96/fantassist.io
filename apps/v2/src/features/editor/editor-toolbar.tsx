@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CloudFog, Eraser, Grid3X3, LocateFixed, Minus, Monitor, MousePointer2, Plus, Redo2, RotateCcw, Undo2, X } from "lucide-react";
+import { BrickWall, Check, CloudFog, Eraser, Grid3X3, Lightbulb, LocateFixed, Minus, Monitor, MousePointer2, Plus, Redo2, RotateCcw, Undo2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -29,14 +29,7 @@ export function EditorToolbar({
   readonly onToolChange: (tool: EditorTool) => void;
 }) {
   const zoomAtCenter = (factor: number) => {
-    if (tool === "assets") {
-      session.zoomAt(
-        { x: tableSnapshot.viewportCss.width / 2, y: tableSnapshot.viewportCss.height / 2 },
-        factor
-      );
-      return;
-    }
-    if (tool === "fog" || tool === "fog-clear") {
+    if (tool !== "table") {
       session.zoomAt(
         { x: tableSnapshot.viewportCss.width / 2, y: tableSnapshot.viewportCss.height / 2 },
         factor
@@ -62,14 +55,16 @@ export function EditorToolbar({
         <ToolToggle label="Edit assets" pressed={tool === "assets"} onPressedChange={() => onToolChange("assets")}><MousePointer2 /></ToolToggle>
         <ToolToggle label="Draw fog" pressed={tool === "fog"} onPressedChange={() => onToolChange("fog")}><CloudFog /></ToolToggle>
         <ToolToggle label="Clear fog" pressed={tool === "fog-clear"} onPressedChange={() => onToolChange("fog-clear")}><Eraser /></ToolToggle>
+        <ToolToggle label="Draw wall" pressed={tool === "wall"} onPressedChange={() => onToolChange("wall")}><BrickWall /></ToolToggle>
+        <ToolToggle label="Place light" pressed={tool === "light"} onPressedChange={() => onToolChange("light")}><Lightbulb /></ToolToggle>
         <ToolToggle label="Edit display view" pressed={tool === "table"} onPressedChange={() => onToolChange("table")}><Monitor /></ToolToggle>
       </ButtonGroup>
       {sceneSnapshot.fogDrawingActive ? (
         <>
           <ToolbarSeparator />
           <ButtonGroup className="sm:flex-col [&_[data-slot=tooltip-trigger]]:rounded-none!">
-            <ToolButton label="Finish fog polygon" onClick={() => engine.commitActiveFogPolygon()}><Check /></ToolButton>
-            <ToolButton label="Cancel fog polygon" onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
+            <ToolButton label={tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => engine.commitActiveFogPolygon()}><Check /></ToolButton>
+            <ToolButton label={tool === "wall" ? "Cancel wall" : "Cancel fog polygon"} onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
           </ButtonGroup>
         </>
       ) : null}
