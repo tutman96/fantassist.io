@@ -1,3 +1,5 @@
+import { inferred_source_radius, physical_light_attenuation } from "./light-physics.wgsl";
+
 struct Segment { a: vec2f, b: vec2f }
 
 struct Params {
@@ -53,9 +55,10 @@ fn capsule_visibility(point: vec2f, segment: Segment) -> f32 {
     );
   }
   let half_width = 1.0 / 64.0;
-  let penumbra = 0.04;
+  let penumbra = inferred_source_radius(params.bright_distance);
   let antialias = 1.0 / params.pixels_per_grid;
-  return smoothstep(max(0.0, half_width - antialias), half_width + penumbra + antialias, distance_between_segments);
+  if (distance_between_segments <= half_width) { return 0.0; }
+  return smoothstep(half_width, half_width + penumbra + antialias, distance_between_segments);
 }
 
 fn srgb_to_linear(value: vec3f) -> vec3f {
@@ -76,15 +79,9 @@ fn srgb_to_linear(value: vec3f) -> vec3f {
     if (visibility <= 0.0) { return vec4f(0.0); }
   }
 
-  let bright = min(params.bright_distance, radius);
-  var attenuation: f32;
-  if (bright > 0.0 && light_distance <= bright) {
-    attenuation = mix(1.0, 0.7, light_distance / bright);
-  } else {
-    attenuation = 0.7 * (1.0 - smoothstep(bright, radius, light_distance));
-  }
+  let attenuation = physical_light_attenuation(light_distance, params.bright_distance, params.dim_distance);
   let linear_color = srgb_to_linear(clamp(params.color.rgb, vec3f(0.0), vec3f(1.0)));
   let energy = clamp(params.energy, 0.0, 1.0);
-  let emitted = energy * pow(attenuation, mix(2.2, 1.0, energy));
+  let emitted = energy * attenuation;
   return vec4f(linear_color * emitted * visibility, emitted * visibility);
 }

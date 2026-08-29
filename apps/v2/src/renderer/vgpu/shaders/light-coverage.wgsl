@@ -1,3 +1,5 @@
+import { physical_light_attenuation } from "./light-physics.wgsl";
+
 struct Params {
   target_size: vec2f,
   grid_to_target_offset: vec2f,
@@ -17,15 +19,7 @@ struct Params {
 
 @fragment fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
   let world = uv * params.target_size / params.pixels_per_grid + params.target_to_grid_offset;
-  let radius = max(params.bright_distance, params.dim_distance);
   let light_distance = distance(world, params.light_position);
-  if (radius <= 0.0 || light_distance >= radius) { return vec4f(0.0); }
-  let bright = min(params.bright_distance, radius);
-  var attenuation: f32;
-  if (bright > 0.0 && light_distance <= bright) {
-    attenuation = mix(1.0, 0.7, light_distance / bright);
-  } else {
-    attenuation = 0.7 * (1.0 - smoothstep(bright, radius, light_distance));
-  }
+  let attenuation = physical_light_attenuation(light_distance, params.bright_distance, params.dim_distance);
   return vec4f(attenuation);
 }

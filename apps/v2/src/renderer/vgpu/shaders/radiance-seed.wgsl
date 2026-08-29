@@ -1,3 +1,5 @@
+import { physical_light_attenuation } from "./light-physics.wgsl";
+
 struct Segment { a: vec2f, b: vec2f }
 
 struct Light {
@@ -55,14 +57,8 @@ fn blocked(origin: vec2f, point: vec2f) -> bool {
 }
 
 fn attenuation(light: Light, point: vec2f) -> f32 {
-  let radius = max(light.bright_distance, light.dim_distance);
   let light_distance = distance(light.position, point);
-  if (radius <= 0.0 || light_distance >= radius) { return 0.0; }
-  let bright = min(light.bright_distance, radius);
-  if (bright > 0.0 && light_distance <= bright) {
-    return mix(1.0, 0.7, light_distance / bright);
-  }
-  return 0.7 * (1.0 - smoothstep(bright, radius, light_distance));
+  return physical_light_attenuation(light_distance, light.bright_distance, light.dim_distance);
 }
 
 fn srgb_to_linear(value: vec3f) -> vec3f {
@@ -79,7 +75,22 @@ fn direct_radiance(point: vec2f) -> vec3f {
     let light_attenuation = attenuation(light, point);
     if (light_attenuation <= 0.0 || blocked(light.position, point)) { continue; }
     let linear_color = srgb_to_linear(clamp(light.color.rgb, vec3f(0.0), vec3f(1.0)));
-    radiance += linear_color * energy * pow(light_attenuation, mix(2.2, 1.0, energy));
+    radiance += linear_color * energy * light_attenuation;
+  }
+  return radiance;
+}
+
+fn wall_radiance(point: vec2f, normal: vec2f) -> vec3f {
+  var radiance = vec3f(0.0);
+  for (var index = 0u; index < params.light_count; index++) {
+    let light = lights[index];
+    let energy = clamp(light.color.a, 0.0, 1.0);
+    let light_attenuation = attenuation(light, point);
+    if (light_attenuation <= 0.0 || blocked(light.position, point)) { continue; }
+    let to_light = light.position - point;
+    let incident = max(dot(normal, to_light / max(length(to_light), 0.0001)), 0.0);
+    let linear_color = srgb_to_linear(clamp(light.color.rgb, vec3f(0.0), vec3f(1.0)));
+    radiance += linear_color * energy * light_attenuation * incident;
   }
   return radiance;
 }
@@ -106,8 +117,8 @@ fn direct_radiance(point: vec2f) -> vec3f {
   let minus_point = world - normal * wall_radius * 1.25;
   var plus_radiance = vec3f(0.0);
   var minus_radiance = vec3f(0.0);
-  plus_radiance = direct_radiance(plus_point);
-  minus_radiance = direct_radiance(minus_point);
+  plus_radiance = wall_radiance(plus_point, normal);
+  minus_radiance = wall_radiance(minus_point, -normal);
   let plus_energy = dot(plus_radiance, vec3f(0.2126, 0.7152, 0.0722));
   let minus_energy = dot(minus_radiance, vec3f(0.2126, 0.7152, 0.0722));
   let lit_normal = select(-normal, normal, plus_energy >= minus_energy);

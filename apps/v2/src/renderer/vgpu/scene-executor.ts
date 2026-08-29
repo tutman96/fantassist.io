@@ -8,8 +8,8 @@ import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
 import { compileSceneLayerOperations, FOG_EDGE_SPREAD_GRID } from "../render-plan";
 import type { RenderPlan } from "../render-plan";
-import { compileProjection, projectionUniforms } from "../projection";
-import type { RenderView } from "../projection";
+import { compileProjection, gridToTargetPx, projectionUniforms } from "../projection";
+import type { CompiledProjection, RenderView } from "../projection";
 import type { SceneShaders } from "./scene-shaders";
 
 export interface SceneExecutor {
@@ -40,6 +40,7 @@ interface FogDrawEntry {
   readonly lightGuides: readonly Effect[];
   readonly wallStorage: StorageBuffer & { destroy(): void };
   readonly lightStorage: StorageBuffer & { destroy(): void };
+  reachabilityTexture: Texture;
   readonly wallSegmentCount: number;
   readonly geometries: readonly Geometry[];
 }
@@ -47,7 +48,6 @@ interface FogDrawEntry {
 const RADIANCE_SCALE = 4;
 const MAX_RADIANCE_CASCADES = 6;
 const MAX_JFA_STEPS = 16;
-const INDIRECT_LIGHTING_ENABLED = false;
 
 function radianceConfig(size: readonly [number, number], view: RenderView) {
   const maxWidth = Math.max(1, Math.ceil(size[0] / RADIANCE_SCALE));
@@ -75,6 +75,109 @@ function radianceLightData(lights: readonly SceneLight[]): Float32Array<ArrayBuf
     light.color.b / 255,
     light.color.a / 255,
   ]));
+}
+
+type FogLayer = Extract<SceneEngineSnapshot["scene"]["layers"][number], { readonly type: "fog" }>;
+
+function createReachabilityTexture(gpu: Gpu, size: readonly [number, number], label: string): Texture {
+  return gpu.device.createTexture({
+    size,
+    format: "rgba8unorm",
+    usage: ["copy_dst", "texture_binding"],
+    label,
+  });
+}
+
+function uploadReachability(gpu: Gpu, texture: Texture, size: readonly [number, number], layer: FogLayer, projection: CompiledProjection): void {
+  const [width, height] = size;
+  const blocked = new Uint8Array(width * height);
+  const segmentData = wallSegmentVertices(layer.obstructionPolygons);
+  const wallRadius = Math.max(1.5, projection.pixelsPerGrid / 64);
+  for (let index = 0; index < segmentData.length; index += 4) {
+    const start = gridToTargetPx({ x: segmentData[index], y: segmentData[index + 1] }, projection);
+    const end = gridToTargetPx({ x: segmentData[index + 2], y: segmentData[index + 3] }, projection);
+    const minimumX = Math.max(0, Math.floor(Math.min(start.x, end.x) - wallRadius));
+    const maximumX = Math.min(width - 1, Math.ceil(Math.max(start.x, end.x) + wallRadius));
+    const minimumY = Math.max(0, Math.floor(Math.min(start.y, end.y) - wallRadius));
+    const maximumY = Math.min(height - 1, Math.ceil(Math.max(start.y, end.y) + wallRadius));
+    const edgeX = end.x - start.x;
+    const edgeY = end.y - start.y;
+    const edgeLengthSquared = Math.max(edgeX * edgeX + edgeY * edgeY, 0.000001);
+    for (let y = minimumY; y <= maximumY; y++) {
+      for (let x = minimumX; x <= maximumX; x++) {
+        const amount = Math.max(0, Math.min(1, ((x + 0.5 - start.x) * edgeX + (y + 0.5 - start.y) * edgeY) / edgeLengthSquared));
+        const deltaX = x + 0.5 - (start.x + edgeX * amount);
+        const deltaY = y + 0.5 - (start.y + edgeY * amount);
+        if (deltaX * deltaX + deltaY * deltaY <= wallRadius * wallRadius) blocked[y * width + x] = 1;
+      }
+    }
+  }
+
+  const transmission = new Float32Array(width * height);
+  const queue = new Int32Array(width * height);
+  const neighbours = new Int32Array(4);
+  for (const light of layer.lightSources) {
+    if (light.color.a === 0) continue;
+    const position = gridToTargetPx(light.position, projection);
+    const centerX = Math.max(0, Math.min(width - 1, Math.floor(position.x)));
+    const centerY = Math.max(0, Math.min(height - 1, Math.floor(position.y)));
+    let seed = centerY * width + centerX;
+    if (blocked[seed]) {
+      let found = false;
+      for (let radius = 1; radius <= 3 && !found; radius++) {
+        for (let y = Math.max(0, centerY - radius); y <= Math.min(height - 1, centerY + radius) && !found; y++) {
+          for (let x = Math.max(0, centerX - radius); x <= Math.min(width - 1, centerX + radius); x++) {
+            const candidate = y * width + x;
+            if (!blocked[candidate]) {
+              seed = candidate;
+              found = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!found) continue;
+    }
+    const seedX = seed % width;
+    const seedY = Math.floor(seed / width);
+    const maximumDistance = Math.ceil(Math.max(light.brightLightDistance, light.dimLightDistance) * projection.pixelsPerGrid);
+    const distance = new Int32Array(width * height);
+    distance.fill(-1);
+    distance[seed] = 0;
+    let readIndex = 0;
+    let writeIndex = 0;
+    queue[writeIndex++] = seed;
+    while (readIndex < writeIndex) {
+      const current = queue[readIndex++];
+      const currentDistance = distance[current];
+      const x = current % width;
+      const y = Math.floor(current / width);
+      const unobstructedDistance = Math.abs(x - seedX) + Math.abs(y - seedY);
+      const detourGrid = Math.max(0, currentDistance - unobstructedDistance) / projection.pixelsPerGrid;
+      transmission[current] = Math.max(transmission[current], Math.exp(-1.5 * detourGrid));
+      if (currentDistance >= maximumDistance) continue;
+      neighbours[0] = x > 0 ? current - 1 : -1;
+      neighbours[1] = x + 1 < width ? current + 1 : -1;
+      neighbours[2] = y > 0 ? current - width : -1;
+      neighbours[3] = y + 1 < height ? current + width : -1;
+      for (const neighbour of neighbours) {
+        if (neighbour < 0 || blocked[neighbour] || distance[neighbour] >= 0) continue;
+        distance[neighbour] = currentDistance + 1;
+        queue[writeIndex++] = neighbour;
+      }
+    }
+  }
+  const pixels = new Uint8Array(width * height * 4);
+  for (let index = 0; index < transmission.length; index++) {
+    const value = Math.round(transmission[index] * 255);
+    pixels.set([value, value, value, 255], index * 4);
+  }
+  gpu.gpu.queue.writeTexture(
+    { texture: texture.gpu },
+    pixels,
+    { bytesPerRow: width * 4, rowsPerImage: height },
+    [width, height, 1]
+  );
 }
 
 export function createSceneExecutor(
@@ -262,6 +365,7 @@ export function createSceneExecutor(
       const lightData = radianceLightData(layer.lightSources);
       const lightStorage = storage(gpu, Math.max(32, lightData.byteLength)) as StorageBuffer & { destroy(): void };
       if (lightData.byteLength > 0) lightStorage.write(lightData);
+      const reachabilityTexture = createReachabilityTexture(gpu, radiance.field, `radiance-reachability:${layer.id}`);
       const lightEffects = layer.lightSources.map((light, index) => effect(gpu, shaders.lightAccumulation, {
         label: `light:${layer.id}:${index}`,
         blend: "additive",
@@ -314,6 +418,7 @@ export function createSceneExecutor(
         lightGuides,
         wallStorage,
         lightStorage,
+        reachabilityTexture,
         wallSegmentCount: segmentData.length / 4,
         geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry, wallGuideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
       }];
@@ -323,6 +428,7 @@ export function createSceneExecutor(
   let fogEntries = createFogEntries(initialSnapshot);
   const emptyWallStorage = storage(gpu, 16);
   const emptyLightStorage = storage(gpu, 32);
+  let emptyReachabilityTexture = createReachabilityTexture(gpu, radiance.field, "empty-radiance-reachability");
   const radianceSpatialParams = () => projectionUniforms(compileProjection(
     { kind: "output", table: view.table, display: view.display },
     { width: radiance.field[0], height: radiance.field[1] }
@@ -364,7 +470,7 @@ export function createSceneExecutor(
         pixels_per_grid: radianceSpatialParams().pixels_per_grid,
         segment_count: 0,
         light_count: 0,
-        bounce_gain: 0.6,
+        bounce_gain: 1,
         floor_gain: 0.035,
       },
     },
@@ -387,7 +493,7 @@ export function createSceneExecutor(
   const radianceResolve = effect(gpu, shaders.radianceResolve, { set: { cascade_tex: radianceCascades[0], field_size: radiance.field } });
   const fogComposite = effect(gpu, shaders.fogComposite, {
     label: "fog-composite",
-    set: { scene: sceneA, fog_mask: featheredFogTarget, light: lightTarget, light_coverage: lightCoverageTarget, indirect_light: indirectLightTarget, texture_sampler: linearSampler, params: fogCompositeParams(0) },
+    set: { scene: sceneA, fog_mask: featheredFogTarget, light: lightTarget, light_coverage: lightCoverageTarget, indirect_light: indirectLightTarget, indirect_reachability: emptyReachabilityTexture, texture_sampler: linearSampler, params: fogCompositeParams(0) },
   });
   const sceneCopy = effect(gpu, shaders.sceneCopy, {
     label: "scene-layer-copy",
@@ -413,6 +519,12 @@ export function createSceneExecutor(
       radianceJfa[1].resize(next.field);
       radianceSdf.resize(next.field);
       indirectLightTarget.resize(next.field);
+      emptyReachabilityTexture.destroy();
+      emptyReachabilityTexture = createReachabilityTexture(gpu, next.field, "empty-radiance-reachability");
+      for (const entry of fogEntries) {
+        entry.reachabilityTexture.destroy();
+        entry.reachabilityTexture = createReachabilityTexture(gpu, next.field, `radiance-reachability:${entry.layerId}`);
+      }
     }
     if (next.atlas[0] !== radiance.atlas[0] || next.atlas[1] !== radiance.atlas[1]) {
       radianceCascades[0].resize(next.atlas);
@@ -487,6 +599,7 @@ export function createSceneExecutor(
       previousEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
       previousEntries.forEach((entry) => entry.wallStorage.destroy());
       previousEntries.forEach((entry) => entry.lightStorage.destroy());
+      previousEntries.forEach((entry) => entry.reachabilityTexture.destroy());
     },
     async render() {
       for (const entry of assetEntries) {
@@ -497,6 +610,10 @@ export function createSceneExecutor(
         const layer = snapshot.scene.layers.find((candidate) => candidate.id === entry.layerId);
         if (layer?.type !== "fog") continue;
         if (layer.lightSources.length > 0) entry.lightStorage.write(radianceLightData(layer.lightSources));
+        uploadReachability(gpu, entry.reachabilityTexture, radiance.field, layer, compileProjection(
+          { kind: "output", table: view.table, display: view.display },
+          { width: radiance.field[0], height: radiance.field[1] }
+        ));
         entry.fog?.set({ params: { ...spatialParams(), fog_value: 1 } });
         entry.clear?.set({ params: { ...spatialParams(), fog_value: 0 } });
         entry.fogGuide?.set({ params: { ...spatialParams(), color: [0.82, 0.2, 0.95, 0.9] } });
@@ -574,7 +691,10 @@ export function createSceneExecutor(
           currentFrame.pass({ target: lightTarget, clear: [0, 0, 0, 0] }, (pass) => {
             for (const light of entry?.lightEffects ?? []) pass.draw(light);
           });
-          const hasIndirect = Boolean(INDIRECT_LIGHTING_ENABLED && entry?.lightEffects.length && entry.wallSegmentCount);
+          currentFrame.pass({ target: lightCoverageTarget, clear: [0, 0, 0, 0] }, (pass) => {
+            for (const light of entry?.lightCoverageEffects ?? []) pass.draw(light);
+          });
+          const hasIndirect = Boolean(entry?.lightEffects.length && entry.wallSegmentCount);
           if (hasIndirect && entry) {
             const lowSpatial = radianceSpatialParams();
             radianceSeed.set({
@@ -620,6 +740,7 @@ export function createSceneExecutor(
           fogComposite.set({
             scene: activeScene,
             light: lightTarget,
+            indirect_reachability: entry?.reachabilityTexture ?? emptyReachabilityTexture,
             params: fogCompositeParams(entry?.lightEffects.length ? 1 : 0),
           });
           currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, fogComposite);

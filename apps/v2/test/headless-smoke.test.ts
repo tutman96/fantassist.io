@@ -185,3 +185,42 @@ test("direct light stays outside a closed wall loop", { timeout: 60_000 }, async
     `closed walls should contain direct light: ${litOutside} versus ${darkOutside}`,
   );
 });
+
+test("indirect light remains visible across reachable open space", { timeout: 60_000 }, async () => {
+  const base = createSampleSceneDocument();
+  const fogLayer = base.layers.find((layer) => layer.type === "fog");
+  assert.ok(fogLayer);
+  const scene = (wallVisible: boolean) => freezeSceneDocument({
+    ...base,
+    layers: base.layers.map((layer) => layer.id === fogLayer.id ? {
+      ...fogLayer,
+      fogPolygons: [],
+      fogClearPolygons: [],
+      lightSources: [{
+        position: { x: 10, y: 10 },
+        brightLightDistance: 2,
+        dimLightDistance: 7,
+        color: { r: 255, g: 96, b: 48, a: 255 },
+      }],
+      obstructionPolygons: [{
+        vertices: [{ x: 12, y: 0 }, { x: 12, y: 25 }],
+        visibleOnTable: wallVisible,
+      }],
+    } : layer),
+  });
+  const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
+  const bounced = await renderHeadlessScene({ ...options, scene: scene(true) });
+  const directOnly = await renderHeadlessScene({ ...options, scene: scene(false) });
+  const channelDelta = [0, 1, 2].map((channel) => {
+    let delta = 0;
+    for (let y = 20; y < 120; y++) {
+      for (let x = 10; x < 65; x++) {
+        const offset = (y * 256 + x) * 4 + channel;
+        delta += bounced.pixels[offset] - directOnly.pixels[offset];
+      }
+    }
+    return delta;
+  });
+  assert.ok(channelDelta.reduce((sum, channel) => sum + channel, 0) > 0, `reachable bounce should add indirect energy, got ${channelDelta}`);
+  assert.ok(channelDelta[0] > channelDelta[2], `warm reachable bounce should add more red than blue, got ${channelDelta}`);
+});
