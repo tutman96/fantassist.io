@@ -28,9 +28,9 @@ npm run render:performance
 - `src/app` owns Next.js routes and application lifecycle.
 - `src/features` owns React UI composition.
 - `src/components/ui` contains application-owned shadcn primitives.
-- `src/engine` owns scene state and mutations without React.
-- `src/renderer` owns render plans and GPU resources without React.
-- Client components may attach a renderer to a canvas but may not compose scene pixels.
+- `src/engine` owns framework-independent scene state and mutations.
+- `src/renderer` owns render plans, scene composition, and GPU resources.
+- Client components attach the renderer to a canvas and coordinate its lifecycle.
 
 The editor and table output use separate profiles of the same render plan. The browser canvas and `vgpu/node` headless target execute the same instanced asset, fog, obstruction-shadow, light-accumulation, composite, and present passes.
 
