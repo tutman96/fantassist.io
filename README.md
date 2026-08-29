@@ -53,6 +53,18 @@ Fantassist v2 uses an engine-owned scene model and a GPU renderer powered by [**
 - Request fullscreen on the selected display and keep the table awake with Screen Wake Lock.
 - Keep editor and table scene ownership separate so navigation does not unexpectedly change player output.
 
+## Beta
+
+Fantassist v2 is available through the beta program.
+
+1. Open [app.fantassist.io/beta](https://app.fantassist.io/beta).
+2. Select **Opt in to beta**.
+3. Return to Fantassist to load v2.
+
+Use the **Beta** link in the application header to review the active version. Select **Return to stable** from that page to leave the beta. Version changes reload other Fantassist tabs and close the active table window.
+
+The beta renderer requires a browser with WebGPU support. Current Chromium-based browsers are recommended.
+
 ## Powered by vgpu
 
 [vgpu](https://vgpu.sh) is the rendering foundation of Fantassist v2. It provides resource, shader, pipeline, target, and frame abstractions for the WebGPU renderer.
