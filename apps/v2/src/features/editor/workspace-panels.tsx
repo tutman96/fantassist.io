@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, ListPlus, Ruler, Trash2 } from "lucide-react";
+import { CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, ListPlus, MousePointer2, Trash2 } from "lucide-react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Input } from "@/components/ui/input";
@@ -67,9 +66,9 @@ export function WorkspacePanels({
         open={inspectorOpen}
         onOpenChange={setInspectorOpen}
         eyebrow="Inspector"
-        title={assetSelected ? asset.name : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : "Clear"} polygon ${fogSelection.polygonIndex + 1}` : "Scene details"}
-        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : sceneSnapshot.scene.id === "sample/scene" ? "Prototype" : "Persisted"}
-        icon={assetSelected ? <ImageIcon /> : selectedFogPolygon ? <CloudFog /> : <Ruler />}
+        title={assetSelected ? asset.name : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : "Clear"} polygon ${fogSelection.polygonIndex + 1}` : "Nothing selected"}
+        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
+        icon={assetSelected ? <ImageIcon /> : selectedFogPolygon ? <CloudFog /> : <MousePointer2 />}
         className="top-20 right-3 left-3 max-h-[55%] sm:pointer-events-auto sm:relative sm:top-auto sm:right-auto sm:left-auto sm:flex sm:max-h-[55%] sm:w-full sm:shrink-0 sm:flex-col"
         contentClassName="max-h-[calc(55svh-5rem)] sm:h-full sm:max-h-none"
       >
@@ -81,7 +80,7 @@ export function WorkspacePanels({
         ) : selectedFogPolygon && fogSelection ? (
           <FogPolygonInspector engine={engine} selection={fogSelection} polygon={selectedFogPolygon} />
         ) : (
-          <SceneInspector sceneSnapshot={sceneSnapshot} />
+          <SceneInspector />
         )}
       </EditorPanel>
 
@@ -518,16 +517,11 @@ function DeleteConfirmation({
   );
 }
 
-function SceneInspector({ sceneSnapshot }: { readonly sceneSnapshot: SceneEngineSnapshot }) {
+function SceneInspector() {
   return (
     <div className="p-2.5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="min-w-0 flex-1 text-[10px] text-violet-100/60">{sceneSnapshot.scene.id === "sample/scene" ? "Prototype scene · not persisted" : "Shared with stable Fantassist"}</p>
-        <Badge variant="outline" className="h-auto rounded-none border-violet-300/15 bg-violet-400/5 px-2 py-1 font-mono text-[9px] text-violet-100/65">{sceneSnapshot.scene.assets.length} image{sceneSnapshot.scene.assets.length === 1 ? "" : "s"}</Badge>
-      </div>
-      <Separator className="my-2 bg-violet-300/10" />
       <p className="text-[10px] leading-4 text-violet-100/60">
-        Select scene content to inspect its transform. Shared display calibration and screen selection live in the Open Table menu.
+        Select an image or fog polygon on the canvas or in the layer stack to inspect and edit it.
       </p>
     </div>
   );
