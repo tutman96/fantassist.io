@@ -15,6 +15,10 @@ export function tvSizePresetId(diagonalInches: number): string {
   return TV_SIZE_PRESETS.includes(diagonalInches as (typeof TV_SIZE_PRESETS)[number]) ? String(diagonalInches) : "custom";
 }
 
+export function tableLaunchTargetId(screenAccessAvailable: boolean, manualBypass: boolean, targetId: string): string {
+  return screenAccessAvailable && !manualBypass ? targetId : "default";
+}
+
 export function viewportIsBelowResolution(
   innerHeightCss: number,
   devicePixelRatio: number,

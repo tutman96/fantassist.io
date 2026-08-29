@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   resolutionPresetId,
+  tableLaunchTargetId,
   tvSizePresetId,
   viewportIsBelowResolution,
 } from "../src/features/table/table-display-options";
@@ -22,6 +23,12 @@ test("toolbar detection compares the physical viewport with configured resolutio
   assert.equal(viewportIsBelowResolution(1080, 2, 2160), false);
   assert.equal(viewportIsBelowResolution(1030, 2, 2160), true);
   assert.equal(viewportIsBelowResolution(1080, 1, 1080), false);
+});
+
+test("manual display choice bypasses a granted screen-management target", () => {
+  assert.equal(tableLaunchTargetId(true, false, "living-room-tv"), "living-room-tv");
+  assert.equal(tableLaunchTargetId(true, true, "living-room-tv"), "default");
+  assert.equal(tableLaunchTargetId(false, false, "living-room-tv"), "default");
 });
 
 test("screen details become directly launchable primary and secondary cards", () => {

@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator";
 import { derivePhysicalDisplay } from "@/engine/table-camera";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
-import { RESOLUTION_PRESETS, resolutionPresetId, TV_SIZE_PRESETS, tvSizePresetId } from "@/features/table/table-display-options";
+import { RESOLUTION_PRESETS, resolutionPresetId, tableLaunchTargetId, TV_SIZE_PRESETS, tvSizePresetId } from "@/features/table/table-display-options";
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { Metric, NumberSettingField } from "@/features/table/table-menu-parts";
 import { useScreenTargets } from "@/features/table/use-screen-targets";
@@ -35,6 +35,7 @@ function ConnectedTableMenu({ session, engine }: {
   const [customResolution, setCustomResolution] = useState(false);
   const [customSize, setCustomSize] = useState(false);
   const [displayChosen, setDisplayChosen] = useState(false);
+  const [manualBypass, setManualBypass] = useState(false);
   const [rememberedTargetId, setRememberedTargetId] = useState<string | null>(null);
   const table = sceneSnapshot.scene.table;
   const physical = derivePhysicalDisplay(snapshot.display);
@@ -120,12 +121,13 @@ function ConnectedTableMenu({ session, engine }: {
         ) : accessStatus === "available" && !displayChosen ? (
           <div className="py-3">
             <h3 className="font-heading text-lg text-amber-50">Select a display</h3>
-            <p className="mt-1 text-xs leading-5 text-violet-100/55">Secondary displays open in fullscreen mode. The primary display opens in a normal window.</p>
+            <p className="mt-1 text-xs leading-5 text-violet-100/55">Secondary displays open in fullscreen mode. Choose Other to bypass screen placement and configure a normal window.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {targets.map((target) => (
                 <DisplayCard key={target.id} target={target} selected={target.id === targetId} remembered={target.id === rememberedTargetId} onClick={() => {
                   setTargetId(target.id);
                   setRememberedTargetId(target.id);
+                  setManualBypass(false);
                   persist("table_display_target", target.id);
                   if (target.resolutionWidth && target.resolutionHeight) {
                     setCustomResolution(false);
@@ -134,11 +136,17 @@ function ConnectedTableMenu({ session, engine }: {
                   setDisplayChosen(true);
                 }} />
               ))}
+              <OtherDisplayCard onClick={() => {
+                setManualBypass(true);
+                setRememberedTargetId(null);
+                persist("table_display_target", "default");
+                setDisplayChosen(true);
+              }} />
             </div>
           </div>
         ) : (
           <>
-            {accessStatus === "available" ? (
+            {accessStatus === "available" && !manualBypass ? (
               <div className="py-3">
                 <button type="button" onClick={() => setDisplayChosen(false)} className="inline-flex items-center gap-1 font-mono text-[10px] text-violet-100/50 uppercase hover:text-violet-50"><ArrowLeft className="size-3" /> Change display</button>
                 <div className="mt-2 border border-blue-300/18 bg-blue-400/8 px-3 py-2">
@@ -149,8 +157,9 @@ function ConnectedTableMenu({ session, engine }: {
             ) : (
               <>
                 <div className="border-b border-violet-300/10 px-1 py-3">
+                  {accessStatus === "available" ? <button type="button" onClick={() => setDisplayChosen(false)} className="mb-2 inline-flex items-center gap-1 font-mono text-[10px] text-violet-100/50 uppercase hover:text-violet-50"><ArrowLeft className="size-3" /> Change display</button> : null}
                   <h3 className="font-heading text-lg text-amber-50">Configure a window manually</h3>
-                  <p className="mt-1 text-xs leading-5 text-violet-100/55">{status} Choose the display resolution and physical TV size, then move the window where you need it.</p>
+                  <p className="mt-1 text-xs leading-5 text-violet-100/55">{accessStatus === "available" ? "Screen placement is bypassed." : status} Choose the display resolution and physical TV size, then move the window where you need it.</p>
                 </div>
                 <DisplayOptionSection label="Resolution">
                   <div className="grid grid-cols-3 gap-1.5">
@@ -193,11 +202,11 @@ function ConnectedTableMenu({ session, engine }: {
               <NumberSettingField label="Grid scale" suffix="in" value={table.scale} min={0.1} max={10} step={0.1} onChange={(scale) => engine.dispatch({ type: "table.camera", table: { ...table, scale } })} />
             </div>
             <Button type="button" onClick={() => {
-              const launchTargetId = accessStatus === "available" ? targetId : "default";
+              const launchTargetId = tableLaunchTargetId(accessStatus === "available", manualBypass, targetId);
               persist("table_display_target", launchTargetId);
               openTable(launchTargetId);
             }} className="mt-1 h-11 w-full rounded-none border border-blue-300/25 bg-gradient-to-r from-blue-500/25 via-violet-500/25 to-fuchsia-500/20 text-sm text-amber-50 hover:border-blue-300/45 hover:from-blue-500/35 hover:to-fuchsia-500/30">
-              <Radio className="size-3.5 text-fuchsia-300" /> {accessStatus === "available" ? "Launch player table" : "Open in a new window"} <ExternalLink className="size-3 opacity-50" />
+              <Radio className="size-3.5 text-fuchsia-300" /> {accessStatus === "available" && !manualBypass ? "Launch player table" : "Open in a new window"} <ExternalLink className="size-3 opacity-50" />
             </Button>
           </>
         )}
@@ -233,6 +242,26 @@ function PresetButton({ detail, label, onClick, selected }: {
       <span>{label}</span>
       {detail ? <span className="font-mono text-[9px] text-violet-100/40">{detail}</span> : null}
     </Button>
+  );
+}
+
+function OtherDisplayCard({ onClick }: { readonly onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative min-h-28 border border-violet-300/12 bg-black/20 p-3.5 text-left transition hover:border-violet-200/30 hover:bg-violet-400/8"
+    >
+      <span className="flex items-start gap-2.5">
+        <span className="grid size-9 shrink-0 place-items-center border border-violet-300/18 bg-violet-400/8 text-violet-200"><ExternalLink className="size-4" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="font-heading text-base text-amber-50">Other</span>
+          <span className="mt-1.5 block font-mono text-[10px] leading-5 text-violet-100/50 uppercase">4K · 1080p · Custom</span>
+          <span className="block text-xs leading-5 text-violet-100/50">Open a normal window without automatic screen placement.</span>
+          <span className="mt-2 inline-flex items-center gap-1 font-mono text-[10px] tracking-wide text-violet-200/65 uppercase group-hover:text-violet-100">Configure manually <ArrowRight className="size-3" /></span>
+        </span>
+      </span>
+    </button>
   );
 }
 
