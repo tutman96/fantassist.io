@@ -15,6 +15,11 @@ struct Params {
   asset_rotation: f32,
   selected: f32,
   table_editing: f32,
+  interaction_point: vec2f,
+  snap_point: vec2f,
+  interaction_active: f32,
+  interaction_clear: f32,
+  snap_active: f32,
 }
 
 @group(0) @binding(0) var scene: texture_2d<f32>;
@@ -99,6 +104,19 @@ fn box_distance(point: vec2f, center: vec2f, half_size: vec2f) -> f32 {
   let stem_extent = select(0.0, 1.0, asset_local.y >= rotate_center.y && asset_local.y <= -asset_half.y);
   let rotate_stem = (1.0 - smoothstep(1.0 * css_scale, 2.0 * css_scale, abs(asset_local.x) * params.pixels_per_grid)) * stem_extent;
   color = mix(color, vec3f(0.008, 0.18, 0.72), max(selection_border, rotate_stem) * params.selected);
-  color = mix(color, vec3f(0.02, 0.72, 2.8), max(resize_handles, rotate_handle) * params.selected);
+  color = mix(color, vec3f(0.03, 0.28, 2.8), max(resize_handles, rotate_handle) * params.selected);
+  let interaction_distance = distance(world, params.interaction_point) * params.pixels_per_grid;
+  let interaction_ring = (1.0 - smoothstep(5.5 * css_scale, 6.5 * css_scale, interaction_distance)) * smoothstep(2.75 * css_scale, 3.75 * css_scale, interaction_distance);
+  let interaction_color = mix(vec3f(0.82, 0.2, 0.95), vec3f(0.12, 0.68, 1.0), params.interaction_clear);
+  color = mix(color, interaction_color, interaction_ring * params.interaction_active);
+  let snap_delta = abs(world - params.snap_point) * params.pixels_per_grid;
+  let snap_extent = 11.0 * css_scale;
+  let snap_cross = max(
+    (1.0 - smoothstep(0.5 * css_scale, 1.5 * css_scale, snap_delta.x)) * (1.0 - step(snap_extent, snap_delta.y)),
+    (1.0 - smoothstep(0.5 * css_scale, 1.5 * css_scale, snap_delta.y)) * (1.0 - step(snap_extent, snap_delta.x))
+  );
+  let snap_distance = length(snap_delta);
+  let snap_ring = (1.0 - smoothstep(9.0 * css_scale, 10.0 * css_scale, snap_distance)) * smoothstep(7.0 * css_scale, 8.0 * css_scale, snap_distance);
+  color = mix(color, vec3f(1.4, 0.72, 0.08), max(snap_cross, snap_ring) * params.snap_active);
   return vec4f(color, 1.0);
 }

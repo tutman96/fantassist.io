@@ -8,6 +8,8 @@ import {
   pickAssetHandle,
   pickFogPolygonEdge,
   pickImageAsset,
+  snapCalibratedAssetTransform,
+  snapFogPolygonTranslation,
 } from "../src/engine/scene-engine";
 import { ensureFogLayer } from "../src/features/editor/editor-tool";
 import {
@@ -109,6 +111,45 @@ test("asset calibration validates PPI and reapplies dimensions after a manual re
   const reapplied = engine.dispatch({ type: "asset.calibration", assetId: asset.id, calibration });
   assert.equal(reapplied.ok && reapplied.changed, true);
   assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, { ...asset.transform, width: 16, height: 8 });
+});
+
+test("calibrated asset movement snaps its offset point while the grid is visible", () => {
+  const engine = createSceneEngine();
+  const asset = engine.getSnapshot().scene.assets[0];
+  engine.dispatch({ type: "asset.calibration", assetId: asset.id, calibration: { xOffset: 25, yOffset: 25, ppiX: 100, ppiY: 100 } });
+  engine.dispatch({ type: "table.camera", table: { ...engine.getSnapshot().scene.table, displayGrid: true } });
+  const calibrated = engine.getSnapshot().scene.assets[0];
+  const token = engine.beginAssetDrag({ x: calibrated.transform.x + 1, y: calibrated.transform.y + 1 });
+  assert.ok(token);
+  engine.updateAssetDrag(token, { x: 3.77, y: 4.76 });
+  assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, {
+    ...calibrated.transform,
+    x: 2.75,
+    y: 3.75,
+  });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 3, y: 4 });
+  engine.commitPreview(token);
+  assert.equal(engine.getSnapshot().scene.assets[0].transform.x, 2.75);
+});
+
+test("calibrated snapping honors threshold, quarter turns, and grid visibility", () => {
+  const calibration = { xOffset: 25, yOffset: 25, ppiX: 100, ppiY: 100 };
+  const near = { x: 2.77, y: 3.76, width: 16, height: 8, rotation: 0 };
+  assert.deepEqual(snapCalibratedAssetTransform(near, calibration), { ...near, x: 2.75, y: 3.75 });
+  const outside = { ...near, x: 2.86, y: 3.75 };
+  assert.equal(snapCalibratedAssetTransform(outside, calibration), outside);
+  const quarterTurn = { ...near, x: 2.27, y: 3.74, rotation: 90 };
+  assert.deepEqual(snapCalibratedAssetTransform(quarterTurn, calibration), { ...quarterTurn, x: 2.25, y: 3.75 });
+  const angled = { ...near, rotation: 15 };
+  assert.equal(snapCalibratedAssetTransform(angled, calibration), angled);
+
+  const engine = createSceneEngine();
+  const asset = engine.getSnapshot().scene.assets[0];
+  engine.dispatch({ type: "asset.calibration", assetId: asset.id, calibration });
+  const token = engine.beginAssetDrag({ x: asset.transform.x + 1, y: asset.transform.y + 1 });
+  assert.ok(token);
+  engine.updateAssetDrag(token, { x: 3.77, y: 4.76 });
+  assert.equal(engine.getSnapshot().scene.assets[0].transform.x, 2.77);
 });
 
 test("commands validate input and snapshots remain deeply frozen", () => {
@@ -668,6 +709,50 @@ test("fog polygon drawing previews immutable geometry and commits one revision",
   assert.equal(Object.isFrozen(committed.fogPolygons.at(-1)?.vertices[0]), true);
 });
 
+test("fog drawing snaps vertices and exposes cursor and intersection indicators", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.dispatch({ type: "table.camera", table: { ...engine.getSnapshot().scene.table, displayGrid: true } });
+  const token = engine.beginFogPolygon(layer.id, "fog", { x: 0.94, y: 1.04 });
+  assert.deepEqual(engine.getSnapshot().fogCursorPoint, { x: 1, y: 1 });
+  assert.equal(engine.getSnapshot().fogCursorCollection, "fog");
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 1, y: 1 });
+
+  engine.updateFogPolygonCursor(token, { x: 3.4, y: 2.3 });
+  assert.deepEqual(engine.getSnapshot().fogCursorPoint, { x: 3.4, y: 2.3 });
+  assert.equal(engine.getSnapshot().gridSnapPoint, null);
+
+  engine.appendFogPolygonVertex(token, { x: 4.06, y: 2.02 });
+  assert.deepEqual(engine.getSnapshot().fogCursorPoint, { x: 4, y: 2 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 4, y: 2 });
+  const current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogPolygons.at(-1)?.vertices.slice(0, 2), [{ x: 1, y: 1 }, { x: 4, y: 2 }]);
+  engine.cancelPreview(token);
+  assert.equal(engine.getSnapshot().fogCursorPoint, null);
+  assert.equal(engine.getSnapshot().gridSnapPoint, null);
+});
+
+test("fog cursor previews and snaps the first vertex before placement", () => {
+  const scene = createSampleSceneDocument();
+  const engine = createSceneEngine(freezeSceneDocument({ ...scene, table: { ...scene.table, displayGrid: true } }));
+  engine.setFogCursor({ x: 2.94, y: -1.97 }, "clear");
+  assert.deepEqual(engine.getSnapshot().fogCursorPoint, { x: 3, y: -2 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 3, y: -2 });
+  assert.equal(engine.getSnapshot().fogCursorCollection, "clear");
+  assert.equal(engine.getSnapshot().revision, 0);
+  assert.equal(engine.getSnapshot().invalidation, "editor");
+
+  engine.setFogCursor({ x: 2.7, y: -1.7 }, "fog");
+  assert.deepEqual(engine.getSnapshot().fogCursorPoint, { x: 2.7, y: -1.7 });
+  assert.equal(engine.getSnapshot().gridSnapPoint, null);
+  assert.equal(engine.getSnapshot().fogCursorCollection, "fog");
+  engine.setFogCursor(null, "fog");
+  assert.equal(engine.getSnapshot().fogCursorPoint, null);
+  assert.equal(engine.getSnapshot().fogCursorCollection, null);
+});
+
 test("fog polygon insert, update, remove, undo, and redo preserve exact values", () => {
   const engine = createSceneEngine();
   const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
@@ -705,7 +790,8 @@ test("fog commands reject invalid layers and degenerate committed polygons", () 
 });
 
 test("fog polygon edges select and vertex drags preview one undoable edit", () => {
-  const engine = createSceneEngine();
+  const scene = createSampleSceneDocument();
+  const engine = createSceneEngine(freezeSceneDocument({ ...scene, table: { ...scene.table, displayGrid: true } }));
   const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
   assert.ok(layer);
   const selection = pickFogPolygonEdge(engine.getSnapshot().scene, { x: 10, y: 3 }, 20);
@@ -718,10 +804,12 @@ test("fog polygon edges select and vertex drags preview one undoable edit", () =
   const interaction = engine.beginFogSelectionInteraction({ x: 2, y: 3 }, 20);
   assert.equal(interaction.handled, true);
   assert.ok(interaction.token);
-  engine.updateFogSelectionInteraction(interaction.token, { x: -4, y: -2 });
+  engine.updateFogSelectionInteraction(interaction.token, { x: -3.94, y: -1.98 });
   let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
   assert.ok(current?.type === "fog");
   assert.deepEqual(current.fogPolygons[0].vertices[0], { x: -4, y: -2 });
+  assert.deepEqual(engine.getSnapshot().fogCursorPoint, { x: -4, y: -2 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: -4, y: -2 });
   assert.equal(engine.getSnapshot().revision, 0);
   assert.deepEqual(engine.commitPreview(interaction.token), { ok: true, changed: true, revision: 1 });
   engine.undo();
@@ -773,6 +861,34 @@ test("dragging inside a selected fog polygon translates every vertex", () => {
   current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
   assert.ok(current?.type === "fog");
   assert.deepEqual(current.fogPolygons[0].vertices, before);
+});
+
+test("fog polygon translation snaps the closest eligible vertex without distortion", () => {
+  const vertices = [{ x: 0.22, y: 0.2 }, { x: 2.04, y: 1.97 }, { x: 4.3, y: 3.4 }];
+  const snapped = snapFogPolygonTranslation(vertices);
+  assert.deepEqual(snapped.snapPoint, { x: 2, y: 2 });
+  assert.deepEqual(snapped.vertices, [
+    { x: 0.18, y: 0.23 },
+    { x: 2, y: 2 },
+    { x: 4.26, y: 3.43 },
+  ]);
+  snapped.vertices.forEach((vertex, index) => {
+    assert.ok(Math.abs((vertex.x - snapped.vertices[0].x) - (vertices[index].x - vertices[0].x)) < 1e-12);
+    assert.ok(Math.abs((vertex.y - snapped.vertices[0].y) - (vertices[index].y - vertices[0].y)) < 1e-12);
+  });
+
+  const scene = createSampleSceneDocument();
+  const engine = createSceneEngine(freezeSceneDocument({ ...scene, table: { ...scene.table, displayGrid: true } }));
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.dispatch({ type: "fog.selection.set", selection: { layerId: layer.id, collection: "fog", polygonIndex: 0 } });
+  const interaction = engine.beginFogSelectionInteraction({ x: 10, y: 10 }, 20);
+  assert.ok(interaction.token);
+  engine.updateFogSelectionInteraction(interaction.token, { x: 12.06, y: 6.03 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 4, y: -1 });
+  const current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.fogPolygons[0].vertices, layer.fogPolygons[0].vertices.map((vertex) => ({ x: vertex.x + 2, y: vertex.y - 4 })));
 });
 
 test("clicking away from a selected fog polygon clears polygon selection", () => {

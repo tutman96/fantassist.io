@@ -5,6 +5,7 @@ import type { DisplayConfiguration, GridBounds, GridPoint, TableCamera } from ".
 
 export type EngineListener = () => void;
 export type RendererInvalidation = "all" | "editor";
+export const GRID_SNAP_THRESHOLD = 0.1;
 export type FogPolygonCollection = "fog" | "clear";
 export interface FogPolygonSelection {
   readonly layerId: string;
@@ -27,6 +28,9 @@ export interface SceneEngineSnapshot extends EngineSnapshot<SceneDocument> {
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly invalidation: RendererInvalidation;
+  readonly fogCursorPoint: GridPoint | null;
+  readonly fogCursorCollection: FogPolygonCollection | null;
+  readonly gridSnapPoint: GridPoint | null;
 }
 
 export type SceneCommand =
@@ -117,6 +121,7 @@ export interface SceneEngine {
   beginFogPolygon(layerId: string, collection: FogPolygonCollection, pointGrid: GridPoint): PreviewToken;
   appendFogPolygonVertex(token: PreviewToken, pointGrid: GridPoint): void;
   updateFogPolygonCursor(token: PreviewToken, pointGrid: GridPoint): void;
+  setFogCursor(pointGrid: GridPoint | null, collection: FogPolygonCollection): void;
   commitFogPolygon(token: PreviewToken): CommandResult;
   commitActiveFogPolygon(): CommandResult;
   cancelActivePreview(): void;
@@ -167,6 +172,8 @@ interface ActivePreview {
   fogDrawing?: { readonly fixedVertices: readonly GridPoint[] };
   fogVertex?: { readonly vertexIndex: number };
   fogMove?: { readonly initialPointer: GridPoint; readonly initialVertices: readonly GridPoint[] };
+  fogCursorPoint?: GridPoint;
+  gridSnapPoint?: GridPoint;
 }
 
 export type TableResizeHandle = "north-west" | "north-east" | "south-east" | "south-west";
@@ -207,6 +214,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
   let selectedAssetId: string | null = null;
   let selectedFogLayerId: string | null = null;
   let selectedFogPolygon: FogPolygonSelection | null = null;
+  let hoverFogCursorPoint: GridPoint | null = null;
+  let hoverFogCursorCollection: FogPolygonCollection | null = null;
+  let hoverGridSnapPoint: GridPoint | null = null;
   let preview: ActivePreview | undefined;
   let tokenSequence = 0;
   let disposed = false;
@@ -229,6 +239,13 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       canUndo: undoStack.length > 0,
       canRedo: redoStack.length > 0,
       invalidation,
+      fogCursorPoint: preview ? preview.fogCursorPoint ?? null : hoverFogCursorPoint,
+      fogCursorCollection: preview
+        ? preview.fogCursorPoint && (preview.command.type === "fog.polygon.insert" || preview.command.type === "fog.polygon.update")
+          ? preview.command.collection
+          : null
+        : hoverFogCursorCollection,
+      gridSnapPoint: preview ? preview.gridSnapPoint ?? null : hoverGridSnapPoint,
     });
   }
 
@@ -771,34 +788,66 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       if (!isFinitePoint(pointGrid)) throw new Error("Fog vertices must contain finite numbers");
       const layer = committedScene.layers.find((candidate) => candidate.id === layerId);
       if (!layer || layer.type !== "fog") throw new Error(`Unknown fog layer '${layerId}'`);
+      hoverFogCursorPoint = null;
+      hoverFogCursorCollection = null;
+      hoverGridSnapPoint = null;
+      const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
       const token = engine.beginPreview({
         type: "fog.polygon.insert",
         layerId,
         collection,
-        polygon: { vertices: [pointGrid, pointGrid], visibleOnTable: true },
+        polygon: { vertices: [snapped, snapped], visibleOnTable: true },
       });
-      if (preview) preview = { ...preview, fogDrawing: { fixedVertices: [Object.freeze({ ...pointGrid })] } };
+      if (preview) preview = {
+        ...preview,
+        fogDrawing: { fixedVertices: [Object.freeze({ ...snapped })] },
+        fogCursorPoint: Object.freeze({ ...snapped }),
+        gridSnapPoint: snapped === pointGrid ? undefined : Object.freeze({ ...snapped }),
+      };
+      publish("editor");
       return token;
     },
     appendFogPolygonVertex(token, pointGrid) {
       if (!preview || preview.token.id !== token.id || !preview.fogDrawing || !isFinitePoint(pointGrid)) return;
       const command = preview.command;
       if (command.type !== "fog.polygon.insert") return;
+      const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
       const previous = preview.fogDrawing.fixedVertices.at(-1);
-      const fixedVertices = previous && samePoint(previous, pointGrid)
+      const fixedVertices = previous && samePoint(previous, snapped)
         ? preview.fogDrawing.fixedVertices
-        : [...preview.fogDrawing.fixedVertices, Object.freeze({ ...pointGrid })];
+        : [...preview.fogDrawing.fixedVertices, Object.freeze({ ...snapped })];
       preview.fogDrawing = { fixedVertices };
-      engine.updatePreview(token, { ...command, polygon: { ...command.polygon, vertices: [...fixedVertices, pointGrid] } });
+      preview.fogCursorPoint = Object.freeze({ ...snapped });
+      preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
+      engine.updatePreview(token, { ...command, polygon: { ...command.polygon, vertices: [...fixedVertices, snapped] } });
     },
     updateFogPolygonCursor(token, pointGrid) {
       if (!preview || preview.token.id !== token.id || !preview.fogDrawing || !isFinitePoint(pointGrid)) return;
       const command = preview.command;
       if (command.type !== "fog.polygon.insert") return;
+      const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
+      preview.fogCursorPoint = Object.freeze({ ...snapped });
+      preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
       engine.updatePreview(token, {
         ...command,
-        polygon: { ...command.polygon, vertices: [...preview.fogDrawing.fixedVertices, pointGrid] },
+        polygon: { ...command.polygon, vertices: [...preview.fogDrawing.fixedVertices, snapped] },
       });
+    },
+    setFogCursor(pointGrid, collection) {
+      if (disposed || preview) return;
+      const snapped = pointGrid && committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
+      const nextPoint = snapped ? Object.freeze({ ...snapped }) : null;
+      const nextCollection = nextPoint ? collection : null;
+      const nextSnapPoint = snapped && pointGrid && snapped !== pointGrid ? nextPoint : null;
+      if (
+        sameOptionalPoint(hoverFogCursorPoint, nextPoint) &&
+        hoverFogCursorCollection === nextCollection &&
+        sameOptionalPoint(hoverGridSnapPoint, nextSnapPoint)
+      ) return;
+      hoverFogCursorPoint = nextPoint;
+      hoverFogCursorCollection = nextCollection;
+      hoverGridSnapPoint = nextSnapPoint;
+      publish("editor");
     },
     commitFogPolygon(token) {
       if (!preview || preview.token.id !== token.id || !preview.fogDrawing || preview.command.type !== "fog.polygon.insert") {
@@ -829,7 +878,12 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
             ...selectedFogPolygon,
             polygon,
           });
-          if (preview) preview = { ...preview, fogVertex: { vertexIndex } };
+          if (preview) preview = {
+            ...preview,
+            fogVertex: { vertexIndex },
+            fogCursorPoint: Object.freeze({ ...polygon.vertices[vertexIndex] }),
+          };
+          publish("editor");
           return { handled: true, token };
         }
         if (polygon && pointInPolygon(pointGrid, polygon.vertices)) {
@@ -862,14 +916,23 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       if (!preview || preview.token.id !== token.id || preview.command.type !== "fog.polygon.update" || !isFinitePoint(pointGrid)) return;
       let vertices: GridPoint[];
       if (preview.fogVertex) {
+        const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
         vertices = [...preview.command.polygon.vertices];
-        vertices[preview.fogVertex.vertexIndex] = pointGrid;
+        vertices[preview.fogVertex.vertexIndex] = snapped;
+        preview.fogCursorPoint = Object.freeze({ ...snapped });
+        preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
       } else if (preview.fogMove) {
+        preview.fogCursorPoint = undefined;
         const delta = {
           x: pointGrid.x - preview.fogMove.initialPointer.x,
           y: pointGrid.y - preview.fogMove.initialPointer.y,
         };
-        vertices = preview.fogMove.initialVertices.map((vertex) => ({ x: vertex.x + delta.x, y: vertex.y + delta.y }));
+        const translated = preview.fogMove.initialVertices.map((vertex) => ({ x: vertex.x + delta.x, y: vertex.y + delta.y }));
+        const snapped = committedScene.table.displayGrid
+          ? snapFogPolygonTranslation(translated)
+          : { vertices: translated, snapPoint: null };
+        vertices = [...snapped.vertices];
+        preview.gridSnapPoint = snapped.snapPoint ?? undefined;
       } else {
         return;
       }
@@ -1023,6 +1086,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       selectedAssetId = null;
       selectedFogLayerId = null;
       selectedFogPolygon = null;
+      hoverFogCursorPoint = null;
+      hoverFogCursorCollection = null;
+      hoverGridSnapPoint = null;
       preview = undefined;
       undoStack = [];
       redoStack = [];
@@ -1066,6 +1132,14 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         x: pointGrid.x - interaction.grabOffset.x,
         y: pointGrid.y - interaction.grabOffset.y,
       };
+      const asset = findAsset(committedScene, preview.command.assetId);
+      if (committedScene.table.displayGrid && asset?.calibration) {
+        const snapped = snapCalibratedAssetTransform(nextTransform, asset.calibration);
+        preview.gridSnapPoint = snapped === nextTransform ? undefined : calibratedAssetGridPoint(snapped, asset.calibration);
+        nextTransform = snapped;
+      } else {
+        preview.gridSnapPoint = undefined;
+      }
     } else if (interaction.kind === "rotate") {
       const angle = Math.atan2(
         pointGrid.y - interaction.center.y,
@@ -1254,6 +1328,65 @@ export function pickImageAsset(scene: SceneDocument, pointGrid: GridPoint): Imag
     }
   }
   return null;
+}
+
+export function snapCalibratedAssetTransform(
+  transform: AssetTransform,
+  calibration: AssetCalibration,
+  threshold = GRID_SNAP_THRESHOLD
+): AssetTransform {
+  if (!Number.isFinite(threshold) || threshold < 0) return transform;
+  const quarterTurn = Math.round(transform.rotation / 90);
+  if (Math.abs(transform.rotation - quarterTurn * 90) > 1e-8) return transform;
+  const calibrationPoint = calibratedAssetGridPoint(transform, calibration);
+  const delta = {
+    x: Math.round(calibrationPoint.x) - calibrationPoint.x,
+    y: Math.round(calibrationPoint.y) - calibrationPoint.y,
+  };
+  return Math.hypot(delta.x, delta.y) <= threshold
+    ? {
+        ...transform,
+        x: Math.round((transform.x + delta.x) * 1e12) / 1e12,
+        y: Math.round((transform.y + delta.y) * 1e12) / 1e12,
+      }
+    : transform;
+}
+
+export function snapPointToGrid(point: GridPoint, threshold = GRID_SNAP_THRESHOLD): GridPoint {
+  if (!isFinitePoint(point) || !Number.isFinite(threshold) || threshold < 0) return point;
+  const snapped = { x: Math.round(point.x), y: Math.round(point.y) };
+  return Math.hypot(snapped.x - point.x, snapped.y - point.y) <= threshold ? snapped : point;
+}
+
+export function snapFogPolygonTranslation(
+  vertices: readonly GridPoint[],
+  threshold = GRID_SNAP_THRESHOLD
+): { readonly vertices: readonly GridPoint[]; readonly snapPoint: GridPoint | null } {
+  if (!Number.isFinite(threshold) || threshold < 0) return { vertices, snapPoint: null };
+  let best: { readonly point: GridPoint; readonly delta: GridPoint; readonly distance: number } | null = null;
+  for (const vertex of vertices) {
+    const point = { x: Math.round(vertex.x), y: Math.round(vertex.y) };
+    const delta = { x: point.x - vertex.x, y: point.y - vertex.y };
+    const distance = Math.hypot(delta.x, delta.y);
+    if (distance <= threshold && (!best || distance < best.distance)) best = { point, delta, distance };
+  }
+  if (!best) return { vertices, snapPoint: null };
+  return {
+    vertices: vertices.map((vertex) => ({
+      x: Math.round((vertex.x + best.delta.x) * 1e12) / 1e12,
+      y: Math.round((vertex.y + best.delta.y) * 1e12) / 1e12,
+    })),
+    snapPoint: best.point,
+  };
+}
+
+function calibratedAssetGridPoint(transform: AssetTransform, calibration: AssetCalibration): GridPoint {
+  const center = transformCenter(transform);
+  const localCalibrationPoint = {
+    x: calibration.xOffset / calibration.ppiX - transform.width / 2,
+    y: calibration.yOffset / calibration.ppiY - transform.height / 2,
+  };
+  return addPoint(center, rotatePoint(localCalibrationPoint, Math.round(transform.rotation / 90) * 90));
 }
 
 function findAsset(scene: SceneDocument, assetId: string): ImageAsset | undefined {
@@ -1615,6 +1748,10 @@ function sameFogPolygon(left: FogPolygon, right: FogPolygon): boolean {
 
 function samePoint(left: GridPoint, right: GridPoint): boolean {
   return left.x === right.x && left.y === right.y;
+}
+
+function sameOptionalPoint(left: GridPoint | null, right: GridPoint | null): boolean {
+  return left === right || Boolean(left && right && samePoint(left, right));
 }
 
 function dedupeClosingVertex(vertices: readonly GridPoint[]): readonly GridPoint[] {

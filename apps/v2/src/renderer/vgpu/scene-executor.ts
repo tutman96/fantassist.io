@@ -79,6 +79,11 @@ export function createSceneExecutor(
       asset_rotation: (transform.rotation * Math.PI) / 180,
       selected: asset && plan.showEditorGrid && asset.visible && layerVisible ? 1 : 0,
       table_editing: tableEditing && plan.showEditorGrid ? 1 : 0,
+      interaction_point: [snapshot.fogCursorPoint?.x ?? 0, snapshot.fogCursorPoint?.y ?? 0],
+      snap_point: [snapshot.gridSnapPoint?.x ?? 0, snapshot.gridSnapPoint?.y ?? 0],
+      interaction_active: snapshot.fogCursorPoint && plan.showEditorGrid ? 1 : 0,
+      interaction_clear: snapshot.fogCursorCollection === "clear" ? 1 : 0,
+      snap_active: snapshot.gridSnapPoint && plan.showEditorGrid ? 1 : 0,
     };
   };
   const signature = (output: Target): TargetSignature => ({

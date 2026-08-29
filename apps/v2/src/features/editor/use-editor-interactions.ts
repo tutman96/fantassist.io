@@ -96,6 +96,7 @@ export function useEditorInteractions({
       engine.cancelPreview(fogDraft.current);
       fogDraft.current = null;
     }
+    if (tool !== previousTool.current) engine.setFogCursor(null, "fog");
     previousTool.current = tool;
   }, [engine, tool]);
 
@@ -136,6 +137,7 @@ export function useEditorInteractions({
         setHoveredHandle(null);
         setTableHandle(null);
       }
+      if (!fogDraft.current && (tool === "fog" || tool === "fog-clear")) engine.setFogCursor(null, "fog");
     },
     onPointerDown(event: React.PointerEvent<HTMLCanvasElement>) {
       if (profile !== "editor") return;
@@ -229,8 +231,10 @@ export function useEditorInteractions({
       }
     },
     onPointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
-      if (fogDraft.current && (tool === "fog" || tool === "fog-clear")) {
-        engine.updateFogPolygonCursor(fogDraft.current, pointerGrid(event, session));
+      if (tool === "fog" || tool === "fog-clear") {
+        const point = pointerGrid(event, session);
+        if (fogDraft.current) engine.updateFogPolygonCursor(fogDraft.current, point);
+        else engine.setFogCursor(point, tool === "fog" ? "fog" : "clear");
       }
       if (profile === "editor" && event.pointerType !== "touch" && !drag.current) {
         const bounds = event.currentTarget.getBoundingClientRect();

@@ -25,4 +25,4 @@ The v1 adapter explicitly projects and patches calibration for existing and newl
 
 ## Consequences
 
-Calibration immediately reaches both render profiles through the ordinary asset transform. It requires no WGSL or GPU resource changes. Source offsets are persisted for v1 compatibility and future grid snapping, but do not shift rendering by themselves.
+Calibration immediately reaches both render profiles through the ordinary asset transform. It requires no WGSL or GPU resource changes. Source offsets identify a printed-grid intersection for movement snapping: while the scene grid is visible, quarter-turn maps snap that calibrated point to the closest scene-grid intersection when it comes within `0.10` grid units. Offsets do not shift rendering by themselves.
