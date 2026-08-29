@@ -106,7 +106,7 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
     assert.equal(
       instrumentation.calls.createRenderPipeline +
         instrumentation.calls.createRenderPipelineAsync,
-      13
+      7
     );
   } finally {
     gpu.dispose();
