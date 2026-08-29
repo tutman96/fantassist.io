@@ -1,5 +1,5 @@
 import { createSampleSceneDocument, freezeSceneDocument } from "./scene-document";
-import type { AssetTransform, FogPolygon, ImageAsset, SceneDocument, SceneLayer } from "./scene-document";
+import type { AssetCalibration, AssetTransform, FogPolygon, ImageAsset, SceneDocument, SceneLayer } from "./scene-document";
 import { getTableBounds, MAX_TABLE_SCALE, MIN_TABLE_SCALE } from "./table-camera";
 import type { DisplayConfiguration, GridBounds, GridPoint, TableCamera } from "./table-camera";
 
@@ -35,6 +35,7 @@ export type SceneCommand =
       readonly assetId: string;
       readonly transform: AssetTransform;
     }
+  | { readonly type: "asset.calibration"; readonly assetId: string; readonly calibration: AssetCalibration | null }
   | { readonly type: "asset.insert"; readonly asset: ImageAsset }
   | { readonly type: "asset.remove"; readonly assetId: string }
   | { readonly type: "asset.visibility"; readonly assetId: string; readonly visible: boolean }
@@ -129,6 +130,12 @@ export interface SceneEngine {
 
 type HistoryEntry =
   | { readonly kind: "transform"; readonly assetId: string; readonly before: AssetTransform; readonly after: AssetTransform }
+  | {
+      readonly kind: "calibration";
+      readonly assetId: string;
+      readonly before: { readonly calibration?: AssetCalibration; readonly transform: AssetTransform };
+      readonly after: { readonly calibration?: AssetCalibration; readonly transform: AssetTransform };
+    }
   | { readonly kind: "insert"; readonly asset: ImageAsset }
   | { readonly kind: "remove"; readonly asset: ImageAsset; readonly layerIndex: number }
   | { readonly kind: "insert-layer"; readonly layer: SceneLayer; readonly index: number }
@@ -255,6 +262,34 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     return { ok: true, changed: true, revision };
   }
 
+  function calibrationResult(
+    assetId: string,
+    calibration: AssetCalibration | undefined,
+    transform: AssetTransform,
+    recordHistory: boolean
+  ): CommandResult {
+    const asset = findAsset(committedScene, assetId);
+    if (!asset) return { ok: false, error: `Unknown asset '${assetId}'`, revision };
+    const error = calibration ? validateCalibration(calibration) ?? validateTransform(transform) : validateTransform(transform);
+    if (error) return { ok: false, error, revision };
+    if (sameCalibration(asset.calibration, calibration) && sameTransform(asset.transform, transform)) {
+      return { ok: true, changed: false, revision };
+    }
+    if (recordHistory) {
+      undoStack = [...undoStack, {
+        kind: "calibration",
+        assetId,
+        before: { ...(asset.calibration ? { calibration: asset.calibration } : {}), transform: asset.transform },
+        after: { ...(calibration ? { calibration } : {}), transform },
+      }];
+      redoStack = [];
+    }
+    revision++;
+    committedScene = applyCalibration(committedScene, assetId, calibration, transform, revision);
+    publish("all");
+    return { ok: true, changed: true, revision };
+  }
+
   function tableResult(
     command: Extract<PreviewCommand, { readonly type: "table.camera" }>,
     recordHistory: boolean,
@@ -350,6 +385,20 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     dispatch(command) {
       if (disposed) return { ok: false, error: "Scene engine is disposed", revision };
       if (command.type === "asset.transform") return transformResult(command, true);
+      if (command.type === "asset.calibration") {
+        const asset = findAsset(committedScene, command.assetId);
+        if (!asset) return { ok: false, error: `Unknown asset '${command.assetId}'`, revision };
+        if (command.calibration === null) {
+          return calibrationResult(asset.id, undefined, asset.transform, true);
+        }
+        const error = validateCalibration(command.calibration);
+        if (error) return { ok: false, error, revision };
+        return calibrationResult(asset.id, command.calibration, {
+          ...asset.transform,
+          width: asset.intrinsicSize.width / command.calibration.ppiX,
+          height: asset.intrinsicSize.height / command.calibration.ppiY,
+        }, true);
+      }
       if (command.type === "table.camera") return tableResult(command, true);
       if (
         command.type === "fog.polygon.insert" ||
@@ -367,6 +416,8 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         }
         const error = validateTransform(command.asset.transform);
         if (error) return { ok: false, error, revision };
+        const calibrationError = command.asset.calibration ? validateCalibration(command.asset.calibration) : null;
+        if (calibrationError) return { ok: false, error: calibrationError, revision };
         revision++;
         committedScene = applyInsert(committedScene, command.asset, revision);
         undoStack = [...undoStack, { kind: "insert", asset: command.asset }];
@@ -886,6 +937,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
             : { type: "fog.polygon.insert", layerId: entry.layerId, collection: entry.collection, index: entry.index, polygon: entry.before }
           : { type: "fog.polygon.remove", layerId: entry.layerId, collection: entry.collection, polygonIndex: entry.index }, false);
       }
+      if (entry.kind === "calibration") {
+        return calibrationResult(entry.assetId, entry.before.calibration, entry.before.transform, false);
+      }
       return transformResult(
         { type: "asset.transform", assetId: entry.assetId, transform: entry.before },
         false
@@ -953,6 +1007,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
             ? { type: "fog.polygon.update", layerId: entry.layerId, collection: entry.collection, polygonIndex: entry.index, polygon: entry.after }
             : { type: "fog.polygon.insert", layerId: entry.layerId, collection: entry.collection, index: entry.index, polygon: entry.after }
           : { type: "fog.polygon.remove", layerId: entry.layerId, collection: entry.collection, polygonIndex: entry.index }, false);
+      }
+      if (entry.kind === "calibration") {
+        return calibrationResult(entry.assetId, entry.after.calibration, entry.after.transform, false);
       }
       return transformResult(
         { type: "asset.transform", assetId: entry.assetId, transform: entry.after },
@@ -1233,6 +1290,23 @@ function applyTransform(
   });
 }
 
+function applyCalibration(
+  scene: SceneDocument,
+  assetId: string,
+  calibration: AssetCalibration | undefined,
+  transform: AssetTransform,
+  version: number
+): SceneDocument {
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    assets: scene.assets.map((asset) => {
+      if (asset.id !== assetId) return asset;
+      return { ...asset, calibration, transform };
+    }),
+  });
+}
+
 function applyTable(scene: SceneDocument, table: TableCamera, version: number): SceneDocument {
   return freezeSceneDocument({ ...scene, version, table });
 }
@@ -1495,6 +1569,22 @@ function validateTransform(transform: AssetTransform): string | null {
   if (!values.every(Number.isFinite)) return "Asset transforms must contain finite numbers";
   if (transform.width <= 0 || transform.height <= 0) return "Asset dimensions must be positive";
   return null;
+}
+
+function validateCalibration(calibration: AssetCalibration): string | null {
+  if (![calibration.xOffset, calibration.yOffset, calibration.ppiX, calibration.ppiY].every(Number.isFinite)) {
+    return "Asset calibration must contain finite numbers";
+  }
+  if (calibration.ppiX <= 0 || calibration.ppiY <= 0) return "Pixels per inch must be positive";
+  return null;
+}
+
+function sameCalibration(left: AssetCalibration | undefined, right: AssetCalibration | undefined): boolean {
+  return left === right || Boolean(left && right &&
+    left.xOffset === right.xOffset &&
+    left.yOffset === right.yOffset &&
+    left.ppiX === right.ppiX &&
+    left.ppiY === right.ppiY);
 }
 
 function validateTable(table: TableCamera): string | null {

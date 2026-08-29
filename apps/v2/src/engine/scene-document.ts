@@ -9,6 +9,13 @@ export interface AssetTransform {
   readonly height: number;
 }
 
+export interface AssetCalibration {
+  readonly xOffset: number;
+  readonly yOffset: number;
+  readonly ppiX: number;
+  readonly ppiY: number;
+}
+
 export interface ImageAsset {
   readonly id: string;
   readonly layerId: string;
@@ -17,6 +24,7 @@ export interface ImageAsset {
   readonly type: "image";
   readonly visible: boolean;
   readonly intrinsicSize: { readonly width: number; readonly height: number };
+  readonly calibration?: AssetCalibration;
   readonly transform: AssetTransform;
 }
 
@@ -117,6 +125,7 @@ export function freezeSceneDocument(scene: SceneDocumentInput): SceneDocument {
       scene.assets.map((asset) =>
         Object.freeze({
           ...asset,
+          ...(asset.calibration ? { calibration: Object.freeze({ ...asset.calibration }) } : {}),
           transform: Object.freeze({ ...asset.transform }),
         })
       )

@@ -42,6 +42,7 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
         type: "image" as const,
         visible: true,
         intrinsicSize: asset.size ?? { width: asset.transform.width, height: asset.transform.height },
+        ...(asset.calibration ? { calibration: { ...asset.calibration } } : {}),
         transform: { ...asset.transform },
       }];
     });
@@ -183,7 +184,12 @@ function synchronizeAssets(
   const entries = Object.entries(sourceAssets).flatMap(([key, asset]) => {
     if (asset.type !== 0) return [[key, asset] as const];
     const image = images.get(asset.id);
-    return image ? [[key, { ...asset, size: image.intrinsicSize, transform: { ...image.transform } }] as const] : [];
+    return image ? [[key, {
+      ...asset,
+      size: image.intrinsicSize,
+      transform: { ...image.transform },
+      calibration: image.calibration ? { ...image.calibration } : undefined,
+    }] as const] : [];
   });
   const existingIds = new Set(Object.values(sourceAssets).map((asset) => asset.id));
   for (const image of images.values()) {
@@ -193,6 +199,7 @@ function synchronizeAssets(
       type: 0,
       size: { ...image.intrinsicSize },
       transform: { ...image.transform },
+      ...(image.calibration ? { calibration: { ...image.calibration } } : {}),
     }]);
   }
   return Object.fromEntries(entries);

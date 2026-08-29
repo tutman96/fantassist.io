@@ -13,6 +13,7 @@ import { EditorPanel, Metric } from "@/features/editor/editor-panel";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
 import { useSharedTableSession } from "@/features/table/table-session-context";
 import { AssetThumbnail } from "@/features/editor/asset-thumbnail";
+import { AssetCalibrationDialog } from "@/features/editor/asset-calibration-dialog";
 
 export function WorkspacePanels({
   engine,
@@ -435,7 +436,7 @@ function AssetInspector({ engine, sceneSnapshot }: { readonly engine: SceneEngin
           {asset.visible ? "Hide selected asset" : "Show selected asset"}
         </Button>
         <Button disabled variant="outline" className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 text-[10px] text-violet-100/35">Replace media</Button>
-        <Button disabled variant="outline" className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 text-[10px] text-violet-100/35">Calibrate</Button>
+        <AssetCalibrationDialog asset={asset} engine={engine} />
         <DeleteConfirmation
           title="Delete asset?"
           description={`${asset.name} will be removed from its layer.`}

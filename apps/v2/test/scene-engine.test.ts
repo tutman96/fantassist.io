@@ -70,6 +70,47 @@ test("cancel, undo, and redo preserve exact transforms", () => {
   assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, moved);
 });
 
+test("asset calibration atomically resizes from intrinsic pixels and has exact history", () => {
+  const engine = createSceneEngine();
+  const before = engine.getSnapshot().scene.assets[0];
+  const calibration = { xOffset: 12.5, yOffset: -4, ppiX: 100, ppiY: 80 };
+  assert.deepEqual(engine.dispatch({ type: "asset.calibration", assetId: before.id, calibration }), {
+    ok: true,
+    changed: true,
+    revision: 1,
+  });
+  const calibrated = engine.getSnapshot().scene.assets[0];
+  assert.deepEqual(calibrated.calibration, calibration);
+  assert.deepEqual(calibrated.transform, { ...before.transform, width: 16, height: 10 });
+  assert.equal(Object.isFrozen(calibrated.calibration), true);
+
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 2 });
+  assert.equal(engine.getSnapshot().scene.assets[0].calibration, undefined);
+  assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, before.transform);
+  assert.deepEqual(engine.redo(), { ok: true, changed: true, revision: 3 });
+  assert.deepEqual(engine.getSnapshot().scene.assets[0].calibration, calibration);
+  assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, calibrated.transform);
+});
+
+test("asset calibration validates PPI and reapplies dimensions after a manual resize", () => {
+  const engine = createSceneEngine();
+  const asset = engine.getSnapshot().scene.assets[0];
+  for (const calibration of [
+    { xOffset: 0, yOffset: 0, ppiX: 0, ppiY: 100 },
+    { xOffset: Number.NaN, yOffset: 0, ppiX: 100, ppiY: 100 },
+  ]) {
+    assert.equal(engine.dispatch({ type: "asset.calibration", assetId: asset.id, calibration }).ok, false);
+  }
+  assert.equal(engine.getSnapshot().revision, 0);
+
+  const calibration = { xOffset: 0, yOffset: 0, ppiX: 100, ppiY: 100 };
+  engine.dispatch({ type: "asset.calibration", assetId: asset.id, calibration });
+  engine.dispatch({ type: "asset.transform", assetId: asset.id, transform: { ...asset.transform, width: 5, height: 5 } });
+  const reapplied = engine.dispatch({ type: "asset.calibration", assetId: asset.id, calibration });
+  assert.equal(reapplied.ok && reapplied.changed, true);
+  assert.deepEqual(engine.getSnapshot().scene.assets[0].transform, { ...asset.transform, width: 16, height: 8 });
+});
+
 test("commands validate input and snapshots remain deeply frozen", () => {
   const engine = createSceneEngine();
   let notifications = 0;

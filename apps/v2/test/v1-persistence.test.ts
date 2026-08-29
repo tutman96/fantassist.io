@@ -170,6 +170,7 @@ test("scene import rejects missing referenced files before producing writes", ()
 test("scene adapter patches image transforms without losing unrelated v1 data", () => {
   const document = projectV1Scene(fullScene);
   assert.ok(document);
+  assert.deepEqual(document.assets[0].calibration, fullScene.layers[0].assetLayer?.assets["campaign-1/image-1"].calibration);
   const moved = {
     ...document,
     assets: document.assets.map((asset) => ({
@@ -185,6 +186,23 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   );
   assert.deepEqual(patched.layers[0].assetLayer?.assets["campaign-1/video-1"], fullScene.layers[0].assetLayer?.assets["campaign-1/video-1"]);
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
+});
+
+test("scene adapter persists changed and removed image calibration", () => {
+  const document = projectV1Scene(fullScene);
+  const changedCalibration = { xOffset: 8, yOffset: 12, ppiX: 80, ppiY: 75 };
+  const changed = patchV1SceneTransforms(fullScene, {
+    ...document,
+    assets: document.assets.map((asset) => ({ ...asset, calibration: changedCalibration })),
+  }, 8);
+  assert.deepEqual(changed.layers[0].assetLayer?.assets["campaign-1/image-1"].calibration, changedCalibration);
+
+  const removed = patchV1SceneTransforms(changed, {
+    ...document,
+    assets: document.assets.map((asset) => ({ ...asset, calibration: undefined })),
+  }, 9);
+  assert.equal(removed.layers[0].assetLayer?.assets["campaign-1/image-1"].calibration, undefined);
+  assert.deepEqual(removed.layers[1], fullScene.layers[1]);
 });
 
 test("scene adapter projects and persists fog geometry without changing lights or walls", () => {
@@ -274,6 +292,7 @@ test("scene adapter adds and removes persisted image records without touching vi
     type: 0,
     size: uploaded.intrinsicSize,
     transform: uploaded.transform,
+    calibration: uploaded.calibration,
   });
 
   const withoutImages = { ...document, assets: [] };
