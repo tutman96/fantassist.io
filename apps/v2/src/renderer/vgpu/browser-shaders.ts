@@ -8,6 +8,8 @@ import fogHandle from "./shaders/fog-handle.wgsl";
 import lightAccumulation from "./shaders/light-accumulation.wgsl";
 import lightGuide from "./shaders/light-guide.wgsl";
 import present from "./shaders/present.wgsl";
+import radianceCascade from "./shaders/radiance-cascade.wgsl";
+import radianceResolve from "./shaders/radiance-resolve.wgsl";
 import sceneCopy from "./shaders/scene-copy.wgsl";
 
 export const browserSceneShaders = {
@@ -21,5 +23,7 @@ export const browserSceneShaders = {
   lightAccumulation,
   lightGuide,
   present,
+  radianceCascade,
+  radianceResolve,
   sceneCopy,
 };

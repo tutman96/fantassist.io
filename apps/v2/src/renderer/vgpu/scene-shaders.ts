@@ -11,5 +11,7 @@ export interface SceneShaders {
   readonly lightGuide: string | ShaderSource;
   readonly composite: string | ShaderSource;
   readonly present: string | ShaderSource;
+  readonly radianceCascade: string | ShaderSource;
+  readonly radianceResolve: string | ShaderSource;
   readonly sceneCopy: string | ShaderSource;
 }

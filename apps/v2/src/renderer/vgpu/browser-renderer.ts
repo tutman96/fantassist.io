@@ -94,8 +94,9 @@ export async function createBrowserSceneRenderer(
       gpu?.dispose();
       gpu = nextGpu;
       targetSurface = nextSurface;
+      let pendingResize: readonly [number, number] | undefined;
       stopResize = nextSurface.onResize(({ width, height }) => {
-        executor.resize([width, height]);
+        pendingResize = [width, height];
         requestRender(0);
       });
       void nextGpu.gpu.lost.then(() => {
@@ -158,9 +159,12 @@ export async function createBrowserSceneRenderer(
         if (rendering || disposed || ownGeneration !== generation) return;
         rendering = true;
         try {
-          while (pendingTime !== undefined && !disposed && ownGeneration === generation) {
-            const time = pendingTime;
+          while ((pendingTime !== undefined || pendingResize) && !disposed && ownGeneration === generation) {
+            const time = pendingTime ?? lastTime;
             pendingTime = undefined;
+            const resize = pendingResize;
+            pendingResize = undefined;
+            if (resize) executor.resize(resize);
             await executor.render(time);
           }
         } catch (error) {

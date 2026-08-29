@@ -2,6 +2,7 @@ import { draw, effect, frame, geometry, sampler, storage, target } from "vgpu";
 import type { Draw, Effect, Geometry, Gpu, StorageBuffer, Target, TargetSignature, Texture } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
+import type { SceneLight } from "../../engine/scene-document";
 import { fogHandleVertices, outlineFogPolygons, outlineWallPolygons, tessellateFogPolygons, wallSegmentVertices } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
@@ -34,10 +35,47 @@ interface FogDrawEntry {
   readonly clearGuide?: Draw;
   readonly wallGuide?: Draw;
   readonly handles?: Draw;
-  readonly lightEffects: readonly Effect[];
+  readonly lightEffects: readonly Draw[];
   readonly lightGuides: readonly Effect[];
+  readonly radianceCascadeEffects: readonly (readonly Effect[])[];
+  readonly radianceResolveEffects: readonly Effect[];
   readonly wallStorage: StorageBuffer & { destroy(): void };
+  readonly lightStorage: StorageBuffer & { destroy(): void };
+  readonly indirectTarget: Target;
+  radianceKey: string;
+  readonly wallSegmentCount: number;
   readonly geometries: readonly Geometry[];
+}
+
+const EDITOR_RADIANCE_SCALE = 8;
+const OUTPUT_RADIANCE_SCALE = 2;
+const MAX_RADIANCE_CASCADES = 6;
+const WALL_BOUNCE_GAIN = 1.4;
+
+function radianceConfig(size: readonly [number, number], view: RenderView, scale: number) {
+  const maxWidth = Math.max(1, Math.ceil(size[0] / scale));
+  const maxHeight = Math.max(1, Math.ceil(size[1] / scale));
+  const tableAspect = view.display.resolutionPx.width / view.display.resolutionPx.height;
+  const field = maxWidth / maxHeight > tableAspect
+    ? [Math.max(1, Math.ceil(maxHeight * tableAspect)), maxHeight] as const
+    : [maxWidth, Math.max(1, Math.ceil(maxWidth / tableAspect))] as const;
+  const cascadeCount = Math.min(MAX_RADIANCE_CASCADES, Math.max(5, Math.ceil(Math.log(1 + 1.5 * Math.hypot(...field)) / Math.log(4))));
+  const spacing = 2 ** (cascadeCount - 1);
+  const atlas = [Math.ceil(field[0] / spacing) * spacing * 2, Math.ceil(field[1] / spacing) * spacing * 2] as const;
+  return { field, atlas, cascadeCount };
+}
+
+function radianceLightData(lights: readonly SceneLight[]): Float32Array<ArrayBuffer> {
+  return new Float32Array(lights.flatMap((light) => [
+    light.position.x,
+    light.position.y,
+    light.brightLightDistance,
+    light.dimLightDistance,
+    light.color.r / 255,
+    light.color.g / 255,
+    light.color.b / 255,
+    light.color.a / 255,
+  ]));
 }
 
 export function createSceneExecutor(
@@ -56,7 +94,19 @@ export function createSceneExecutor(
   const featheredFogTarget = target(gpu, { size, format: "rgba8unorm", label: "feathered-fog-mask" });
   const lightTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "light-accumulation" });
   const compositeTarget = target(gpu, { size, format: "rgba16float", msaa: 4, label: "editor-composite" });
+  const radianceScale = plan.showEditorGrid ? EDITOR_RADIANCE_SCALE : OUTPUT_RADIANCE_SCALE;
+  let radiance = radianceConfig(size, initialView, radianceScale);
+  const radianceCascades = [
+    target(gpu, { size: radiance.atlas, format: "rgba16float", label: "radiance-cascade-a" }),
+    target(gpu, { size: radiance.atlas, format: "rgba16float", label: "radiance-cascade-b" }),
+  ] as const;
+  const emptyIndirectLightTarget = target(gpu, {
+    size: radiance.field,
+    colors: [{ format: "rgba16float" }, { format: "rgba16float" }],
+    label: "indirect-light",
+  });
   const linearSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
+  const nearestSampler = sampler(gpu, { minFilter: "nearest", magFilter: "nearest" });
   const imageSampler = sampler(gpu, { minFilter: "linear", magFilter: "linear" });
   let gridVisible = plan.showGrid;
   let tableEditing = false;
@@ -65,6 +115,10 @@ export function createSceneExecutor(
   let renderSize = { width: size[0], height: size[1] };
   let projection = compileProjection(view, renderSize);
   const spatialParams = () => projectionUniforms(projection);
+  const radianceSpatialParams = () => projectionUniforms(compileProjection(
+    { kind: "output", table: view.table, display: view.display },
+    { width: radiance.field[0], height: radiance.field[1] }
+  ));
   const assetParams = (asset: SceneEngineSnapshot["scene"]["assets"][number]) => ({
     ...spatialParams(),
     time: 0,
@@ -209,7 +263,17 @@ export function createSceneExecutor(
       const segmentData = wallSegmentVertices(layer.obstructionPolygons);
       const wallStorage = storage(gpu, Math.max(16, segmentData.byteLength)) as StorageBuffer & { destroy(): void };
       if (segmentData.byteLength > 0) wallStorage.write(segmentData);
-      const lightEffects = layer.lightSources.map((light, index) => effect(gpu, shaders.lightAccumulation, {
+      const lightData = radianceLightData(layer.lightSources);
+      const lightStorage = storage(gpu, Math.max(32, lightData.byteLength)) as StorageBuffer & { destroy(): void };
+      if (lightData.byteLength > 0) lightStorage.write(lightData);
+      const indirectTarget = target(gpu, {
+        size: radiance.field,
+        colors: [{ format: "rgba16float" }, { format: "rgba16float" }],
+        label: `indirect-light:${layer.id}`,
+      });
+      const lightEffects = layer.lightSources.map((light, index) => draw(gpu, {
+        shader: shaders.lightAccumulation,
+        vertices: 6,
         label: `light:${layer.id}:${index}`,
         blend: "additive",
         set: {
@@ -220,6 +284,7 @@ export function createSceneExecutor(
             bright_distance: light.brightLightDistance,
             dim_distance: light.dimLightDistance,
             segment_count: segmentData.length / 4,
+            shadow_sample_count: plan.showEditorGrid ? 2 : 4,
             color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, 1],
             energy: light.color.a / 255,
           },
@@ -238,6 +303,43 @@ export function createSceneExecutor(
           selected: sourceSnapshot.selectedLight?.layerId === layer.id && sourceSnapshot.selectedLight.lightIndex === index ? 1 : 0,
         } },
       }));
+      const radianceCascadeEffects = layer.lightSources.map((_, lightIndex) =>
+        Array.from({ length: MAX_RADIANCE_CASCADES }, (_, cascade) => effect(gpu, shaders.radianceCascade, {
+          label: `radiance-cascade:${layer.id}:${lightIndex}:${cascade}`,
+          set: {
+            params: {
+              state: [cascade, cascade < radiance.cascadeCount - 1 ? 1 : 0, 0, 0],
+              field_size: radiance.field,
+              target_to_grid_offset: radianceSpatialParams().target_to_grid_offset,
+              pixels_per_grid: radianceSpatialParams().pixels_per_grid,
+              segment_count: segmentData.length / 4,
+              light_count: layer.lightSources.length,
+              light_index: lightIndex,
+              bounce_gain: WALL_BOUNCE_GAIN,
+            },
+            upper_tex: radianceCascades[1],
+            segments: wallStorage,
+            lights: lightStorage,
+          },
+        }))
+      );
+      const radianceResolveEffects = layer.lightSources.map((_, lightIndex) => effect(gpu, shaders.radianceResolve, {
+        label: `radiance-resolve:${layer.id}:${lightIndex}`,
+        blend: "additive",
+        set: {
+          cascade_tex: radianceCascades[0],
+          segments: wallStorage,
+          lights: lightStorage,
+          params: {
+            field_size: radiance.field,
+            target_to_grid_offset: radianceSpatialParams().target_to_grid_offset,
+            pixels_per_grid: radianceSpatialParams().pixels_per_grid,
+            segment_count: segmentData.length / 4,
+            light_count: layer.lightSources.length,
+            light_index: lightIndex,
+          },
+        },
+      }));
       return [{
         layerId: layer.id,
         fog: fog?.drawable,
@@ -248,14 +350,41 @@ export function createSceneExecutor(
         handles,
         lightEffects,
         lightGuides,
+        radianceCascadeEffects,
+        radianceResolveEffects,
         wallStorage,
+        lightStorage,
+        indirectTarget,
+        radianceKey: "",
+        wallSegmentCount: segmentData.length / 4,
         geometries: [fog?.geometry, clear?.geometry, fogGuide?.geometry, clearGuide?.geometry, wallGuideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
       }];
     });
 
   let assetEntries = createAssetEntries(initialSnapshot, imageUploads);
   let fogEntries = createFogEntries(initialSnapshot);
-  const fogCompositeParams = (hasLights: number) => ({ fog_opacity: plan.fogOpacity, has_lights: hasLights });
+  const fogCompositeParams = (hasLights: number) => {
+    const sceneSpatial = spatialParams();
+    const radianceSpatial = radianceSpatialParams();
+    return {
+      fog_opacity: plan.fogOpacity,
+      has_lights: hasLights,
+      target_size: sceneSpatial.target_size,
+      target_to_grid_offset: sceneSpatial.target_to_grid_offset,
+      pixels_per_grid: sceneSpatial.pixels_per_grid,
+      radiance_target_size: radianceSpatial.target_size,
+      grid_to_radiance_offset: radianceSpatial.grid_to_target_offset,
+      radiance_pixels_per_grid: radianceSpatial.pixels_per_grid,
+    };
+  };
+  const radianceKey = (layer: Extract<SceneEngineSnapshot["scene"]["layers"][number], { type: "fog" }>) => JSON.stringify({
+    walls: layer.obstructionPolygons,
+    lights: layer.lightSources,
+    table: view.table,
+    display: view.display,
+    field: radiance.field,
+    cascades: radiance.cascadeCount,
+  });
   const fogFeather = effect(gpu, shaders.fogFeather, {
     label: "fog-edge-feather",
     set: {
@@ -270,7 +399,16 @@ export function createSceneExecutor(
   });
   const fogComposite = effect(gpu, shaders.fogComposite, {
     label: "fog-composite",
-    set: { scene: sceneA, fog_mask: featheredFogTarget, light: lightTarget, texture_sampler: linearSampler, params: fogCompositeParams(0) },
+    set: {
+      scene: sceneA,
+      fog_mask: featheredFogTarget,
+      light: lightTarget,
+      indirect_light: emptyIndirectLightTarget.colors[0],
+      fog_indirect_light: emptyIndirectLightTarget.colors[1],
+      texture_sampler: linearSampler,
+      radiance_sampler: nearestSampler,
+      params: fogCompositeParams(0),
+    },
   });
   const sceneCopy = effect(gpu, shaders.sceneCopy, {
     label: "scene-layer-copy",
@@ -288,12 +426,32 @@ export function createSceneExecutor(
     label: "linear-to-display-present",
     set: { linear_scene: compositeTarget, texture_sampler: linearSampler },
   });
+  const updateRadianceLayout = (nextSize: readonly [number, number]) => {
+    const next = radianceConfig(nextSize, view, radianceScale);
+    if (next.field[0] !== radiance.field[0] || next.field[1] !== radiance.field[1]) {
+      emptyIndirectLightTarget.resize(next.field);
+      for (const entry of fogEntries) {
+        entry.indirectTarget.resize(next.field);
+        entry.radianceKey = "";
+      }
+    }
+    if (next.atlas[0] !== radiance.atlas[0] || next.atlas[1] !== radiance.atlas[1]) {
+      radianceCascades[0].resize(next.atlas);
+      radianceCascades[1].resize(next.atlas);
+    }
+    radiance = next;
+  };
+
   return {
     lightFormat: "rgba16float",
     sampleCount: 4,
     get estimatedTargetBytes() {
       const [width, height] = destination.size;
-      return width * height * (8 * 5 + 8 * 5 + 4 * 5 + 4 + 8 * 5 + 4);
+      const [fieldWidth, fieldHeight] = radiance.field;
+      const [atlasWidth, atlasHeight] = radiance.atlas;
+      return width * height * (40 * 4 + 20 + 4 + 4)
+        + fieldWidth * fieldHeight * 16 * (fogEntries.length + 1)
+        + atlasWidth * atlasHeight * 8 * 2;
     },
     async prewarm() {
       await Promise.all([
@@ -301,6 +459,8 @@ export function createSceneExecutor(
         ...fogEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
           .map((drawable) => drawable.compile(signature(fogMaskTarget))),
         ...fogEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))),
+        ...fogEntries.flatMap((entry) => entry.radianceCascadeEffects.flat()).map((drawable) => drawable.compile(signature(radianceCascades[0]))),
+        ...fogEntries.flatMap((entry) => entry.radianceResolveEffects).map((drawable) => drawable.compile(signature(emptyIndirectLightTarget))),
         ...(plan.showEditorGrid
           ? [
               ...fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
@@ -329,6 +489,8 @@ export function createSceneExecutor(
       await Promise.all(nextEntries.flatMap((entry) => [entry.fog, entry.clear].filter((item): item is Draw => item !== undefined))
         .map((drawable) => drawable.compile(signature(fogMaskTarget))));
       await Promise.all(nextEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))));
+      await Promise.all(nextEntries.flatMap((entry) => entry.radianceCascadeEffects.flat()).map((drawable) => drawable.compile(signature(radianceCascades[0]))));
+      await Promise.all(nextEntries.flatMap((entry) => entry.radianceResolveEffects).map((drawable) => drawable.compile(signature(emptyIndirectLightTarget))));
       if (plan.showEditorGrid) {
         await Promise.all([
           ...nextEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
@@ -341,8 +503,11 @@ export function createSceneExecutor(
       snapshot = nextSnapshot;
       previousEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
       previousEntries.forEach((entry) => entry.wallStorage.destroy());
+      previousEntries.forEach((entry) => entry.lightStorage.destroy());
+      previousEntries.forEach((entry) => (entry.indirectTarget as Target & { destroy?: () => void }).destroy?.());
     },
     async render() {
+      const nextRadianceKeys = new Map<string, string>();
       for (const entry of assetEntries) {
         const asset = snapshot.scene.assets.find((candidate) => candidate.id === entry.id);
         if (asset) entry.drawable.set({ params: assetParams(asset) });
@@ -350,6 +515,11 @@ export function createSceneExecutor(
       for (const entry of fogEntries) {
         const layer = snapshot.scene.layers.find((candidate) => candidate.id === entry.layerId);
         if (layer?.type !== "fog") continue;
+        const nextRadianceKey = radianceKey(layer);
+        nextRadianceKeys.set(entry.layerId, nextRadianceKey);
+        if (entry.radianceKey !== nextRadianceKey && layer.lightSources.length > 0) {
+          entry.lightStorage.write(radianceLightData(layer.lightSources));
+        }
         entry.fog?.set({ params: { ...spatialParams(), fog_value: 1 } });
         entry.clear?.set({ params: { ...spatialParams(), fog_value: 0 } });
         entry.fogGuide?.set({ params: { ...spatialParams(), color: [0.82, 0.2, 0.95, 0.9] } });
@@ -368,6 +538,7 @@ export function createSceneExecutor(
             light_position: [light.position.x, light.position.y],
             bright_distance: light.brightLightDistance,
             dim_distance: light.dimLightDistance,
+            shadow_sample_count: plan.showEditorGrid ? 2 : 4,
             color: [light.color.r / 255, light.color.g / 255, light.color.b / 255, 1],
             energy: light.color.a / 255,
           } });
@@ -388,6 +559,7 @@ export function createSceneExecutor(
         params: { ...spatialParams(), show_editor: plan.showEditorGrid ? 1 : 0, show_grid: gridVisible ? 1 : 0, ...selectionParams() },
       });
       const operations = compileSceneLayerOperations(snapshot.scene);
+      const refreshedRadiance: FogDrawEntry[] = [];
       const submitted = frame(gpu, (currentFrame) => {
         currentFrame.pass({ target: activeScene, clear: [0, 0, 0, 1] }, () => undefined);
         for (const operation of operations) {
@@ -421,9 +593,55 @@ export function createSceneExecutor(
           currentFrame.pass({ target: lightTarget, clear: [0, 0, 0, 0] }, (pass) => {
             for (const light of entry?.lightEffects ?? []) pass.draw(light);
           });
+          const hasIndirect = Boolean(entry?.lightEffects.length && entry.wallSegmentCount);
+          const refreshRadiance = Boolean(entry && entry.radianceKey !== nextRadianceKeys.get(entry.layerId));
+          if (refreshRadiance && entry) {
+            refreshedRadiance.push(entry);
+            currentFrame.pass({ target: entry.indirectTarget, clear: [0, 0, 0, 0] }, () => undefined);
+          }
+          if (refreshRadiance && hasIndirect && entry) {
+            const lowSpatial = radianceSpatialParams();
+            for (let lightIndex = 0; lightIndex < entry.lightEffects.length; lightIndex++) {
+              let cascadeRead = radianceCascades[1];
+              let cascadeWrite = radianceCascades[0];
+              for (let cascade = radiance.cascadeCount - 1; cascade >= 0; cascade--) {
+                const cascadeEffect = entry.radianceCascadeEffects[lightIndex][cascade];
+                cascadeEffect.set({
+                  params: {
+                    state: [cascade, cascade < radiance.cascadeCount - 1 ? 1 : 0, 0, 0],
+                    field_size: radiance.field,
+                    target_to_grid_offset: lowSpatial.target_to_grid_offset,
+                    pixels_per_grid: lowSpatial.pixels_per_grid,
+                    segment_count: entry.wallSegmentCount,
+                    light_count: entry.lightEffects.length,
+                    light_index: lightIndex,
+                    bounce_gain: WALL_BOUNCE_GAIN,
+                  },
+                  upper_tex: cascadeRead,
+                });
+                currentFrame.pass({ target: cascadeWrite, clear: [0, 0, 0, 0] }, cascadeEffect);
+                [cascadeRead, cascadeWrite] = [cascadeWrite, cascadeRead];
+              }
+              const resolveEffect = entry.radianceResolveEffects[lightIndex];
+              resolveEffect.set({
+                cascade_tex: cascadeRead,
+                params: {
+                  field_size: radiance.field,
+                  target_to_grid_offset: lowSpatial.target_to_grid_offset,
+                  pixels_per_grid: lowSpatial.pixels_per_grid,
+                  segment_count: entry.wallSegmentCount,
+                  light_count: entry.lightEffects.length,
+                  light_index: lightIndex,
+                },
+              });
+              currentFrame.pass({ target: entry.indirectTarget, clear: false }, resolveEffect);
+            }
+          }
           fogComposite.set({
             scene: activeScene,
             light: lightTarget,
+            indirect_light: entry?.indirectTarget.colors[0] ?? emptyIndirectLightTarget.colors[0],
+            fog_indirect_light: entry?.indirectTarget.colors[1] ?? emptyIndirectLightTarget.colors[1],
             params: fogCompositeParams(entry?.lightEffects.length ? 1 : 0),
           });
           currentFrame.pass({ target: alternateScene, clear: [0, 0, 0, 1] }, fogComposite);
@@ -446,7 +664,9 @@ export function createSceneExecutor(
         currentFrame.pass({ target: destination, clear: [0, 0, 0, 1] }, present);
       });
       await submitted.done;
-      await gpu.settled();
+      for (const entry of refreshedRadiance) {
+        entry.radianceKey = nextRadianceKeys.get(entry.layerId) ?? "";
+      }
     },
     resize(nextSize) {
       renderSize = { width: nextSize[0], height: nextSize[1] };
@@ -457,6 +677,7 @@ export function createSceneExecutor(
       featheredFogTarget.resize(nextSize);
       lightTarget.resize(nextSize);
       compositeTarget.resize(nextSize);
+      updateRadianceLayout(nextSize);
     },
     setGridVisible(visible) {
       gridVisible = visible;
@@ -470,6 +691,7 @@ export function createSceneExecutor(
     setView(nextView) {
       view = nextView;
       projection = compileProjection(view, renderSize);
+      updateRadianceLayout([renderSize.width, renderSize.height]);
     },
   };
 }

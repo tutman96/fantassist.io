@@ -52,9 +52,19 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
     };
     const engine = createSceneEngine(freezeSceneDocument({
       ...base,
-      layers: base.layers.map((layer) => layer.type === "assets"
-        ? { ...layer, assetIds: [...layer.assetIds, secondAsset.id] }
-        : layer),
+      layers: base.layers.map((layer) => {
+        if (layer.type === "assets") return { ...layer, assetIds: [...layer.assetIds, secondAsset.id] };
+        return {
+          ...layer,
+          obstructionPolygons: [{ vertices: [{ x: 12, y: 2 }, { x: 12, y: 20 }], visibleOnTable: true }],
+          lightSources: [{
+            position: { x: 8, y: 10 },
+            brightLightDistance: 3,
+            dimLightDistance: 10,
+            color: { r: 255, g: 180, b: 80, a: 255 },
+          }],
+        };
+      }),
       assets: [...base.assets, secondAsset],
     }));
     let imageUploads = 0;
@@ -106,7 +116,7 @@ test("shared executor reuses pipelines across scene snapshot frames", async () =
     assert.equal(
       instrumentation.calls.createRenderPipeline +
         instrumentation.calls.createRenderPipelineAsync,
-      7
+      10
     );
   } finally {
     gpu.dispose();

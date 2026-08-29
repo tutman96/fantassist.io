@@ -187,3 +187,100 @@ test("separate wall segments contain direct light outside a closed room", { time
     `closed walls should contain direct light: ${litOutside} versus ${darkOutside}`,
   );
 });
+
+test("fog clips bounced radiance at dim radius while open space keeps the cascade", { timeout: 60_000 }, async () => {
+  const base = createSampleSceneDocument();
+  const fogLayer = base.layers.find((layer) => layer.type === "fog");
+  assert.ok(fogLayer);
+  const scene = (energy: number, fogged: boolean) => freezeSceneDocument({
+    ...base,
+    layers: base.layers.map((layer) => layer.id === fogLayer.id ? {
+      ...fogLayer,
+      fogPolygons: fogged
+        ? [{ vertices: [{ x: 0, y: 0 }, { x: 44, y: 0 }, { x: 44, y: 25 }, { x: 0, y: 25 }], visibleOnTable: true }]
+        : [],
+      fogClearPolygons: [],
+      lightSources: [{
+        position: { x: 10, y: 10 },
+        brightLightDistance: 1,
+        dimLightDistance: 3,
+        color: { r: 255, g: 120, b: 40, a: energy },
+      }],
+      obstructionPolygons: [{ vertices: [{ x: 8, y: 12 }, { x: 16, y: 12 }], visibleOnTable: true }],
+    } : layer),
+  });
+  const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
+  const openLit = await renderHeadlessScene({ ...options, scene: scene(255, false) });
+  const openDark = await renderHeadlessScene({ ...options, scene: scene(0, false) });
+  const foggedLit = await renderHeadlessScene({ ...options, scene: scene(255, true) });
+  const foggedDark = await renderHeadlessScene({ ...options, scene: scene(0, true) });
+  const sample = (pixels: Uint8Array) => [...pixels.slice((59 * 256 + 78) * 4, (59 * 256 + 78) * 4 + 3)];
+  const openBounce = sample(openLit.pixels);
+  const openBaseline = sample(openDark.pixels);
+  const foggedOutside = sample(foggedLit.pixels);
+  const foggedBaseline = sample(foggedDark.pixels);
+  let maximumOpenDelta = 0;
+  let maximumOpenPoint = [0, 0];
+  for (let y = 45; y <= 70; y++) {
+    for (let x = 74; x <= 100; x++) {
+      const offset = (y * 256 + x) * 4;
+      const delta = openLit.pixels[offset] - openDark.pixels[offset];
+      if (delta > maximumOpenDelta) {
+        maximumOpenDelta = delta;
+        maximumOpenPoint = [x, y];
+      }
+    }
+  }
+  assert.ok(
+    maximumOpenDelta > 1,
+    `open space should retain bounced cascade radiance beyond the dim radius: max ${maximumOpenDelta} at ${maximumOpenPoint}; ${openBounce} versus ${openBaseline}`,
+  );
+  assert.ok(
+    foggedOutside.every((channel, index) => Math.abs(channel - foggedBaseline[index]) <= 1),
+    `fog should be entirely unilluminated beyond the dim radius: ${foggedOutside} versus ${foggedBaseline}`,
+  );
+});
+
+test("each colored light keeps independent cascade reachability", { timeout: 60_000 }, async () => {
+  const base = createSampleSceneDocument();
+  const fogLayer = base.layers.find((layer) => layer.type === "fog");
+  assert.ok(fogLayer);
+  const scene = (redEnergy: number) => freezeSceneDocument({
+    ...base,
+    layers: base.layers.map((layer) => layer.id === fogLayer.id ? {
+      ...fogLayer,
+      fogPolygons: [],
+      fogClearPolygons: [],
+      lightSources: [
+        {
+          position: { x: 6, y: 10 },
+          brightLightDistance: 3,
+          dimLightDistance: 12,
+          color: { r: 255, g: 20, b: 20, a: redEnergy },
+        },
+        {
+          position: { x: 10, y: 10 },
+          brightLightDistance: 2,
+          dimLightDistance: 5,
+          color: { r: 20, g: 80, b: 255, a: 255 },
+        },
+      ],
+      obstructionPolygons: [
+        { vertices: [{ x: 8, y: 8 }, { x: 12, y: 8 }], visibleOnTable: true },
+        { vertices: [{ x: 12, y: 8 }, { x: 12, y: 12 }], visibleOnTable: true },
+        { vertices: [{ x: 12, y: 12 }, { x: 8, y: 12 }], visibleOnTable: true },
+        { vertices: [{ x: 8, y: 12 }, { x: 8, y: 8 }], visibleOnTable: true },
+      ],
+    } : layer),
+  });
+  const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
+  const both = await renderHeadlessScene({ ...options, scene: scene(255) });
+  const blueOnly = await renderHeadlessScene({ ...options, scene: scene(0) });
+  const sample = (pixels: Uint8Array) => [...pixels.slice((59 * 256 + 58) * 4, (59 * 256 + 58) * 4 + 3)];
+  const sealedWithRed = sample(both.pixels);
+  const sealedWithoutRed = sample(blueOnly.pixels);
+  assert.ok(
+    sealedWithRed.every((channel, index) => Math.abs(channel - sealedWithoutRed[index]) <= 2),
+    `an exterior red light must not borrow the interior blue light's reachability: ${sealedWithRed} versus ${sealedWithoutRed}`,
+  );
+});
