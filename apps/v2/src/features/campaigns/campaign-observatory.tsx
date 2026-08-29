@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, Download, FilePlus2, FolderOpen, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, Download, FilePlus2, FolderOpen, GitFork, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 
 import appIcon from "@/app/icon-full-dark.png";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
+import { SceneCardThumbnail } from "./scene-card-thumbnail";
 
 type CreationMode = "campaign" | "scene" | null;
 type RenameTarget = { readonly type: "campaign"; readonly id: string; readonly name: string } | { readonly type: "scene"; readonly key: string; readonly name: string };
@@ -26,6 +27,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   const router = useRouter();
   const editorScene = useEditorScene();
   const importInput = useRef<HTMLInputElement>(null);
+  const sceneGrid = useRef<HTMLDivElement>(null);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
   const activeCreationMode = creationMode ?? initialCreationMode;
   const [name, setName] = useState("");
@@ -35,6 +37,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   const [renameName, setRenameName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [sceneQuery, setSceneQuery] = useState("");
+  const [hasMoreScenes, setHasMoreScenes] = useState(false);
   const campaigns = editorScene?.campaigns ?? [];
   const activeCampaign = campaigns.find((campaign) => campaign.id === (campaignId ?? editorScene?.activeCampaignId)) ?? null;
   const campaignScenes = (editorScene?.scenes ?? []).filter((scene) => scene.campaignId === activeCampaign?.id);
@@ -42,6 +45,16 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   const isEmptyArchive = campaigns.length === 0;
   const inlineOnboarding = isEmptyArchive && initialCreationMode === "campaign";
   const showLandingHero = landing || isEmptyArchive;
+
+  useEffect(() => {
+    const element = sceneGrid.current;
+    if (!element) return;
+    const update = () => setHasMoreScenes(element.scrollTop + element.clientHeight < element.scrollHeight - 2);
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    queueMicrotask(update);
+    return () => observer.disconnect();
+  }, [activeCampaign?.id, visibleScenes.length]);
 
   const startCreation = (mode: Exclude<CreationMode, null>) => {
     setCreationMode(mode);
@@ -124,10 +137,16 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   };
 
   return (
-    <main className="relative isolate min-h-svh overflow-hidden text-white">
-      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-[92rem] flex-col px-4 py-4 sm:px-7 sm:py-6 lg:px-10">
-        <header className={`flex items-center pb-4 ${landing ? "justify-end" : "justify-between border-b border-violet-200/12"}`}>
-          {!landing ? <Link href="/" className="font-mono text-[8px] tracking-[0.24em] text-violet-200/55 uppercase transition hover:text-violet-100">Campaign observatory</Link> : null}
+    <main className="relative isolate min-h-svh overflow-x-hidden text-white lg:h-svh lg:overflow-hidden">
+      <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-[92rem] flex-col px-4 py-4 sm:px-7 sm:py-6 lg:h-full lg:min-h-0 lg:px-10">
+        <header className={`flex items-center justify-between pb-4 ${landing ? "" : "border-b border-violet-200/12"}`}>
+          <Link href="/" className="group/brand flex shrink-0 items-center gap-2 text-violet-100/75 transition hover:text-white" aria-label="Fantassist home">
+            <span className="relative grid size-7 place-items-center">
+              <Image src="/fantassist-mark.png" width={28} height={28} priority alt="" className="size-7 object-contain drop-shadow-[0_0_7px_rgba(129,92,246,0.4)] transition-transform duration-300 group-hover/brand:rotate-6 group-hover/brand:scale-105" />
+            </span>
+            <span className="font-mono text-[9px] font-semibold tracking-[0.22em] uppercase">Fantassist</span>
+            {!landing ? <span className="hidden text-[8px] font-normal tracking-[0.16em] text-violet-200/35 uppercase sm:inline">/ Campaign observatory</span> : null}
+          </Link>
           <div className="ml-auto flex items-center gap-2">
             {editorScene?.activeSceneKey ? (
               <Button asChild variant="ghost" className="rounded-none px-1.5 text-violet-100/70 hover:bg-violet-300/10 sm:px-2.5">
@@ -136,6 +155,9 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
             ) : null}
             <Button asChild variant={landing ? "ghost" : "outline"} className={`rounded-none text-violet-50 hover:bg-violet-300/10 ${landing ? "text-violet-100/55 hover:text-violet-50" : "border-violet-200/15 bg-black/15"}`}>
               <Link href="/campaigns/new"><Plus aria-hidden="true" /> New<span className="hidden sm:inline"> campaign</span></Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="rounded-none px-2 text-violet-200/55 hover:bg-violet-300/10 hover:text-violet-50">
+              <a href="https://github.com/tutman96/fantassist.io" target="_blank" rel="noreferrer"><GitFork aria-hidden="true" /><span className="hidden sm:inline">GitHub</span><span className="sr-only"> (opens in a new tab)</span></a>
             </Button>
             <Button asChild variant="ghost" className="hidden rounded-none text-violet-200/55 sm:inline-flex">
               <Link href="/beta">Beta</Link>
@@ -148,9 +170,11 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
             <div className="relative w-full max-w-3xl text-center">
               <div className="pointer-events-none absolute left-1/2 top-1/2 size-[34rem] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 rounded-full border border-violet-300/8 [box-shadow:0_0_120px_rgba(91,33,182,0.16),inset_0_0_90px_rgba(59,130,246,0.06)]" />
               <div className="pointer-events-none absolute left-1/2 top-1/2 size-[24rem] max-w-[68vw] -translate-x-1/2 -translate-y-1/2 rotate-12 rounded-full border border-dashed border-blue-300/10" />
-              <div className="relative mx-auto mb-5 grid h-40 w-48 place-items-center sm:h-44 sm:w-56">
-                <Image src={appIcon} priority alt="Fantassist" className="relative w-48 max-w-none object-contain drop-shadow-[0_0_18px_rgba(139,92,246,0.62)] sm:w-52" />
-              </div>
+              {!landing ? (
+                <div className="relative mx-auto mb-5 grid h-40 w-48 place-items-center sm:h-44 sm:w-56">
+                  <Image src={appIcon} priority alt="Fantassist" className="relative w-48 max-w-none object-contain drop-shadow-[0_0_18px_rgba(139,92,246,0.62)] sm:w-52" />
+                </div>
+              ) : null}
               {inlineOnboarding ? (
                 <form onSubmit={(event) => void submitCreation(event)} className="relative mx-auto max-w-xl">
                   <p className="mb-3 font-mono text-[9px] tracking-[0.3em] text-blue-200/65 uppercase">Chart your first world</p>
@@ -187,12 +211,12 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
             </div>
           </section>
         ) : (
-          <div className="grid flex-1 gap-7 py-7 lg:grid-cols-[minmax(17rem,0.72fr)_minmax(0,1.7fr)] lg:gap-12 lg:py-10">
-            <aside className="min-w-0">
+          <div className="grid flex-1 gap-7 py-7 lg:min-h-0 lg:grid-cols-[minmax(17rem,0.72fr)_minmax(0,1.7fr)] lg:gap-12 lg:py-10">
+            <aside className="flex min-w-0 flex-col lg:min-h-0">
               <p className="font-mono text-[9px] tracking-[0.27em] text-blue-200/60 uppercase">Known worlds / {campaigns.length.toString().padStart(2, "0")}</p>
               <h1 className="mt-3 max-w-sm font-heading text-4xl leading-none text-amber-50 sm:text-5xl">Choose your<br />next world.</h1>
               <p className="mt-4 max-w-sm text-sm leading-6 text-violet-100/50">Every campaign is a separate atlas. Select one to browse its scenes or chart somewhere new.</p>
-              <div className="mt-7 grid gap-2" aria-label="Campaigns">
+              <div className="mt-7 grid gap-2 lg:min-h-0 lg:flex-1 lg:content-start lg:overflow-y-auto lg:pr-2 [scrollbar-color:rgba(167,139,250,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-violet-300/25" aria-label="Campaigns">
                 {campaigns.map((campaign, index) => {
                   const selected = campaign.id === activeCampaign?.id;
                   const sceneCount = editorScene?.scenes.filter((scene) => scene.campaignId === campaign.id).length ?? 0;
@@ -218,11 +242,11 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
               </div>
             </aside>
 
-            <section className="relative min-h-[30rem] overflow-hidden border border-violet-200/12 bg-[#080a1b]/72 p-4 shadow-[0_40px_120px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-6 lg:p-8" aria-labelledby="campaign-scenes-title">
+            <section className="relative flex min-h-[30rem] flex-col overflow-hidden border border-violet-200/12 bg-[#080a1b]/72 p-4 shadow-[0_40px_120px_rgba(0,0,0,0.38)] backdrop-blur-md sm:p-6 lg:min-h-0 lg:p-8" aria-labelledby="campaign-scenes-title">
               <div className="pointer-events-none absolute right-0 top-0 size-56 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.15),transparent_68%)]" />
               {activeCampaign ? (
                 <>
-                  <div className="relative flex flex-col gap-5 border-b border-violet-200/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
+                   <div className="relative flex shrink-0 flex-col gap-5 border-b border-violet-200/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
                     <div className="min-w-0">
                       <p className="font-mono text-[8px] tracking-[0.24em] text-violet-200/45 uppercase">Active campaign</p>
                       <h2 id="campaign-scenes-title" className="mt-2 truncate font-heading text-3xl text-amber-50 sm:text-4xl">{activeCampaign.name}</h2>
@@ -247,7 +271,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
                   </div>
 
                   {campaignScenes.length > 0 ? (
-                    <div className="relative mt-5 w-full">
+                    <div className="relative mt-5 w-full shrink-0">
                       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-violet-200/35" aria-hidden="true" />
                       <Input
                         type="search"
@@ -261,7 +285,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
                   ) : null}
 
                   {campaignScenes.length === 0 ? (
-                    <div className="relative grid min-h-[23rem] place-items-center text-center">
+                    <div className="relative grid min-h-[23rem] flex-1 place-items-center overflow-y-auto text-center">
                       <div>
                         <div className="mx-auto grid size-16 place-items-center border border-dashed border-violet-200/20 bg-violet-200/5">
                           <FolderOpen className="size-7 text-violet-100/55" strokeWidth={1.2} aria-hidden="true" />
@@ -275,26 +299,44 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
                       </div>
                     </div>
                   ) : (
-                    <div className="relative mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {visibleScenes.map((scene, index) => (
-                        <div key={scene.key} className="group relative h-40 min-w-0 overflow-hidden border border-violet-200/10 bg-black/15 hover:border-blue-300/30 hover:bg-blue-300/8">
-                          <Link href={sceneHref(scene.key)} className="flex h-full flex-col justify-between p-4 text-left">
-                            <span className="absolute right-3 top-3 font-mono text-[8px] tracking-widest text-violet-200/25">{String(index + 1).padStart(2, "0")}</span>
-                            <BookOpen className="size-5 text-blue-200/50 transition group-hover:text-blue-200" strokeWidth={1.4} aria-hidden="true" />
-                            <span className="min-w-0">
-                              <span className="line-clamp-2 font-heading text-xl leading-tight text-amber-50">{scene.name}</span>
-                              <span className="mt-1 flex items-center justify-start gap-2 pr-24 font-mono text-[8px] tracking-[0.12em] text-violet-200/40 uppercase"><span>Version {scene.version}</span><ArrowRight className="size-3 transition group-hover:translate-x-1" aria-hidden="true" /></span>
+                    <div className="relative mt-6 lg:min-h-0 lg:flex-1">
+                      <div ref={sceneGrid} onScroll={() => {
+                        const element = sceneGrid.current;
+                        if (element) setHasMoreScenes(element.scrollTop + element.clientHeight < element.scrollHeight - 2);
+                      }} className="grid h-full content-start gap-4 lg:overflow-y-auto lg:pr-2 lg:pb-8 [scrollbar-color:rgba(167,139,250,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-violet-300/25 sm:grid-cols-2 xl:grid-cols-3">
+                        {visibleScenes.map((scene, index) => (
+                        <div key={scene.key} className="group relative h-44 min-w-0 overflow-hidden border border-violet-200/12 bg-black/20 shadow-[0_14px_38px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-0.5 hover:border-blue-200/35 hover:shadow-[0_20px_48px_rgba(2,6,23,0.48),0_0_28px_rgba(59,130,246,0.08)] focus-within:border-blue-200/35">
+                          <SceneCardThumbnail sceneKey={scene.key} version={scene.version} />
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#08091b]/90 via-[#08091b]/15 via-45% to-transparent" aria-hidden="true" />
+                          <div className="pointer-events-none absolute inset-2 border border-white/[0.045] transition-colors duration-300 group-hover:border-blue-100/10" aria-hidden="true" />
+                          <div className="pointer-events-none absolute inset-x-2 top-2 h-px origin-left scale-x-0 bg-gradient-to-r from-blue-300/70 via-violet-300/35 to-transparent transition-transform duration-500 group-hover:scale-x-100" aria-hidden="true" />
+                          <Link href={sceneHref(scene.key)} className="relative z-10 block h-full p-4 text-left">
+                            <span className="absolute right-3 top-3 border border-white/[0.06] bg-black/20 px-1.5 py-1 font-mono text-[8px] tracking-widest text-violet-100/35 backdrop-blur-sm">{String(index + 1).padStart(2, "0")}</span>
+                            <span className="grid size-8 place-items-center border border-blue-100/10 bg-[#08091b]/35 text-blue-100/55 backdrop-blur-sm transition duration-300 group-hover:border-blue-100/20 group-hover:text-blue-100">
+                              <BookOpen className="size-4" strokeWidth={1.35} aria-hidden="true" />
+                            </span>
+                            <span className="absolute inset-x-4 bottom-3 min-w-0 translate-y-4 transition-transform duration-300 ease-out group-hover:translate-y-0 group-focus-within:translate-y-0">
+                              <span className="line-clamp-2 text-balance font-heading text-xl leading-tight text-amber-50 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">{scene.name}</span>
+                              <span className="mt-1 flex items-center justify-start gap-2 pr-24 font-mono text-[8px] tracking-[0.12em] text-violet-100/55 uppercase opacity-0 transition-opacity delay-75 duration-200 group-hover:opacity-100 group-focus-within:opacity-100"><span>Version {scene.version}</span><ArrowRight className="size-3 transition-transform group-hover:translate-x-1" aria-hidden="true" /></span>
                             </span>
                           </Link>
-                          <div className="absolute bottom-3 right-3 flex gap-1">
+                          <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex gap-1 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                             <Button size="icon-sm" variant="ghost" className="rounded-none text-violet-100/60" aria-label={`Export ${scene.name}`} disabled={busy} onClick={() => void runAction(() => editorScene!.exportScene(scene.key))}><Download aria-hidden="true" /></Button>
                             <Button size="icon-sm" variant="ghost" className="rounded-none text-violet-100/60" aria-label={`Rename ${scene.name}`} disabled={busy} onClick={() => beginRename({ type: "scene", key: scene.key, name: scene.name })}><Pencil aria-hidden="true" /></Button>
                             <Button size="icon-sm" variant="ghost" className="rounded-none text-red-300/70 hover:text-red-200" aria-label={`Delete ${scene.name}`} disabled={busy} onClick={() => setDeleteTarget({ type: "scene", key: scene.key, name: scene.name })}><Trash2 aria-hidden="true" /></Button>
                           </div>
                         </div>
-                      ))}
-                      {visibleScenes.length === 0 ? (
-                        <p className="col-span-full border border-dashed border-violet-200/12 px-4 py-10 text-center text-sm text-violet-100/45">No scenes match “{sceneQuery.trim()}”.</p>
+                        ))}
+                        {visibleScenes.length === 0 ? (
+                          <p className="col-span-full border border-dashed border-violet-200/12 px-4 py-10 text-center text-sm text-violet-100/45">No scenes match “{sceneQuery.trim()}”.</p>
+                        ) : null}
+                      </div>
+                      {hasMoreScenes ? (
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-14 items-end justify-center bg-gradient-to-t from-[#080a1b] via-[#080a1b]/75 to-transparent pb-1 lg:flex" aria-hidden="true">
+                          <span className="grid size-5 place-items-center border border-violet-200/15 bg-[#0c0d22]/85 text-violet-100/55 shadow-[0_0_16px_rgba(139,92,246,0.18)]">
+                            <ChevronDown className="size-3 animate-bounce" />
+                          </span>
+                        </div>
                       ) : null}
                     </div>
                   )}

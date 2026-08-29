@@ -9,6 +9,7 @@ const SCENE_DATABASE = "scene_2";
 const ASSET_DATABASE = "asset_file";
 const SETTINGS_DATABASE = "settings";
 const V2_METADATA_DATABASE = "fantassist_v2";
+const V2_THUMBNAIL_DATABASE = "fantassist_v2_thumbnails";
 
 export interface V2SceneMetadata {
   readonly assetVisibility: Readonly<Record<string, boolean>>;
@@ -39,6 +40,7 @@ export function createV1Repositories(): V1Repositories {
   const assets = localforage.createInstance({ name: ASSET_DATABASE });
   const settings = localforage.createInstance({ name: SETTINGS_DATABASE });
   const metadata = localforage.createInstance({ name: V2_METADATA_DATABASE });
+  const thumbnails = localforage.createInstance({ name: V2_THUMBNAIL_DATABASE });
   const setter = crypto.randomUUID();
 
   return {
@@ -87,6 +89,9 @@ export function createV1Repositories(): V1Repositories {
       signalChange(SCENE_DATABASE, key, setter);
       await metadata.removeItem(key);
       signalChange(V2_METADATA_DATABASE, key, setter);
+      const prefix = `${key}:`;
+      await Promise.all((await thumbnails.keys()).filter((thumbnailKey) => thumbnailKey.startsWith(prefix))
+        .map((thumbnailKey) => thumbnails.removeItem(thumbnailKey)));
     },
     getAsset(id) {
       return assets.getItem<File>(id);

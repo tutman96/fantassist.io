@@ -401,7 +401,7 @@ test("scene adapter persists empty scenes after asset and layer deletion", () =>
 });
 
 test("v1 repositories use exact stores and reject stale scene saves", async () => {
-  await Promise.all(["campaign", "scene_2", "asset_file", "settings", "fantassist_v2"].map(deleteDatabase));
+  await Promise.all(["campaign", "scene_2", "asset_file", "settings", "fantassist_v2", "fantassist_v2_thumbnails"].map(deleteDatabase));
   const [{ default: localforage }, { createV1Repositories }] = await Promise.all([
     import("localforage"),
     import("../src/persistence/v1/repositories"),
@@ -462,6 +462,7 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
     "asset_file",
     "campaign",
     "fantassist_v2",
+    "fantassist_v2_thumbnails",
     "scene_2",
     "settings",
   ]);
