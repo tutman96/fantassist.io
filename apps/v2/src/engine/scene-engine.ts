@@ -69,6 +69,12 @@ export type SceneCommand =
       readonly collection: FogPolygonCollection;
       readonly polygonIndex: number;
     }
+  | {
+      readonly type: "fog.walls.update";
+      readonly layerId: string;
+      readonly polygons: readonly FogPolygon[];
+      readonly selectedPolygonIndex?: number;
+    }
   | { readonly type: "table.camera"; readonly table: TableCamera }
   | { readonly type: "light.insert"; readonly layerId: string; readonly light: SceneLight; readonly index?: number }
   | { readonly type: "light.update"; readonly layerId: string; readonly lightIndex: number; readonly light: SceneLight }
@@ -79,7 +85,7 @@ export type SceneCommand =
   | { readonly type: "selection.set"; readonly assetId: string | null };
 
 export type PreviewCommand = Extract<SceneCommand, {
-  readonly type: "asset.transform" | "table.camera" | "fog.polygon.insert" | "fog.polygon.update" | "light.insert" | "light.update";
+  readonly type: "asset.transform" | "table.camera" | "fog.polygon.insert" | "fog.polygon.update" | "fog.walls.update" | "light.insert" | "light.update";
 }>;
 export interface PreviewToken {
   readonly id: number;
@@ -164,6 +170,13 @@ type HistoryEntry =
       readonly before?: FogPolygon;
       readonly after?: FogPolygon;
     }
+  | {
+      readonly kind: "fog-walls";
+      readonly layerId: string;
+      readonly before: readonly FogPolygon[];
+      readonly after: readonly FogPolygon[];
+      readonly selectedPolygonIndex?: number;
+    }
   | { readonly kind: "table-camera"; readonly before: TableCamera; readonly after: TableCamera }
   | {
       readonly kind: "light";
@@ -184,8 +197,11 @@ interface ActivePreview {
     readonly initialBounds: GridBounds;
     readonly handle: TableResizeHandle;
   };
-  fogDrawing?: { readonly fixedVertices: readonly GridPoint[] };
-  fogVertex?: { readonly vertexIndex: number };
+  fogDrawing?: {
+    readonly fixedVertices: readonly GridPoint[];
+    readonly fixedWallPolygons?: readonly FogPolygon[];
+  };
+  fogVertex?: { readonly vertexIndex: number; readonly polygonIndex?: number };
   fogMove?: { readonly initialPointer: GridPoint; readonly initialVertices: readonly GridPoint[] };
   fogCursorPoint?: GridPoint;
   gridSnapPoint?: GridPoint;
@@ -259,8 +275,8 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       invalidation,
       fogCursorPoint: preview ? preview.fogCursorPoint ?? null : hoverFogCursorPoint,
       fogCursorCollection: preview
-        ? preview.fogCursorPoint && (preview.command.type === "fog.polygon.insert" || preview.command.type === "fog.polygon.update")
-          ? preview.command.collection
+        ? preview.fogCursorPoint && (preview.command.type === "fog.polygon.insert" || preview.command.type === "fog.polygon.update" || preview.command.type === "fog.walls.update")
+          ? preview.command.type === "fog.walls.update" ? "wall" : preview.command.collection
           : null
         : hoverFogCursorCollection,
       gridSnapPoint: preview ? preview.gridSnapPoint ?? null : hoverGridSnapPoint,
@@ -411,6 +427,45 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     return { ok: true, changed: true, revision };
   }
 
+  function wallResult(
+    command: Extract<SceneCommand, { readonly type: "fog.walls.update" }>,
+    recordHistory: boolean,
+    publishUnchanged = false
+  ): CommandResult {
+    const layer = committedScene.layers.find((candidate) => candidate.id === command.layerId);
+    if (!layer || layer.type !== "fog") {
+      return { ok: false, error: `Unknown fog layer '${command.layerId}'`, revision };
+    }
+    const error = command.polygons.map((polygon) => validateFogPolygon(polygon, "wall")).find(Boolean);
+    if (error) return { ok: false, error, revision };
+    if (sameFogPolygons(layer.obstructionPolygons, command.polygons)) {
+      if (publishUnchanged) publish("all");
+      return { ok: true, changed: false, revision };
+    }
+    if (recordHistory) {
+      undoStack = [...undoStack, {
+        kind: "fog-walls",
+        layerId: layer.id,
+        before: layer.obstructionPolygons,
+        after: command.polygons,
+        selectedPolygonIndex: command.selectedPolygonIndex,
+      }];
+      redoStack = [];
+    }
+    revision++;
+    committedScene = applyWallPolygons(committedScene, layer.id, command.polygons, revision);
+    if (command.selectedPolygonIndex !== undefined) {
+      selectedFogLayerId = layer.id;
+      selectedFogPolygon = { layerId: layer.id, collection: "wall", polygonIndex: command.selectedPolygonIndex };
+      selectedAssetId = null;
+      selectedLight = null;
+    } else if (selectedFogPolygon?.layerId === layer.id && selectedFogPolygon.collection === "wall" && selectedFogPolygon.polygonIndex >= command.polygons.length) {
+      selectedFogPolygon = null;
+    }
+    publish("all");
+    return { ok: true, changed: true, revision };
+  }
+
   function lightResult(
     command: Extract<SceneCommand, { readonly type: "light.insert" | "light.update" | "light.remove" }>,
     recordHistory: boolean,
@@ -505,6 +560,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       ) {
         return fogResult(command, true);
       }
+      if (command.type === "fog.walls.update") return wallResult(command, true);
       if (command.type === "light.insert" || command.type === "light.update" || command.type === "light.remove") {
         return lightResult(command, true);
       }
@@ -687,7 +743,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
           ? validateTable(command.table)
           : command.type === "light.insert" || command.type === "light.update"
             ? validateLight(command.light)
-            : validateFogPolygon(command.polygon, command.collection, true);
+            : command.type === "fog.walls.update"
+              ? command.polygons.map((polygon) => validateFogPolygon(polygon, "wall", true)).find(Boolean) ?? null
+              : validateFogPolygon(command.polygon, command.collection, true);
       if (command.type === "asset.transform" && !findAsset(committedScene, command.assetId)) {
         throw new Error(`Unknown asset '${command.assetId}'`);
       }
@@ -719,6 +777,13 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         if (preview.command.type !== command.type || preview.command.layerId !== command.layerId || validateLight(command.light)) return;
         if (command.type === "light.update" && (preview.command.type !== "light.update" || preview.command.lightIndex !== command.lightIndex)) return;
         preview.command = command;
+      } else if (command.type === "fog.walls.update") {
+        if (
+          preview.command.type !== "fog.walls.update" ||
+          preview.command.layerId !== command.layerId ||
+          command.polygons.some((polygon) => validateFogPolygon(polygon, "wall", true))
+        ) return;
+        preview.command = command;
       } else {
         if (validateFogPolygon(command.polygon, command.collection, true)) return;
         preview.command = command;
@@ -734,6 +799,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       if (command.type === "asset.transform") return transformResult(command, true, true);
       if (command.type === "table.camera") return tableResult(command, true, true);
       if (command.type === "light.insert" || command.type === "light.update") return lightResult(command, true, true);
+      if (command.type === "fog.walls.update") return wallResult(command, true, true);
       return fogResult(command, true, true);
     },
     cancelPreview(token) {
@@ -908,18 +974,27 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       hoverFogCursorPoint = null;
       hoverFogCursorCollection = null;
       hoverGridSnapPoint = null;
-      const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
-      const token = engine.beginPreview({
-        type: "fog.polygon.insert",
-        layerId,
-        collection,
-        polygon: { vertices: [snapped, snapped], visibleOnTable: true },
-      });
+      const wallSnap = collection === "wall"
+        ? snapWallOrGrid(layer, layer.obstructionPolygons, pointGrid, undefined, committedScene.table.displayGrid)
+        : null;
+      const snapped = wallSnap?.point ?? (committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid);
+      const polygon = { vertices: [snapped, snapped], visibleOnTable: true };
+      const token = collection === "wall"
+        ? engine.beginPreview({
+            type: "fog.walls.update",
+            layerId,
+            polygons: [...(wallSnap?.polygons ?? layer.obstructionPolygons), polygon],
+            selectedPolygonIndex: layer.obstructionPolygons.length,
+          })
+        : engine.beginPreview({ type: "fog.polygon.insert", layerId, collection, polygon });
       if (preview) preview = {
         ...preview,
-        fogDrawing: { fixedVertices: [Object.freeze({ ...snapped })] },
+        fogDrawing: {
+          fixedVertices: [Object.freeze({ ...snapped })],
+          ...(wallSnap ? { fixedWallPolygons: wallSnap.polygons } : {}),
+        },
         fogCursorPoint: Object.freeze({ ...snapped }),
-        gridSnapPoint: snapped === pointGrid ? undefined : Object.freeze({ ...snapped }),
+        gridSnapPoint: wallSnap?.snapped || snapped !== pointGrid ? Object.freeze({ ...snapped }) : undefined,
       };
       publish("editor");
       return token;
@@ -927,35 +1002,80 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     appendFogPolygonVertex(token, pointGrid) {
       if (!preview || preview.token.id !== token.id || !preview.fogDrawing || !isFinitePoint(pointGrid)) return;
       const command = preview.command;
-      if (command.type !== "fog.polygon.insert") return;
-      const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
+      if (command.type !== "fog.polygon.insert" && command.type !== "fog.walls.update") return;
+      const wallSnap = command.type === "fog.walls.update" && preview.fogDrawing.fixedWallPolygons
+        ? snapWallOrGrid(
+            fogLayerById(committedScene, command.layerId),
+            preview.fogDrawing.fixedWallPolygons,
+            pointGrid,
+            undefined,
+            committedScene.table.displayGrid
+          )
+        : null;
+      const snapped = wallSnap?.point ?? (committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid);
       const previous = preview.fogDrawing.fixedVertices.at(-1);
       const fixedVertices = previous && samePoint(previous, snapped)
         ? preview.fogDrawing.fixedVertices
         : [...preview.fogDrawing.fixedVertices, Object.freeze({ ...snapped })];
-      preview.fogDrawing = { fixedVertices };
+      preview.fogDrawing = {
+        fixedVertices,
+        ...(wallSnap ? { fixedWallPolygons: wallSnap.polygons } : {}),
+      };
       preview.fogCursorPoint = Object.freeze({ ...snapped });
-      preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
-      engine.updatePreview(token, { ...command, polygon: { ...command.polygon, vertices: [...fixedVertices, snapped] } });
+      preview.gridSnapPoint = wallSnap?.snapped || snapped !== pointGrid ? Object.freeze({ ...snapped }) : undefined;
+      if (command.type === "fog.walls.update") {
+        const source = command.polygons.at(-1);
+        if (!source || !wallSnap) return;
+        engine.updatePreview(token, {
+          ...command,
+          polygons: [...wallSnap.polygons, { ...source, vertices: [...fixedVertices, snapped] }],
+        });
+      } else {
+        engine.updatePreview(token, { ...command, polygon: { ...command.polygon, vertices: [...fixedVertices, snapped] } });
+      }
     },
     updateFogPolygonCursor(token, pointGrid) {
       if (!preview || preview.token.id !== token.id || !preview.fogDrawing || !isFinitePoint(pointGrid)) return;
       const command = preview.command;
-      if (command.type !== "fog.polygon.insert") return;
-      const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
+      if (command.type !== "fog.polygon.insert" && command.type !== "fog.walls.update") return;
+      const wallSnap = command.type === "fog.walls.update" && preview.fogDrawing.fixedWallPolygons
+        ? snapWallOrGrid(
+            fogLayerById(committedScene, command.layerId),
+            preview.fogDrawing.fixedWallPolygons,
+            pointGrid,
+            undefined,
+            committedScene.table.displayGrid
+          )
+        : null;
+      const snapped = wallSnap?.point ?? (committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid);
       preview.fogCursorPoint = Object.freeze({ ...snapped });
-      preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
-      engine.updatePreview(token, {
-        ...command,
-        polygon: { ...command.polygon, vertices: [...preview.fogDrawing.fixedVertices, snapped] },
-      });
+      preview.gridSnapPoint = wallSnap?.snapped || snapped !== pointGrid ? Object.freeze({ ...snapped }) : undefined;
+      if (command.type === "fog.walls.update") {
+        const source = command.polygons.at(-1);
+        if (!source || !wallSnap) return;
+        engine.updatePreview(token, {
+          ...command,
+          polygons: [...wallSnap.polygons, { ...source, vertices: [...preview.fogDrawing.fixedVertices, snapped] }],
+        });
+      } else {
+        engine.updatePreview(token, {
+          ...command,
+          polygon: { ...command.polygon, vertices: [...preview.fogDrawing.fixedVertices, snapped] },
+        });
+      }
     },
     setFogCursor(pointGrid, collection) {
       if (disposed || preview) return;
-      const snapped = pointGrid && committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
+      const layer = collection === "wall" && selectedFogLayerId
+        ? fogLayerById(committedScene, selectedFogLayerId)
+        : undefined;
+      const wallSnap = pointGrid && layer
+        ? snapWallOrGrid(layer, layer.obstructionPolygons, pointGrid, undefined, committedScene.table.displayGrid)
+        : null;
+      const snapped = wallSnap?.point ?? (pointGrid && committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid);
       const nextPoint = snapped ? Object.freeze({ ...snapped }) : null;
       const nextCollection = nextPoint ? collection : null;
-      const nextSnapPoint = snapped && pointGrid && snapped !== pointGrid ? nextPoint : null;
+      const nextSnapPoint = snapped && pointGrid && (wallSnap?.snapped || snapped !== pointGrid) ? nextPoint : null;
       if (
         sameOptionalPoint(hoverFogCursorPoint, nextPoint) &&
         hoverFogCursorCollection === nextCollection &&
@@ -967,11 +1087,22 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       publish("editor");
     },
     commitFogPolygon(token) {
-      if (!preview || preview.token.id !== token.id || !preview.fogDrawing || preview.command.type !== "fog.polygon.insert") {
+      if (!preview || preview.token.id !== token.id || !preview.fogDrawing || (preview.command.type !== "fog.polygon.insert" && preview.command.type !== "fog.walls.update")) {
         return { ok: false, error: "Unknown preview token", revision };
       }
       const vertices = dedupeClosingVertex(preview.fogDrawing.fixedVertices);
-      preview.command = { ...preview.command, polygon: { ...preview.command.polygon, vertices } };
+      if (preview.command.type === "fog.walls.update") {
+        const source = preview.command.polygons.at(-1);
+        if (!source || !preview.fogDrawing.fixedWallPolygons) {
+          return { ok: false, error: "Invalid wall preview", revision };
+        }
+        preview.command = {
+          ...preview.command,
+          polygons: [...preview.fogDrawing.fixedWallPolygons, { ...source, vertices }],
+        };
+      } else {
+        preview.command = { ...preview.command, polygon: { ...preview.command.polygon, vertices } };
+      }
       return engine.commitPreview(token);
     },
     commitActiveFogPolygon() {
@@ -990,14 +1121,17 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         const polygon = selectedFogPolygonValue(committedScene, selectedFogPolygon);
         const vertexIndex = polygon ? pickFogVertex(polygon, pointGrid, cssPixelsPerGrid) : -1;
         if (polygon && vertexIndex >= 0) {
-          const token = engine.beginPreview({
-            type: "fog.polygon.update",
-            ...selectedFogPolygon,
-            polygon,
-          });
+          const token = selectedFogPolygon.collection === "wall"
+            ? engine.beginPreview({
+                type: "fog.walls.update",
+                layerId: selectedFogPolygon.layerId,
+                polygons: fogCollectionById(committedScene, selectedFogPolygon.layerId, "wall"),
+                selectedPolygonIndex: selectedFogPolygon.polygonIndex,
+              })
+            : engine.beginPreview({ type: "fog.polygon.update", ...selectedFogPolygon, polygon });
           if (preview) preview = {
             ...preview,
-            fogVertex: { vertexIndex },
+            fogVertex: { vertexIndex, polygonIndex: selectedFogPolygon.polygonIndex },
             fogCursorPoint: Object.freeze({ ...polygon.vertices[vertexIndex] }),
           };
           publish("editor");
@@ -1033,9 +1167,31 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       return { handled: true };
     },
     updateFogSelectionInteraction(token, pointGrid) {
-      if (!preview || preview.token.id !== token.id || preview.command.type !== "fog.polygon.update" || !isFinitePoint(pointGrid)) return;
+      if (!preview || preview.token.id !== token.id || (preview.command.type !== "fog.polygon.update" && preview.command.type !== "fog.walls.update") || !isFinitePoint(pointGrid)) return;
       let vertices: GridPoint[];
       if (preview.fogVertex) {
+        if (preview.command.type === "fog.walls.update") {
+          const layer = fogLayerById(committedScene, preview.command.layerId);
+          const polygonIndex = preview.fogVertex.polygonIndex;
+          if (!layer || polygonIndex === undefined) return;
+          const wallSnap = snapWallOrGrid(
+            layer,
+            layer.obstructionPolygons,
+            pointGrid,
+            polygonIndex,
+            committedScene.table.displayGrid
+          );
+          const source = layer.obstructionPolygons[polygonIndex];
+          if (!source) return;
+          vertices = [...source.vertices];
+          vertices[preview.fogVertex.vertexIndex] = wallSnap.point;
+          const polygons = [...wallSnap.polygons];
+          polygons[polygonIndex] = { ...source, vertices };
+          preview.fogCursorPoint = Object.freeze({ ...wallSnap.point });
+          preview.gridSnapPoint = wallSnap.snapped ? Object.freeze({ ...wallSnap.point }) : undefined;
+          engine.updatePreview(token, { ...preview.command, polygons });
+          return;
+        }
         const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
         vertices = [...preview.command.polygon.vertices];
         vertices[preview.fogVertex.vertexIndex] = snapped;
@@ -1056,6 +1212,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       } else {
         return;
       }
+      if (preview.command.type !== "fog.polygon.update") return;
       engine.updatePreview(token, { ...preview.command, polygon: { ...preview.command.polygon, vertices } });
     },
     beginLightDrag(pointGrid, cssPixelsPerGrid) {
@@ -1144,6 +1301,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
             : { type: "fog.polygon.insert", layerId: entry.layerId, collection: entry.collection, index: entry.index, polygon: entry.before }
           : { type: "fog.polygon.remove", layerId: entry.layerId, collection: entry.collection, polygonIndex: entry.index }, false);
       }
+      if (entry.kind === "fog-walls") {
+        return wallResult({ type: "fog.walls.update", layerId: entry.layerId, polygons: entry.before }, false);
+      }
       if (entry.kind === "light") {
         return lightResult(entry.before
           ? entry.after
@@ -1221,6 +1381,14 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
             ? { type: "fog.polygon.update", layerId: entry.layerId, collection: entry.collection, polygonIndex: entry.index, polygon: entry.after }
             : { type: "fog.polygon.insert", layerId: entry.layerId, collection: entry.collection, index: entry.index, polygon: entry.after }
           : { type: "fog.polygon.remove", layerId: entry.layerId, collection: entry.collection, polygonIndex: entry.index }, false);
+      }
+      if (entry.kind === "fog-walls") {
+        return wallResult({
+          type: "fog.walls.update",
+          layerId: entry.layerId,
+          polygons: entry.after,
+          selectedPolygonIndex: entry.selectedPolygonIndex,
+        }, false);
       }
       if (entry.kind === "light") {
         return lightResult(entry.after
@@ -1573,6 +1741,7 @@ function applyPreview(scene: SceneDocument, command: PreviewCommand, version: nu
   if (command.type === "table.camera") return applyTable(scene, command.table, version);
   if (command.type === "light.insert") return applyLight(scene, command.layerId, command.index ?? lightCollectionById(scene, command.layerId).length, command.light, version, true);
   if (command.type === "light.update") return applyLight(scene, command.layerId, command.lightIndex, command.light, version);
+  if (command.type === "fog.walls.update") return applyWallPolygons(scene, command.layerId, command.polygons, version);
   return applyFogPolygon(
     scene,
     command.layerId,
@@ -1584,6 +1753,21 @@ function applyPreview(scene: SceneDocument, command: PreviewCommand, version: nu
     version,
     command.type === "fog.polygon.insert"
   );
+}
+
+function applyWallPolygons(
+  scene: SceneDocument,
+  layerId: string,
+  polygons: readonly FogPolygon[],
+  version: number
+): SceneDocument {
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers: scene.layers.map((layer) => layer.id === layerId && layer.type === "fog"
+      ? { ...layer, obstructionPolygons: polygons }
+      : layer),
+  });
 }
 
 function applyLight(
@@ -1824,6 +2008,106 @@ function fogCollectionById(
   return layer?.type === "fog" ? fogCollection(layer, collection) : [];
 }
 
+function fogLayerById(
+  scene: SceneDocument,
+  layerId: string
+): Extract<SceneLayer, { readonly type: "fog" }> | undefined {
+  const layer = scene.layers.find((candidate) => candidate.id === layerId);
+  return layer?.type === "fog" ? layer : undefined;
+}
+
+function snapWallOrGrid(
+  layer: Extract<SceneLayer, { readonly type: "fog" }> | undefined,
+  polygons: readonly FogPolygon[],
+  point: GridPoint,
+  sourcePolygonIndex: number | undefined,
+  snapToGrid: boolean
+): { readonly point: GridPoint; readonly polygons: readonly FogPolygon[]; readonly snapped: boolean } {
+  const wallSnap = layer?.visible
+    ? snapPointToWalls(polygons, point, sourcePolygonIndex, snapToGrid)
+    : null;
+  const gridPoint = snapToGrid ? snapPointToGrid(point) : point;
+  const gridDistance = Math.hypot(gridPoint.x - point.x, gridPoint.y - point.y);
+  if (wallSnap) {
+    const wallDistance = Math.hypot(wallSnap.point.x - point.x, wallSnap.point.y - point.y);
+    if (gridPoint === point || wallDistance <= gridDistance) return { ...wallSnap, snapped: true };
+  }
+  return { point: gridPoint, polygons, snapped: gridPoint !== point };
+}
+
+function snapPointToWalls(
+  polygons: readonly FogPolygon[],
+  point: GridPoint,
+  sourcePolygonIndex: number | undefined,
+  snapToGrid: boolean,
+): { readonly point: GridPoint; readonly polygons: readonly FogPolygon[] } | null {
+  let best: {
+    readonly point: GridPoint;
+    readonly distance: number;
+    readonly polygonIndex: number;
+    readonly segmentIndex?: number;
+  } | null = null;
+  for (let polygonIndex = 0; polygonIndex < polygons.length; polygonIndex++) {
+    if (polygonIndex === sourcePolygonIndex || !polygons[polygonIndex].visibleOnTable) continue;
+    const vertices = polygons[polygonIndex].vertices;
+    for (const vertex of vertices) {
+      const distance = Math.hypot(vertex.x - point.x, vertex.y - point.y);
+      if (distance <= GRID_SNAP_THRESHOLD && (!best || distance < best.distance)) {
+        best = { point: vertex, distance, polygonIndex };
+      }
+    }
+  }
+  if (best) return { point: best.point, polygons };
+  for (let polygonIndex = 0; polygonIndex < polygons.length; polygonIndex++) {
+    if (polygonIndex === sourcePolygonIndex || !polygons[polygonIndex].visibleOnTable) continue;
+    const vertices = polygons[polygonIndex].vertices;
+    for (let segmentIndex = 0; segmentIndex < vertices.length - 1; segmentIndex++) {
+      const projected = closestPointOnSegment(point, vertices[segmentIndex], vertices[segmentIndex + 1]);
+      const gridPoint = { x: Math.round(point.x), y: Math.round(point.y) };
+      const gridProjection = snapToGrid ? closestPointOnSegment(gridPoint, vertices[segmentIndex], vertices[segmentIndex + 1]) : null;
+      const wallGridPoint = gridProjection?.interior &&
+        Math.hypot(gridPoint.x - point.x, gridPoint.y - point.y) <= GRID_SNAP_THRESHOLD &&
+        Math.hypot(gridProjection.point.x - gridPoint.x, gridProjection.point.y - gridPoint.y) <= 1e-9
+        ? gridPoint
+        : null;
+      const candidate = wallGridPoint ?? projected.point;
+      const distance = Math.hypot(candidate.x - point.x, candidate.y - point.y);
+      if (distance <= GRID_SNAP_THRESHOLD && (!best || distance < best.distance)) {
+        best = {
+          point: candidate,
+          distance,
+          polygonIndex,
+          ...(wallGridPoint || projected.interior ? { segmentIndex } : {}),
+        };
+      }
+    }
+  }
+  if (!best) return null;
+  if (best.segmentIndex === undefined) return { point: best.point, polygons };
+  const target = polygons[best.polygonIndex];
+  const vertices = [...target.vertices];
+  vertices.splice(best.segmentIndex + 1, 0, best.point);
+  const next = [...polygons];
+  next[best.polygonIndex] = { ...target, vertices };
+  return { point: best.point, polygons: next };
+}
+
+function closestPointOnSegment(
+  point: GridPoint,
+  start: GridPoint,
+  end: GridPoint
+): { readonly point: GridPoint; readonly interior: boolean } {
+  const x = end.x - start.x;
+  const y = end.y - start.y;
+  const lengthSquared = x * x + y * y;
+  if (lengthSquared === 0) return { point: start, interior: false };
+  const rawAmount = ((point.x - start.x) * x + (point.y - start.y) * y) / lengthSquared;
+  const amount = Math.max(0, Math.min(1, rawAmount));
+  if (amount <= 0) return { point: start, interior: false };
+  if (amount >= 1) return { point: end, interior: false };
+  return { point: { x: start.x + amount * x, y: start.y + amount * y }, interior: true };
+}
+
 function lightCollectionById(scene: SceneDocument, layerId: string): readonly SceneLight[] {
   const layer = scene.layers.find((candidate) => candidate.id === layerId);
   return layer?.type === "fog" ? layer.lightSources : [];
@@ -1980,6 +2264,10 @@ function sameFogPolygon(left: FogPolygon, right: FogPolygon): boolean {
   return left.visibleOnTable === right.visibleOnTable &&
     left.vertices.length === right.vertices.length &&
     left.vertices.every((vertex, index) => samePoint(vertex, right.vertices[index]));
+}
+
+function sameFogPolygons(left: readonly FogPolygon[], right: readonly FogPolygon[]): boolean {
+  return left.length === right.length && left.every((polygon, index) => sameFogPolygon(polygon, right[index]));
 }
 
 function samePoint(left: GridPoint, right: GridPoint): boolean {

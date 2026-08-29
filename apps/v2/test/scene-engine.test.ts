@@ -18,7 +18,7 @@ import {
   MAX_TABLE_SCALE,
   MIN_TABLE_SCALE,
 } from "../src/engine/table-camera";
-import type { GridBounds } from "../src/engine/table-camera";
+import type { GridBounds, GridPoint } from "../src/engine/table-camera";
 
 test("asset dragging uses a replaceable preview and commits one revision", () => {
   const engine = createSceneEngine();
@@ -989,6 +989,157 @@ test("wall drafts commit open two-point geometry and use existing vertex editing
   assert.deepEqual(edited.obstructionPolygons.at(-1)?.vertices, [{ x: 1, y: 2 }, { x: 6, y: 2 }]);
 });
 
+test("dragging a wall vertex snaps exactly to another wall endpoint", () => {
+  const engine = createWallEngine([
+    { vertices: [{ x: 0, y: 0 }, { x: 4, y: 0 }], visibleOnTable: true },
+    { vertices: [{ x: 8, y: 3 }, { x: 6, y: 2 }], visibleOnTable: true },
+  ]);
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.dispatch({ type: "fog.selection.set", selection: { layerId: layer.id, collection: "wall", polygonIndex: 1 } });
+  const interaction = engine.beginFogSelectionInteraction({ x: 6, y: 2 }, 20);
+  assert.ok(interaction.token);
+
+  engine.updateFogSelectionInteraction(interaction.token, { x: 4.06, y: 0.04 });
+  const preview = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(preview?.type === "fog");
+  assert.deepEqual(preview.obstructionPolygons[0].vertices, [{ x: 0, y: 0 }, { x: 4, y: 0 }]);
+  assert.deepEqual(preview.obstructionPolygons[1].vertices, [{ x: 8, y: 3 }, { x: 4, y: 0 }]);
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 4, y: 0 });
+  assert.equal(engine.getSnapshot().revision, 0);
+});
+
+test("wall T-junction insertion previews and commits both walls atomically with undo and redo", () => {
+  const original = [
+    { vertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }], visibleOnTable: true },
+    { vertices: [{ x: 5, y: 4 }, { x: 5, y: 2 }], visibleOnTable: true },
+  ];
+  const engine = createWallEngine(original);
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.dispatch({ type: "fog.selection.set", selection: { layerId: layer.id, collection: "wall", polygonIndex: 1 } });
+  const interaction = engine.beginFogSelectionInteraction({ x: 5, y: 2 }, 20);
+  assert.ok(interaction.token);
+
+  engine.updateFogSelectionInteraction(interaction.token, { x: 5.02, y: 0.08 });
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  const joint = { x: 5.02, y: 0 };
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 0, y: 0 }, joint, { x: 10, y: 0 }]);
+  assert.deepEqual(current.obstructionPolygons[1].vertices, [{ x: 5, y: 4 }, joint]);
+  assert.deepEqual(engine.getCommittedSnapshot().scene.layers.find((candidate) => candidate.id === layer.id), layer);
+  assert.deepEqual(engine.commitPreview(interaction.token), { ok: true, changed: true, revision: 1 });
+
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 2 });
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons, original);
+  assert.deepEqual(engine.redo(), { ok: true, changed: true, revision: 3 });
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 0, y: 0 }, joint, { x: 10, y: 0 }]);
+  assert.deepEqual(current.obstructionPolygons[1].vertices.at(-1), joint);
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 4 });
+  assert.equal(engine.getSnapshot().canUndo, false);
+});
+
+test("wall snapping misses beyond the threshold and preserves one-grid doorway gaps", () => {
+  const engine = createWallEngine([
+    { vertices: [{ x: 0, y: 0 }, { x: 4, y: 0 }], visibleOnTable: true },
+    { vertices: [{ x: 5, y: 0 }, { x: 8, y: 0 }], visibleOnTable: true },
+  ]);
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.dispatch({ type: "fog.selection.set", selection: { layerId: layer.id, collection: "wall", polygonIndex: 1 } });
+  const interaction = engine.beginFogSelectionInteraction({ x: 5, y: 0 }, 20);
+  assert.ok(interaction.token);
+
+  engine.updateFogSelectionInteraction(interaction.token, { x: 5, y: 0 });
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons.map((wall) => wall.vertices), [
+    [{ x: 0, y: 0 }, { x: 4, y: 0 }],
+    [{ x: 5, y: 0 }, { x: 8, y: 0 }],
+  ]);
+  assert.equal(engine.getSnapshot().gridSnapPoint, null);
+
+  engine.updateFogSelectionInteraction(interaction.token, { x: 2, y: 0.1001 });
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 0, y: 0 }, { x: 4, y: 0 }]);
+  assert.deepEqual(current.obstructionPolygons[1].vertices, [{ x: 2, y: 0.1001 }, { x: 8, y: 0 }]);
+  assert.equal(engine.getSnapshot().gridSnapPoint, null);
+});
+
+test("drawing a wall endpoint inserts an explicit T-junction and keeps both polylines open", () => {
+  const engine = createWallEngine([
+    { vertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }], visibleOnTable: true },
+  ]);
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const token = engine.beginFogPolygon(layer.id, "wall", { x: 5, y: 3 });
+  engine.appendFogPolygonVertex(token, { x: 5.04, y: 0.06 });
+
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  const joint = { x: 5.04, y: 0 };
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 0, y: 0 }, joint, { x: 10, y: 0 }]);
+  assert.deepEqual(current.obstructionPolygons[1].vertices, [{ x: 5, y: 3 }, joint, joint]);
+  assert.deepEqual(engine.commitFogPolygon(token), { ok: true, changed: true, revision: 1 });
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 0, y: 0 }, joint, { x: 10, y: 0 }]);
+  assert.deepEqual(current.obstructionPolygons[1].vertices, [{ x: 5, y: 3 }, joint]);
+  assert.notDeepEqual(current.obstructionPolygons[1].vertices[0], current.obstructionPolygons[1].vertices.at(-1));
+});
+
+test("the first wall vertex snaps to existing wall geometry", () => {
+  const engine = createWallEngine([
+    { vertices: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }], visibleOnTable: true },
+  ]);
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.beginFogPolygon(layer.id, "wall", { x: 4.06, y: 0.04 });
+  const current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons.at(-1)?.vertices[0], { x: 4, y: 0 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 4, y: 0 });
+});
+
+test("the first wall vertex uses a closer grid snap when the grid is visible", () => {
+  const engine = createWallEngine([
+    { vertices: [{ x: 1.09, y: 1 }, { x: 3, y: 1 }], visibleOnTable: true },
+  ], true);
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  engine.beginFogPolygon(layer.id, "wall", { x: 1.01, y: 1 });
+  const current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 1.09, y: 1 }, { x: 3, y: 1 }]);
+  assert.deepEqual(current.obstructionPolygons.at(-1)?.vertices[0], { x: 1, y: 1 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 1, y: 1 });
+});
+
+test("wall snapping refines a segment projection to its grid intersection", () => {
+  const engine = createWallEngine([
+    { vertices: [{ x: 0, y: 2 }, { x: 10, y: 2 }], visibleOnTable: true },
+  ], true);
+  const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
+  assert.ok(layer);
+  const token = engine.beginFogPolygon(layer.id, "wall", { x: 5.04, y: 2.06 });
+  let current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 0, y: 2 }, { x: 5, y: 2 }, { x: 10, y: 2 }]);
+  assert.deepEqual(current.obstructionPolygons.at(-1)?.vertices[0], { x: 5, y: 2 });
+  assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 5, y: 2 });
+  engine.appendFogPolygonVertex(token, { x: 7, y: 4 });
+  assert.deepEqual(engine.commitFogPolygon(token), { ok: true, changed: true, revision: 1 });
+  current = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === layer.id);
+  assert.ok(current?.type === "fog");
+  assert.deepEqual(current.obstructionPolygons[0].vertices, [{ x: 0, y: 2 }, { x: 5, y: 2 }, { x: 10, y: 2 }]);
+  assert.deepEqual(current.obstructionPolygons.at(-1)?.vertices, [{ x: 5, y: 2 }, { x: 7, y: 4 }]);
+});
+
 test("clicking away from a selected fog polygon clears polygon selection", () => {
   const engine = createSceneEngine();
   const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.type === "fog");
@@ -999,3 +1150,14 @@ test("clicking away from a selected fog polygon clears polygon selection", () =>
   assert.equal(engine.getSnapshot().selectedFogPolygon, null);
   assert.equal(engine.getSnapshot().selectedFogLayerId, layer.id);
 });
+
+function createWallEngine(obstructionPolygons: readonly { readonly vertices: readonly GridPoint[]; readonly visibleOnTable: boolean }[], displayGrid = false) {
+  const scene = createSampleSceneDocument();
+  return createSceneEngine(freezeSceneDocument({
+    ...scene,
+    table: { ...scene.table, displayGrid },
+    layers: scene.layers.map((layer) => layer.type === "fog"
+      ? { ...layer, obstructionPolygons }
+      : layer),
+  }));
+}
