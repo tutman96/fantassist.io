@@ -17,10 +17,12 @@ export interface V2SceneMetadata {
 export interface V1Repositories {
   listCampaigns(): Promise<readonly V1Campaign[]>;
   putCampaign(campaign: V1Campaign): Promise<void>;
+  deleteCampaign(id: string): Promise<void>;
   listScenes(campaignId?: string): Promise<readonly V1SceneRecord[]>;
   loadScene(key: string): Promise<V1SceneRecord | null>;
   createScene(record: V1SceneRecord): Promise<void>;
   saveScene(record: V1SceneRecord, expectedVersion: number): Promise<V1SceneRecord>;
+  deleteScene(key: string): Promise<void>;
   getAsset(id: string): Promise<File | null>;
   putAsset(id: string, file: File): Promise<void>;
   removeAsset(id: string): Promise<void>;
@@ -47,6 +49,10 @@ export function createV1Repositories(): V1Repositories {
     async putCampaign(campaign) {
       await campaigns.setItem(campaign.id, campaign);
       signalChange(CAMPAIGN_DATABASE, campaign.id, setter);
+    },
+    async deleteCampaign(id) {
+      await campaigns.removeItem(id);
+      signalChange(CAMPAIGN_DATABASE, id, setter);
     },
     async listScenes(campaignId) {
       const prefix = campaignId ? `${campaignId}/` : "";
@@ -75,6 +81,12 @@ export function createV1Repositories(): V1Repositories {
       await scenes.setItem(record.key, encodeV1Scene(record.scene));
       signalChange(SCENE_DATABASE, record.key, setter);
       return record;
+    },
+    async deleteScene(key) {
+      await scenes.removeItem(key);
+      signalChange(SCENE_DATABASE, key, setter);
+      await metadata.removeItem(key);
+      signalChange(V2_METADATA_DATABASE, key, setter);
     },
     getAsset(id) {
       return assets.getItem<File>(id);

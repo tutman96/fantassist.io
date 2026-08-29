@@ -9,11 +9,13 @@ import { useSharedTableSession } from "@/features/table/table-session-context";
 import { createV1Repositories } from "@/persistence/v1/repositories";
 import type { V1Repositories } from "@/persistence/v1/repositories";
 import { applyAssetVisibilityMetadata, hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "@/persistence/v1/scene-adapter";
-import { createBlankV1SceneRecord, prepareV1SceneImport } from "@/persistence/v1/scene-lifecycle";
+import { campaignExportFilename, prepareV1CampaignExport, sceneExportFilename } from "@/persistence/v1/campaign-export";
+import { createBlankV1SceneRecord, prepareV1SceneExport, prepareV1SceneImport } from "@/persistence/v1/scene-lifecycle";
 import { SceneConflictError } from "@/persistence/v1/types";
 import type { V1Campaign, V1SceneRecord } from "@/persistence/v1/types";
 import { createBrowserImageLoader } from "@/renderer/browser-image-loader";
 import type { ImageAssetLoader } from "@/renderer/image-texture";
+import { downloadBlob } from "./download-blob";
 
 export interface SceneCatalogItem {
   readonly key: string;
@@ -38,8 +40,14 @@ interface EditorSceneContextValue {
   getAssetFile(assetId: string): Promise<File | null>;
   selectCampaign(id: string): Promise<void>;
   createCampaign(name: string): Promise<string>;
+  renameCampaign(id: string, name: string): Promise<void>;
+  deleteCampaign(id: string): Promise<string | null>;
   createScene(name: string): Promise<string>;
+  renameScene(key: string, name: string): Promise<void>;
+  deleteScene(key: string): Promise<void>;
   importScene(file: File): Promise<string>;
+  exportScene(key: string): Promise<void>;
+  exportCampaign(id: string): Promise<void>;
   displayScene(): Promise<void>;
   selectScene(key: string): Promise<void>;
   createAssetLayer(): void;
@@ -145,8 +153,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
     setDisplayedSceneKey(key);
   };
   const createCampaign = async (name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) throw new Error("Campaign name is required");
+    const trimmed = validName(name, "Campaign");
     const campaign = { id: crypto.randomUUID(), name: trimmed };
     await repositories.putCampaign(campaign);
     setCampaigns((current) => [...current, campaign].sort((a, b) => a.name.localeCompare(b.name)));
@@ -155,6 +162,16 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
     await repositories.putSetting("last_campaign", campaign.id);
     return campaign.id;
   };
+  const renameCampaign = async (id: string, name: string) => {
+    const campaign = campaigns.find((candidate) => candidate.id === id);
+    if (!campaign) throw new Error("Campaign no longer exists");
+    const trimmed = validName(name, "Campaign");
+    if (campaign.name === trimmed) return;
+    const renamed = { ...campaign, name: trimmed };
+    await repositories.putCampaign(renamed);
+    setCampaigns((current) => current.map((candidate) => candidate.id === id ? renamed : candidate)
+      .sort((a, b) => a.name.localeCompare(b.name)));
+  };
   const activateCreatedScene = async (record: V1SceneRecord) => {
     setScenes((current) => [...current.filter((scene) => scene.key !== record.key), catalogItem(record)]
       .sort((a, b) => a.name.localeCompare(b.name)));
@@ -162,12 +179,86 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
   };
   const createScene = async (name: string) => {
     if (!activeCampaignId) throw new Error("Choose a campaign before creating a scene");
-    const trimmed = name.trim();
-    if (!trimmed) throw new Error("Scene name is required");
+    const trimmed = validName(name, "Scene");
     const record = createBlankV1SceneRecord(activeCampaignId, trimmed);
     await repositories.createScene(record);
     await activateCreatedScene(record);
     return record.key;
+  };
+  const renameScene = async (key: string, name: string) => {
+    const trimmed = validName(name, "Scene");
+    if (key === activeSceneKey && activeRecord.current?.key === key) {
+      const result = engine.dispatch({ type: "scene.rename", name: trimmed });
+      if (!result.ok) throw new Error(result.error);
+      setScenes((current) => current.map((scene) => scene.key === key ? { ...scene, name: trimmed } : scene)
+        .sort((a, b) => a.name.localeCompare(b.name)));
+      return;
+    }
+    await saveQueue.current;
+    const record = await repositories.loadScene(key);
+    if (!record) throw new Error("Scene no longer exists");
+    if (record.scene.name === trimmed) return;
+    const saved = await repositories.saveScene({
+      ...record,
+      scene: { ...record.scene, name: trimmed, version: record.scene.version + 1 },
+    }, record.scene.version);
+    setScenes((current) => current.map((scene) => scene.key === key ? catalogItem(saved) : scene)
+      .sort((a, b) => a.name.localeCompare(b.name)));
+  };
+
+  const deleteScene = async (key: string) => {
+    await saveQueue.current;
+    const record = await repositories.loadScene(key);
+    if (!record) return;
+    const remaining = (await repositories.listScenes()).filter((candidate) => candidate.key !== key);
+    if (activeRecord.current?.key === key) clearActiveScene();
+    await repositories.deleteScene(key);
+    await removeUnreferencedAssets([record], remaining, repositories);
+    setScenes((current) => current.filter((scene) => scene.key !== key));
+    if (displayedSceneKey === key) {
+      await repositories.putSetting("displayed_scene", null);
+      setDisplayedSceneKey("");
+    }
+  };
+
+  const deleteCampaign = async (id: string) => {
+    await saveQueue.current;
+    if (!campaigns.some((campaign) => campaign.id === id)) return activeCampaignId;
+    const removed = await repositories.listScenes(id);
+    const remaining = (await repositories.listScenes()).filter((record) => record.campaignId !== id);
+    if (activeRecord.current?.campaignId === id) clearActiveScene();
+    for (const record of removed) await repositories.deleteScene(record.key);
+    await removeUnreferencedAssets(removed, remaining, repositories);
+    await repositories.deleteCampaign(id);
+    const nextCampaigns = campaigns.filter((campaign) => campaign.id !== id);
+    const fallback = activeCampaignId !== id && nextCampaigns.some((campaign) => campaign.id === activeCampaignId)
+      ? activeCampaignId
+      : [...nextCampaigns].sort((a, b) => a.name.localeCompare(b.name))[0]?.id ?? null;
+    setCampaigns(nextCampaigns);
+    setScenes((current) => current.filter((scene) => scene.campaignId !== id));
+    setActiveCampaignId(fallback);
+    await repositories.putSetting("last_campaign", fallback);
+    if (removed.some((record) => record.key === displayedSceneKey)) {
+      await repositories.putSetting("displayed_scene", null);
+      setDisplayedSceneKey("");
+    }
+    return fallback;
+  };
+
+  const exportScene = async (key: string) => {
+    await saveQueue.current;
+    const record = await repositories.loadScene(key);
+    if (!record) throw new Error("Scene no longer exists");
+    const bytes = await prepareV1SceneExport(record, (id) => repositories.getAsset(id));
+    downloadBlob(new Blob([Uint8Array.from(bytes)], { type: "application/octet-stream" }), sceneExportFilename(record.scene.name));
+  };
+
+  const exportCampaign = async (id: string) => {
+    await saveQueue.current;
+    const campaign = campaigns.find((candidate) => candidate.id === id);
+    if (!campaign) throw new Error("Campaign no longer exists");
+    const blob = await prepareV1CampaignExport(await repositories.listScenes(id), (assetId) => repositories.getAsset(assetId));
+    downloadBlob(blob, campaignExportFilename(campaign));
   };
   const importScene = async (file: File) => {
     if (!activeCampaignId) throw new Error("Choose a campaign before importing a scene");
@@ -340,7 +431,7 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       activeRecord.current = saved;
       savedEngineRevision.current = committed.revision;
       setScenes((current) => current.map((scene) => scene.key === saved.key
-        ? { ...scene, version: saved.scene.version }
+        ? { ...scene, name: saved.scene.name, version: saved.scene.version }
         : scene));
       if (engine.getSnapshot().revision === committed.revision) setStatus("saved");
     }).catch((cause: unknown) => {
@@ -367,8 +458,14 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       getAssetFile,
       selectCampaign,
       createCampaign,
+      renameCampaign,
+      deleteCampaign,
       createScene,
+      renameScene,
+      deleteScene,
       importScene,
+      exportScene,
+      exportCampaign,
       displayScene,
       selectScene,
       createAssetLayer,
@@ -378,6 +475,26 @@ export function EditorSceneProvider({ children }: { readonly children: React.Rea
       {children}
     </EditorSceneContext>
   );
+}
+
+function validName(name: string, subject: "Campaign" | "Scene"): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error(`${subject} name is required`);
+  if (trimmed.length > 120) throw new Error(`${subject} name must be 120 characters or fewer`);
+  return trimmed;
+}
+
+function assetIds(records: readonly V1SceneRecord[]): Set<string> {
+  return new Set(records.flatMap((record) => record.scene.layers.flatMap((layer) => Object.keys(layer.assetLayer?.assets ?? {}))));
+}
+
+async function removeUnreferencedAssets(
+  removed: readonly V1SceneRecord[],
+  remaining: readonly V1SceneRecord[],
+  repositories: V1Repositories
+): Promise<void> {
+  const retained = assetIds(remaining);
+  await Promise.all([...assetIds(removed)].filter((id) => !retained.has(id)).map((id) => repositories.removeAsset(id)));
 }
 
 function catalogItem(record: V1SceneRecord): SceneCatalogItem {

@@ -616,6 +616,27 @@ test("asset layer insertion preserves index and supports undo and redo", () => {
   assert.equal(engine.getSnapshot().scene.layers[1].id, layer.id);
 });
 
+test("scene and layer names validate, persist in history, and remain immutable", () => {
+  const engine = createSceneEngine();
+  const layer = engine.getSnapshot().scene.layers[0];
+  assert.deepEqual(engine.dispatch({ type: "scene.rename", name: "  Moon Vault  " }), { ok: true, changed: true, revision: 1 });
+  assert.equal(engine.getSnapshot().scene.name, "Moon Vault");
+  assert.deepEqual(engine.dispatch({ type: "layer.rename", layerId: layer.id, name: "  Battle Maps  " }), { ok: true, changed: true, revision: 2 });
+  assert.equal(engine.getSnapshot().scene.layers[0].name, "Battle Maps");
+  assert.ok(Object.isFrozen(engine.getSnapshot().scene.layers[0]));
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 3 });
+  assert.equal(engine.getSnapshot().scene.layers[0].name, layer.name);
+  assert.deepEqual(engine.undo(), { ok: true, changed: true, revision: 4 });
+  assert.equal(engine.getSnapshot().scene.name, "Astral Clearing");
+  assert.deepEqual(engine.redo(), { ok: true, changed: true, revision: 5 });
+  assert.equal(engine.getSnapshot().scene.name, "Moon Vault");
+  assert.deepEqual(engine.dispatch({ type: "scene.rename", name: "Moon Vault" }), { ok: true, changed: false, revision: 5 });
+  assert.equal(engine.dispatch({ type: "layer.rename", layerId: layer.id, name: "   " }).ok, false);
+  assert.equal(engine.dispatch({ type: "layer.rename", layerId: "missing", name: "Name" }).ok, false);
+  assert.equal(engine.dispatch({ type: "scene.rename", name: "x".repeat(121) }).ok, false);
+  assert.equal(engine.getSnapshot().revision, 5);
+});
+
 test("layer and asset visibility control picking with undo", () => {
   const base = createSampleSceneDocument();
   const bottom = { ...base.assets[0], layerId: "bottom", id: "bottom/image", mediaId: "bottom/image" };

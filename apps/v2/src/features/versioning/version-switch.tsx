@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Spinner } from "@/components/ui/spinner";
+import { TABLE_WINDOW_NAME } from "@/features/table/table-window-channel";
 
 const VERSION_SWITCH_CHANNEL = "fantassist:version";
 const VERSION_SWITCH_STORAGE_KEY = "fantassist_version_switch";
@@ -46,7 +47,7 @@ export function VersionSwitchListener() {
   useEffect(() => {
     function handleSwitch(message?: VersionSwitchMessage) {
       if (message?.source === getWindowId()) return;
-      if (window.name === "fantassist-external-window") {
+      if (window.name === "fantassist-external-window" || window.name === TABLE_WINDOW_NAME) {
         window.close();
         return;
       }

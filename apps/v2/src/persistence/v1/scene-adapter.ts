@@ -107,6 +107,7 @@ export function patchV1SceneTransforms(
   ]));
   return {
     ...clone,
+    name: document.name,
     version,
     table: {
       displayGrid: document.table.displayGrid,

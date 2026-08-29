@@ -36,6 +36,7 @@ export interface SceneEngineSnapshot extends EngineSnapshot<SceneDocument> {
 }
 
 export type SceneCommand =
+  | { readonly type: "scene.rename"; readonly name: string }
   | {
       readonly type: "asset.transform";
       readonly assetId: string;
@@ -47,6 +48,7 @@ export type SceneCommand =
   | { readonly type: "asset.visibility"; readonly assetId: string; readonly visible: boolean }
   | { readonly type: "layer.insert"; readonly layer: SceneLayer; readonly index?: number }
   | { readonly type: "layer.remove"; readonly layerId: string }
+  | { readonly type: "layer.rename"; readonly layerId: string; readonly name: string }
   | { readonly type: "layer.visibility"; readonly layerId: string; readonly visible: boolean }
   | { readonly type: "layer.move"; readonly layerId: string; readonly toIndex: number }
   | {
@@ -148,6 +150,8 @@ export interface SceneEngine {
 }
 
 type HistoryEntry =
+  | { readonly kind: "scene-rename"; readonly before: string; readonly after: string }
+  | { readonly kind: "layer-rename"; readonly layerId: string; readonly before: string; readonly after: string }
   | { readonly kind: "transform"; readonly assetId: string; readonly before: AssetTransform; readonly after: AssetTransform }
   | {
       readonly kind: "calibration";
@@ -309,6 +313,36 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     }
     revision++;
     committedScene = applyTransform(committedScene, command, revision);
+    publish("all");
+    return { ok: true, changed: true, revision };
+  }
+
+  function sceneNameResult(name: string, recordHistory: boolean): CommandResult {
+    const normalized = normalizeName(name, "Scene");
+    if ("error" in normalized) return { ok: false, error: normalized.error, revision };
+    if (committedScene.name === normalized.name) return { ok: true, changed: false, revision };
+    if (recordHistory) {
+      undoStack = [...undoStack, { kind: "scene-rename", before: committedScene.name, after: normalized.name }];
+      redoStack = [];
+    }
+    revision++;
+    committedScene = applySceneName(committedScene, normalized.name, revision);
+    publish("all");
+    return { ok: true, changed: true, revision };
+  }
+
+  function layerNameResult(layerId: string, name: string, recordHistory: boolean): CommandResult {
+    const layer = committedScene.layers.find((candidate) => candidate.id === layerId);
+    if (!layer) return { ok: false, error: `Unknown layer '${layerId}'`, revision };
+    const normalized = normalizeName(name, "Layer");
+    if ("error" in normalized) return { ok: false, error: normalized.error, revision };
+    if (layer.name === normalized.name) return { ok: true, changed: false, revision };
+    if (recordHistory) {
+      undoStack = [...undoStack, { kind: "layer-rename", layerId, before: layer.name, after: normalized.name }];
+      redoStack = [];
+    }
+    revision++;
+    committedScene = applyLayerName(committedScene, layerId, normalized.name, revision);
     publish("all");
     return { ok: true, changed: true, revision };
   }
@@ -537,6 +571,8 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
     },
     dispatch(command) {
       if (disposed) return { ok: false, error: "Scene engine is disposed", revision };
+      if (command.type === "scene.rename") return sceneNameResult(command.name, true);
+      if (command.type === "layer.rename") return layerNameResult(command.layerId, command.name, true);
       if (command.type === "asset.transform") return transformResult(command, true);
       if (command.type === "asset.calibration") {
         const asset = findAsset(committedScene, command.assetId);
@@ -1252,6 +1288,8 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (entry.kind === "scene-rename") return sceneNameResult(entry.before, false);
+      if (entry.kind === "layer-rename") return layerNameResult(entry.layerId, entry.before, false);
       if (entry.kind === "remove") {
         revision++;
         committedScene = applyInsertAt(committedScene, entry.asset, entry.layerIndex, revision);
@@ -1332,6 +1370,8 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         publish("all");
         return { ok: true, changed: true, revision };
       }
+      if (entry.kind === "scene-rename") return sceneNameResult(entry.after, false);
+      if (entry.kind === "layer-rename") return layerNameResult(entry.layerId, entry.after, false);
       if (entry.kind === "remove") {
         revision++;
         committedScene = applyRemove(committedScene, entry.asset.id, revision);
@@ -1930,6 +1970,18 @@ function applyAssetVisibility(
   });
 }
 
+function applySceneName(scene: SceneDocument, name: string, version: number): SceneDocument {
+  return freezeSceneDocument({ ...scene, name, version });
+}
+
+function applyLayerName(scene: SceneDocument, layerId: string, name: string, version: number): SceneDocument {
+  return freezeSceneDocument({
+    ...scene,
+    version,
+    layers: scene.layers.map((layer) => layer.id === layerId ? { ...layer, name } : layer),
+  });
+}
+
 function applyLayerVisibility(
   scene: SceneDocument,
   layerId: string,
@@ -2185,6 +2237,14 @@ function sameFogSelection(left: FogPolygonSelection | null, right: FogPolygonSel
 
 function sameLightSelection(left: LightSelection | null, right: LightSelection | null): boolean {
   return left === right || Boolean(left && right && left.layerId === right.layerId && left.lightIndex === right.lightIndex);
+}
+
+function normalizeName(name: string, subject: "Scene" | "Layer"): { readonly name: string } | { readonly error: string } {
+  if (typeof name !== "string") return { error: `${subject} name must be a string` };
+  const normalized = name.trim();
+  if (!normalized) return { error: `${subject} name is required` };
+  if (normalized.length > 120) return { error: `${subject} name must be 120 characters or fewer` };
+  return { name: normalized };
 }
 
 function validateLight(light: SceneLight): string | null {

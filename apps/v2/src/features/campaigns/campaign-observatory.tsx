@@ -4,16 +4,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, FilePlus2, FolderOpen, Plus, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Download, FilePlus2, FolderOpen, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 
 import appIcon from "@/app/icon-full-dark.png";
 import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
 
 type CreationMode = "campaign" | "scene" | null;
+type RenameTarget = { readonly type: "campaign"; readonly id: string; readonly name: string } | { readonly type: "scene"; readonly key: string; readonly name: string };
+type DeleteTarget = { readonly type: "campaign"; readonly id: string; readonly name: string } | { readonly type: "scene"; readonly key: string; readonly name: string };
 
 export function CampaignObservatory({ campaignId, initialCreationMode = null, landing = false }: {
   readonly campaignId?: string;
@@ -28,9 +31,14 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [sceneQuery, setSceneQuery] = useState("");
   const campaigns = editorScene?.campaigns ?? [];
   const activeCampaign = campaigns.find((campaign) => campaign.id === (campaignId ?? editorScene?.activeCampaignId)) ?? null;
   const campaignScenes = (editorScene?.scenes ?? []).filter((scene) => scene.campaignId === activeCampaign?.id);
+  const visibleScenes = campaignScenes.filter((scene) => scene.name.toLocaleLowerCase().includes(sceneQuery.trim().toLocaleLowerCase()));
   const isEmptyArchive = campaigns.length === 0;
   const inlineOnboarding = isEmptyArchive && initialCreationMode === "campaign";
   const showLandingHero = landing || isEmptyArchive;
@@ -73,6 +81,46 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
       setBusy(false);
       if (importInput.current) importInput.current.value = "";
     }
+  };
+  const runAction = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setLocalError(null);
+    try {
+      await action();
+    } catch (cause) {
+      setLocalError(cause instanceof Error ? cause.message : "Unable to complete this action");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const beginRename = (target: RenameTarget) => {
+    setRenameTarget(target);
+    setRenameName(target.name);
+    setLocalError(null);
+  };
+  const submitRename = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editorScene || !renameTarget) return;
+    await runAction(async () => {
+      if (renameTarget.type === "campaign") await editorScene.renameCampaign(renameTarget.id, renameName);
+      else await editorScene.renameScene(renameTarget.key, renameName);
+      setRenameTarget(null);
+    });
+  };
+  const confirmDelete = async () => {
+    if (!editorScene || !deleteTarget) return;
+    const target = deleteTarget;
+    await runAction(async () => {
+      if (target.type === "campaign") {
+        const fallback = await editorScene.deleteCampaign(target.id);
+        router.replace(fallback ? `/campaigns/${encodeURIComponent(fallback)}` : "/campaigns");
+      } else {
+        await editorScene.deleteScene(target.key);
+        const campaign = target.key.split("/", 1)[0];
+        router.replace(`/campaigns/${encodeURIComponent(campaign)}`);
+      }
+      setDeleteTarget(null);
+    });
   };
 
   return (
@@ -179,15 +227,38 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
                       <p className="font-mono text-[8px] tracking-[0.24em] text-violet-200/45 uppercase">Active campaign</p>
                       <h2 id="campaign-scenes-title" className="mt-2 truncate font-heading text-3xl text-amber-50 sm:text-4xl">{activeCampaign.name}</h2>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button variant="ghost" size="icon" className="rounded-none text-violet-100/60" aria-label={`Rename ${activeCampaign.name}`} onClick={() => beginRename({ type: "campaign", id: activeCampaign.id, name: activeCampaign.name })} disabled={busy}>
+                        <Pencil aria-hidden="true" />
+                      </Button>
+                      <Button variant="outline" className="rounded-none border-violet-200/15 bg-violet-200/5 text-violet-50 hover:bg-violet-200/10" onClick={() => void runAction(() => editorScene!.exportCampaign(activeCampaign.id))} disabled={busy || campaignScenes.length === 0}>
+                        <Download aria-hidden="true" /> Export campaign
+                      </Button>
                       <Button variant="outline" className="rounded-none border-violet-200/15 bg-violet-200/5 text-violet-50 hover:bg-violet-200/10" onClick={() => importInput.current?.click()} disabled={busy}>
                         <Upload aria-hidden="true" /> Import .scene
                       </Button>
                       <Button className="rounded-none border border-blue-200/20 bg-blue-500/70 text-blue-50 hover:bg-blue-400/80" onClick={() => startCreation("scene")} disabled={busy}>
                         <FilePlus2 aria-hidden="true" /> New scene
                       </Button>
+                      <Button variant="destructive" size="icon" className="rounded-none" aria-label={`Delete ${activeCampaign.name}`} onClick={() => setDeleteTarget({ type: "campaign", id: activeCampaign.id, name: activeCampaign.name })} disabled={busy}>
+                        <Trash2 aria-hidden="true" />
+                      </Button>
                     </div>
                   </div>
+
+                  {campaignScenes.length > 0 ? (
+                    <div className="relative mt-5 w-full">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-violet-200/35" aria-hidden="true" />
+                      <Input
+                        type="search"
+                        value={sceneQuery}
+                        onChange={(event) => setSceneQuery(event.target.value)}
+                        placeholder="Search scenes"
+                        aria-label={`Search scenes in ${activeCampaign.name}`}
+                        className="h-10 rounded-none border-violet-200/12 bg-black/15 pl-9 text-violet-50 placeholder:text-violet-200/30"
+                      />
+                    </div>
+                  ) : null}
 
                   {campaignScenes.length === 0 ? (
                     <div className="relative grid min-h-[23rem] place-items-center text-center">
@@ -205,18 +276,26 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
                     </div>
                   ) : (
                     <div className="relative mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      {campaignScenes.map((scene, index) => (
-                        <Button key={scene.key} asChild variant="ghost" className="group relative h-40 min-w-0 flex-col items-stretch justify-between overflow-hidden rounded-none border border-violet-200/10 bg-black/15 p-4 text-left hover:border-blue-300/30 hover:bg-blue-300/8">
-                          <Link href={sceneHref(scene.key)}>
-                          <span className="absolute right-3 top-3 font-mono text-[8px] tracking-widest text-violet-200/25">{String(index + 1).padStart(2, "0")}</span>
-                          <BookOpen className="size-5 text-blue-200/50 transition group-hover:text-blue-200" strokeWidth={1.4} aria-hidden="true" />
-                          <span className="min-w-0">
-                            <span className="block truncate font-heading text-xl text-amber-50">{scene.name}</span>
-                            <span className="mt-1 flex items-center justify-between font-mono text-[8px] tracking-[0.12em] text-violet-200/40 uppercase"><span>Version {scene.version}</span><ArrowRight className="size-3 transition group-hover:translate-x-1" aria-hidden="true" /></span>
-                          </span>
+                      {visibleScenes.map((scene, index) => (
+                        <div key={scene.key} className="group relative h-40 min-w-0 overflow-hidden border border-violet-200/10 bg-black/15 hover:border-blue-300/30 hover:bg-blue-300/8">
+                          <Link href={sceneHref(scene.key)} className="flex h-full flex-col justify-between p-4 text-left">
+                            <span className="absolute right-3 top-3 font-mono text-[8px] tracking-widest text-violet-200/25">{String(index + 1).padStart(2, "0")}</span>
+                            <BookOpen className="size-5 text-blue-200/50 transition group-hover:text-blue-200" strokeWidth={1.4} aria-hidden="true" />
+                            <span className="min-w-0">
+                              <span className="line-clamp-2 font-heading text-xl leading-tight text-amber-50">{scene.name}</span>
+                              <span className="mt-1 flex items-center justify-start gap-2 pr-24 font-mono text-[8px] tracking-[0.12em] text-violet-200/40 uppercase"><span>Version {scene.version}</span><ArrowRight className="size-3 transition group-hover:translate-x-1" aria-hidden="true" /></span>
+                            </span>
                           </Link>
-                        </Button>
+                          <div className="absolute bottom-3 right-3 flex gap-1">
+                            <Button size="icon-sm" variant="ghost" className="rounded-none text-violet-100/60" aria-label={`Export ${scene.name}`} disabled={busy} onClick={() => void runAction(() => editorScene!.exportScene(scene.key))}><Download aria-hidden="true" /></Button>
+                            <Button size="icon-sm" variant="ghost" className="rounded-none text-violet-100/60" aria-label={`Rename ${scene.name}`} disabled={busy} onClick={() => beginRename({ type: "scene", key: scene.key, name: scene.name })}><Pencil aria-hidden="true" /></Button>
+                            <Button size="icon-sm" variant="ghost" className="rounded-none text-red-300/70 hover:text-red-200" aria-label={`Delete ${scene.name}`} disabled={busy} onClick={() => setDeleteTarget({ type: "scene", key: scene.key, name: scene.name })}><Trash2 aria-hidden="true" /></Button>
+                          </div>
+                        </div>
                       ))}
+                      {visibleScenes.length === 0 ? (
+                        <p className="col-span-full border border-dashed border-violet-200/12 px-4 py-10 text-center text-sm text-violet-100/45">No scenes match “{sceneQuery.trim()}”.</p>
+                      ) : null}
                     </div>
                   )}
                 </>
@@ -257,6 +336,43 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
           </form>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={renameTarget !== null} onOpenChange={(open) => { if (!open && !busy) setRenameTarget(null); }}>
+        <DialogContent className="rounded-none border border-violet-200/15 bg-[#0c0b1d]/98 text-white sm:max-w-md" showCloseButton={!busy}>
+          <form onSubmit={(event) => void submitRename(event)}>
+            <DialogHeader>
+              <DialogTitle className="font-heading text-3xl text-amber-50">Rename {renameTarget?.type}</DialogTitle>
+              <DialogDescription className="text-violet-100/50">Names may be up to 120 characters.</DialogDescription>
+            </DialogHeader>
+            <div className="mt-5 grid gap-2">
+              <Label htmlFor="rename-name">Name</Label>
+              <Input id="rename-name" autoFocus value={renameName} onChange={(event) => setRenameName(event.target.value)} maxLength={120} className="rounded-none" />
+            </div>
+            {localError ? <p role="alert" className="mt-3 text-xs text-red-300">{localError}</p> : null}
+            <DialogFooter className="mt-6">
+              <Button type="button" variant="ghost" className="rounded-none" disabled={busy} onClick={() => setRenameTarget(null)}>Cancel</Button>
+              <Button type="submit" className="rounded-none" disabled={busy || !renameName.trim()}>{busy ? "Saving..." : "Save name"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !busy) setDeleteTarget(null); }}>
+        <AlertDialogContent className="rounded-none border border-violet-200/15 bg-[#0c0b1d]/98 text-white shadow-[0_30px_100px_rgba(0,0,0,0.7)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-heading text-3xl text-amber-50">Delete {deleteTarget?.type}?</AlertDialogTitle>
+            <AlertDialogDescription className="text-violet-100/50">
+              {deleteTarget?.type === "campaign"
+                ? `${deleteTarget.name} and every scene it contains will be permanently deleted.`
+                : `${deleteTarget?.name ?? "This scene"} will be permanently deleted.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-none" disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" className="rounded-none" disabled={busy} onClick={(event) => { event.preventDefault(); void confirmDelete(); }}>{busy ? "Deleting..." : "Delete permanently"}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

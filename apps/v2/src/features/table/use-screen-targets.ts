@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { observeTableWindow } from "@/features/table/table-window-channel";
+import { observeTableWindow, TABLE_WINDOW_NAME } from "@/features/table/table-window-channel";
 import type { TableWindowFocusCommand } from "@/features/table/table-window-channel";
 
 export interface ScreenTarget {
@@ -166,7 +166,7 @@ export function useScreenTargets() {
     setTargetId(target.id);
     const recovered = tableWindow && !tableWindow.closed
       ? tableWindow
-      : window.open("", "fantassist-table", popupFeatures(target, automaticFullscreen));
+      : window.open("", TABLE_WINDOW_NAME, popupFeatures(target, automaticFullscreen));
     if (!recovered) {
       if (tablePresence.current.present) {
         tableObserver.current?.focus(command);

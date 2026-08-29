@@ -1,4 +1,4 @@
-import { decodeV1SceneExport } from "./scene-codec";
+import { decodeV1SceneExport, encodeV1SceneExport } from "./scene-codec";
 import type { V1Asset, V1SceneRecord } from "./types";
 
 export interface V1PreparedImportFile {
@@ -9,6 +9,31 @@ export interface V1PreparedImportFile {
 export interface V1PreparedSceneImport {
   readonly record: V1SceneRecord;
   readonly files: readonly V1PreparedImportFile[];
+}
+
+export async function prepareV1SceneExport(
+  record: V1SceneRecord,
+  getAsset: (id: string) => Promise<File | null>
+): Promise<Uint8Array> {
+  const assetIds: string[] = [];
+  const seen = new Set<string>();
+  for (const layer of record.scene.layers) {
+    for (const assetId of Object.keys(layer.assetLayer?.assets ?? {})) {
+      if (seen.has(assetId)) continue;
+      seen.add(assetId);
+      assetIds.push(assetId);
+    }
+  }
+  const files = await Promise.all(assetIds.map(async (assetId) => {
+    const file = await getAsset(assetId);
+    if (!file) throw new Error(`Scene '${record.scene.name}' is missing referenced asset '${assetId}'`);
+    return {
+      id: assetId,
+      payload: new Uint8Array(await file.arrayBuffer()),
+      mediaType: file.type || "application/octet-stream",
+    };
+  }));
+  return encodeV1SceneExport({ scene: record.scene, files });
 }
 
 type UuidFactory = () => string;

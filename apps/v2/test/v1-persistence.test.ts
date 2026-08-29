@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { TarReader } from "@gera2ld/tarjs";
 import "fake-indexeddb/auto";
 
 import { decodeV1Scene, decodeV1SceneExport, encodeV1Scene, encodeV1SceneExport } from "../src/persistence/v1/scene-codec";
 import { applyAssetVisibilityMetadata, hydrateAssetDisplayNames, patchV1SceneTransforms, projectV1Scene } from "../src/persistence/v1/scene-adapter";
-import { createBlankV1SceneRecord, prepareV1SceneImport } from "../src/persistence/v1/scene-lifecycle";
+import { prepareV1CampaignExport } from "../src/persistence/v1/campaign-export";
+import { createBlankV1SceneRecord, prepareV1SceneExport, prepareV1SceneImport } from "../src/persistence/v1/scene-lifecycle";
 import { SceneConflictError } from "../src/persistence/v1/types";
 import type { V1Scene, V1SceneRecord } from "../src/persistence/v1/types";
 
@@ -83,6 +85,29 @@ test("v1 scene export codec round-trips the exact envelope and requires a scene"
   };
   assert.deepEqual(decodeV1SceneExport(encodeV1SceneExport(sceneExport)), sceneExport);
   assert.throws(() => decodeV1SceneExport(new Uint8Array()), /missing scene/);
+});
+
+test("scene and campaign exports embed referenced image and video files", async () => {
+  const files = new Map([
+    ["campaign-1/image-1", new File([new Uint8Array([1, 2])], "map.png", { type: "image/png" })],
+    ["campaign-1/video-1", new File([new Uint8Array([3, 4])], "loop.mp4", { type: "video/mp4" })],
+  ]);
+  const record = { key: sceneKey, campaignId: "campaign-1", scene: fullScene };
+  const bytes = await prepareV1SceneExport(record, async (id) => files.get(id) ?? null);
+  const decoded = decodeV1SceneExport(bytes);
+  assert.deepEqual(decoded.scene, fullScene);
+  assert.deepEqual(decoded.files.map((file) => [file.id, file.mediaType, [...file.payload]]), [
+    ["campaign-1/image-1", "image/png", [1, 2]],
+    ["campaign-1/video-1", "video/mp4", [3, 4]],
+  ]);
+
+  const second = { ...record, key: "campaign-1/scene-2", scene: { ...fullScene, id: "campaign-1/scene-2" } };
+  const archive = await prepareV1CampaignExport([record, second], async (id) => files.get(id) ?? null);
+  const reader = await TarReader.load(archive);
+  assert.deepEqual(reader.fileInfos.map((file) => file.name), ["Persisted dungeon.scene", "Persisted dungeon (2).scene"]);
+  const archived = new Uint8Array(await reader.getFileBlob("Persisted dungeon.scene").arrayBuffer());
+  assert.deepEqual(decodeV1SceneExport(archived).scene, fullScene);
+  await assert.rejects(prepareV1SceneExport(record, async () => null), /missing referenced asset/);
 });
 
 test("blank scene records use v1 defaults and ordered empty layers", () => {
@@ -186,6 +211,19 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   );
   assert.deepEqual(patched.layers[0].assetLayer?.assets["campaign-1/video-1"], fullScene.layers[0].assetLayer?.assets["campaign-1/video-1"]);
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
+});
+
+test("scene adapter persists scene and layer names", () => {
+  const document = projectV1Scene(fullScene);
+  const renamed = patchV1SceneTransforms(fullScene, {
+    ...document,
+    name: "Renamed dungeon",
+    layers: document.layers.map((layer, index) => ({ ...layer, name: index === 0 ? "Battle Maps" : "Hidden Fog" })),
+  }, 8);
+  assert.equal(renamed.name, "Renamed dungeon");
+  assert.equal(renamed.layers[0].assetLayer?.name, "Battle Maps");
+  assert.equal(renamed.layers[1].fogLayer?.name, "Hidden Fog");
+  assert.deepEqual(renamed.layers[0].assetLayer?.assets["campaign-1/video-1"], fullScene.layers[0].assetLayer?.assets["campaign-1/video-1"]);
 });
 
 test("scene adapter persists changed and removed image calibration", () => {
@@ -413,6 +451,13 @@ test("v1 repositories use exact stores and reject stale scene saves", async () =
     ),
     (error) => error instanceof SceneConflictError && error.actualVersion === 8
   );
+  await repository.putCampaign({ id: "campaign-1", name: "Renamed campaign" });
+  assert.equal((await repository.listCampaigns())[0].name, "Renamed campaign");
+  await repository.deleteScene(sceneKey);
+  assert.equal(await repository.loadScene(sceneKey), null);
+  assert.equal(await repository.getSceneMetadata(sceneKey), null);
+  await repository.deleteCampaign("campaign-1");
+  assert.deepEqual(await repository.listCampaigns(), []);
   assert.deepEqual((await indexedDB.databases()).map((database) => database.name).sort(), [
     "asset_file",
     "campaign",

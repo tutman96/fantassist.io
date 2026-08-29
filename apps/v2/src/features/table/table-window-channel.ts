@@ -1,4 +1,5 @@
 export const TABLE_WINDOW_CHANNEL = "fantassist-table-window";
+export const TABLE_WINDOW_NAME = "fantassist-table";
 
 export interface TableWindowBounds {
   readonly left: number;

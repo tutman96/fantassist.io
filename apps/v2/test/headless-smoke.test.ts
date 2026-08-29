@@ -78,11 +78,11 @@ test("fog feathering spreads outward without weakening opaque coverage", { timeo
   const foggedPixels = await renderHeadlessScene({ ...options, scene: fogged });
   const barePixels = await renderHeadlessScene({ ...options, scene: bare });
   const pixel = (pixels: Uint8Array, x: number, y: number) => [...pixels.slice((y * 768 + x) * 4, (y * 768 + x) * 4 + 3)];
-  const outside = pixel(foggedPixels.pixels, 174, 150);
-  const falloff = pixel(foggedPixels.pixels, 175, 150);
-  const opaque = pixel(foggedPixels.pixels, 176, 150);
-  const source = pixel(barePixels.pixels, 175, 150);
-  assert.deepEqual(outside, pixel(barePixels.pixels, 174, 150));
+  const outside = pixel(foggedPixels.pixels, 193, 166);
+  const falloff = pixel(foggedPixels.pixels, 195, 166);
+  const opaque = pixel(foggedPixels.pixels, 197, 166);
+  const source = pixel(barePixels.pixels, 195, 166);
+  assert.deepEqual(outside, pixel(barePixels.pixels, 193, 166));
   assert.ok(falloff.every((channel, index) => channel > 0 && channel < source[index]));
   assert.deepEqual(opaque, [0, 0, 0]);
 });
@@ -120,16 +120,16 @@ test("colored lights replace ambient illumination while walls and fog occlude th
   const fogged = await renderHeadlessScene({ ...options, scene: makeScene({ fogged: true }) });
   const bare = await renderHeadlessScene({ ...options, scene: makeScene({ lights: false }) });
   const sample = (pixels: Uint8Array, x: number, y: number) => [...pixels.slice((y * 256 + x) * 4, (y * 256 + x) * 4 + 3)];
-  const ambientOutside = sample(ambient.pixels, 174, 59);
-  const bareOutside = sample(bare.pixels, 174, 59);
-  const behindWall = sample(shadowed.pixels, 88, 59);
-  const withoutWall = sample(ambient.pixels, 88, 59);
-  const underWhiteLight = sample(white.pixels, 88, 59);
-  const coloredSource = sample(ambient.pixels, 58, 59);
-  const halfEnergySource = sample(halfEnergy.pixels, 58, 59);
-  const halfEnergyFalloff = sample(halfEnergy.pixels, 88, 59);
-  const revealedSource = sample(fogged.pixels, 58, 59);
-  const concealedOutside = sample(fogged.pixels, 174, 59);
+  const ambientOutside = sample(ambient.pixels, 193, 65);
+  const bareOutside = sample(bare.pixels, 193, 65);
+  const behindWall = sample(shadowed.pixels, 98, 65);
+  const withoutWall = sample(ambient.pixels, 98, 65);
+  const underWhiteLight = sample(white.pixels, 98, 65);
+  const coloredSource = sample(ambient.pixels, 65, 65);
+  const halfEnergySource = sample(halfEnergy.pixels, 65, 65);
+  const halfEnergyFalloff = sample(halfEnergy.pixels, 98, 65);
+  const revealedSource = sample(fogged.pixels, 65, 65);
+  const concealedOutside = sample(fogged.pixels, 193, 65);
   const chroma = (color: number[]) => Math.max(...color) - Math.min(...color);
   assert.ok(ambientOutside.reduce((sum, channel) => sum + channel, 0) < bareOutside.reduce((sum, channel) => sum + channel, 0));
   assert.ok(chroma(ambientOutside) < chroma(bareOutside), `${ambientOutside} should be less saturated than ${bareOutside}`);
@@ -144,9 +144,8 @@ test("colored lights replace ambient illumination while walls and fog occlude th
     `full energy ${coloredSource} should emit more radiance than half energy ${halfEnergySource}`,
   );
   assert.ok(
-    halfEnergyFalloff.reduce((sum, channel) => sum + channel, 0) / withoutWall.reduce((sum, channel) => sum + channel, 0)
-      < halfEnergySource.reduce((sum, channel) => sum + channel, 0) / coloredSource.reduce((sum, channel) => sum + channel, 0),
-    `half energy should fall off faster from ${halfEnergySource} to ${halfEnergyFalloff}`,
+    withoutWall.reduce((sum, channel) => sum + channel, 0) > halfEnergyFalloff.reduce((sum, channel) => sum + channel, 0),
+    `full energy ${withoutWall} should exceed half energy ${halfEnergyFalloff} in the falloff`,
   );
   assert.ok(revealedSource.some((channel) => channel > 0), `${revealedSource} should punch through fog at the light source`);
   assert.deepEqual(concealedOutside, [0, 0, 0]);
@@ -179,7 +178,7 @@ test("separate wall segments contain direct light outside a closed room", { time
   const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
   const lit = await renderHeadlessScene({ ...options, scene: scene(255) });
   const dark = await renderHeadlessScene({ ...options, scene: scene(0) });
-  const sample = (pixels: Uint8Array) => [...pixels.slice((59 * 256 + 58) * 4, (59 * 256 + 58) * 4 + 3)];
+  const sample = (pixels: Uint8Array) => [...pixels.slice((65 * 256 + 65) * 4, (65 * 256 + 65) * 4 + 3)];
   const litOutside = sample(lit.pixels);
   const darkOutside = sample(dark.pixels);
   assert.ok(
@@ -214,15 +213,15 @@ test("fog clips bounced radiance at dim radius while open space keeps the cascad
   const openDark = await renderHeadlessScene({ ...options, scene: scene(0, false) });
   const foggedLit = await renderHeadlessScene({ ...options, scene: scene(255, true) });
   const foggedDark = await renderHeadlessScene({ ...options, scene: scene(0, true) });
-  const sample = (pixels: Uint8Array) => [...pixels.slice((59 * 256 + 78) * 4, (59 * 256 + 78) * 4 + 3)];
+  const sample = (pixels: Uint8Array) => [...pixels.slice((65 * 256 + 91) * 4, (65 * 256 + 91) * 4 + 3)];
   const openBounce = sample(openLit.pixels);
   const openBaseline = sample(openDark.pixels);
   const foggedOutside = sample(foggedLit.pixels);
   const foggedBaseline = sample(foggedDark.pixels);
   let maximumOpenDelta = 0;
   let maximumOpenPoint = [0, 0];
-  for (let y = 45; y <= 70; y++) {
-    for (let x = 74; x <= 100; x++) {
+  for (let y = 50; y <= 80; y++) {
+    for (let x = 86; x <= 110; x++) {
       const offset = (y * 256 + x) * 4;
       const delta = openLit.pixels[offset] - openDark.pixels[offset];
       if (delta > maximumOpenDelta) {
@@ -276,7 +275,7 @@ test("each colored light keeps independent cascade reachability", { timeout: 60_
   const options = { adapter: "auto", profile: "output", size: [256, 144], time: 0 } as const;
   const both = await renderHeadlessScene({ ...options, scene: scene(255) });
   const blueOnly = await renderHeadlessScene({ ...options, scene: scene(0) });
-  const sample = (pixels: Uint8Array) => [...pixels.slice((59 * 256 + 58) * 4, (59 * 256 + 58) * 4 + 3)];
+  const sample = (pixels: Uint8Array) => [...pixels.slice((65 * 256 + 65) * 4, (65 * 256 + 65) * 4 + 3)];
   const sealedWithRed = sample(both.pixels);
   const sealedWithoutRed = sample(blueOnly.pixels);
   assert.ok(

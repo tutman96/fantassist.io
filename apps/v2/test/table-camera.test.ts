@@ -23,9 +23,9 @@ const close = (actual: number, expected: number, epsilon = 1e-8) =>
 
 test("derives physical display dimensions and ppi", () => {
   const physical = derivePhysicalDisplay(DEFAULT_DISPLAY);
-  close(physical.widthInches, 43.5787768562);
-  close(physical.heightInches, 24.5130619816);
-  close(physical.ppi, 88.1162868033);
+  close(physical.widthInches, 39.2208991706);
+  close(physical.heightInches, 22.0617557834);
+  close(physical.ppi, 97.9069853370);
 });
 
 test("invalid display and table values normalize to safe defaults", () => {

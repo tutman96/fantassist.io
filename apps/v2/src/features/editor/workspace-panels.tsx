@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BrickWall, CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, Lightbulb, ListPlus, MousePointer2, Trash2 } from "lucide-react";
+import { BrickWall, CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, Lightbulb, ListPlus, MousePointer2, Pencil, Trash2 } from "lucide-react";
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import type { PreviewToken, SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { LightSelection } from "@/engine/scene-engine";
@@ -74,7 +76,7 @@ export function WorkspacePanels({
         open={inspectorOpen}
         onOpenChange={setInspectorOpen}
         eyebrow="Inspector"
-        title={assetSelected ? asset.name : selectedLight && lightSelection ? `Light ${lightSelection.lightIndex + 1}` : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : fogSelection.collection === "clear" ? "Clear" : "Wall"} ${fogSelection.collection === "wall" ? "" : "polygon "}${fogSelection.polygonIndex + 1}` : "Nothing selected"}
+        title={assetSelected ? asset.name : selectedLight && lightSelection ? `Light ${lightSelection.lightIndex + 1}` : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : fogSelection.collection === "clear" ? "Clear" : "Wall"} ${fogSelection.collection === "wall" ? "" : "polygon "}${fogSelection.polygonIndex + 1}` : sceneSnapshot.scene.name}
         detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedLight ? `Colored light · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
         icon={assetSelected ? <ImageIcon /> : selectedLight ? <Lightbulb /> : selectedFogPolygon ? fogSelection?.collection === "wall" ? <BrickWall /> : <CloudFog /> : <MousePointer2 />}
         className="top-20 right-3 left-3 max-h-[55%] sm:pointer-events-auto sm:relative sm:top-auto sm:right-auto sm:left-auto sm:flex sm:max-h-[55%] sm:w-full sm:shrink-0 sm:flex-col"
@@ -90,7 +92,7 @@ export function WorkspacePanels({
         ) : selectedFogPolygon && fogSelection ? (
           <FogPolygonInspector engine={engine} selection={fogSelection} polygon={selectedFogPolygon} />
         ) : (
-          <SceneInspector />
+          <SceneInspector engine={engine} sceneSnapshot={sceneSnapshot} />
         )}
       </EditorPanel>
 
@@ -252,6 +254,12 @@ export function WorkspacePanels({
                   )}
                   <span className="flex shrink-0 items-center gap-1">
                     <span className="font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
+                    <RenameDialog
+                      subject="layer"
+                      currentName={layer.name}
+                      onRename={(name) => engine.dispatch({ type: "layer.rename", layerId: layer.id, name })}
+                      trigger={<LayerIconButton label={`Rename ${layer.name}`}><Pencil /></LayerIconButton>}
+                    />
                     <LayerIconButton
                       label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
                       onClick={() => engine.dispatch({ type: "layer.visibility", layerId: layer.id, visible: !layer.visible })}
@@ -624,13 +632,63 @@ function DeleteConfirmation({
   );
 }
 
-function SceneInspector() {
+function SceneInspector({ engine, sceneSnapshot }: { readonly engine: SceneEngine; readonly sceneSnapshot: SceneEngineSnapshot }) {
   return (
     <div className="p-2.5">
       <p className="text-[10px] leading-4 text-violet-100/60">
         Select an image, light, wall, or fog polygon on the canvas or in the layer stack to inspect and edit it.
       </p>
+      <RenameDialog
+        subject="scene"
+        currentName={sceneSnapshot.scene.name}
+        onRename={(name) => engine.dispatch({ type: "scene.rename", name })}
+        trigger={<Button variant="outline" className="mt-3 h-8 w-full rounded-none text-[10px]"><Pencil aria-hidden="true" /> Rename scene</Button>}
+      />
     </div>
+  );
+}
+
+function RenameDialog({ subject, currentName, onRename, trigger }: {
+  readonly subject: "scene" | "layer";
+  readonly currentName: string;
+  readonly onRename: (name: string) => ReturnType<SceneEngine["dispatch"]>;
+  readonly trigger: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(currentName);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Dialog open={open} onOpenChange={(next) => {
+      setOpen(next);
+      if (next) {
+        setDraft(currentName);
+        setError(null);
+      }
+    }}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="rounded-none border-violet-200/15 bg-[#0c0b1d] text-white sm:max-w-sm">
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          const result = onRename(draft);
+          if (!result.ok) setError(result.error);
+          else setOpen(false);
+        }}>
+          <DialogHeader>
+            <DialogTitle>Rename {subject}</DialogTitle>
+            <DialogDescription>Names may be up to 120 characters.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 grid gap-2">
+            <Label htmlFor={`rename-${subject}`}>Name</Label>
+            <Input id={`rename-${subject}`} autoFocus value={draft} maxLength={120} onChange={(event) => setDraft(event.target.value)} />
+          </div>
+          {error ? <p role="alert" className="mt-2 text-xs text-red-300">{error}</p> : null}
+          <DialogFooter className="mt-5">
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={!draft.trim()}>Save name</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
