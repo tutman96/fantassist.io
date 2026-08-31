@@ -20,6 +20,8 @@ const schemaPath = path.resolve("tests/fixtures/v1/scene.proto");
 const v1Schema = protobuf.loadSync(schemaPath);
 const V1Scene = v1Schema.lookupType("Scene");
 const V1SceneExport = v1Schema.lookupType("SceneExport");
+const currentSchema = protobuf.loadSync(path.resolve("protos/scene.proto"));
+const CurrentScene = currentSchema.lookupType("Scene");
 
 const objectOptions = {
   enums: String,
@@ -106,4 +108,66 @@ test("removed marker layers are discarded at the compatibility boundary", () => 
     ),
     ["layer-background", "layer-fog"]
   );
+});
+
+test("canonical effects fields do not reuse frozen stable-v1 marker identities", () => {
+  const layer = currentSchema.lookupType("Layer");
+  const rain = currentSchema.lookupType("RainEffect");
+  assert.equal(layer.fields.effectsLayer.id, 4);
+  assert.equal(layer.fields["markerLayer"], undefined);
+  assert.equal(layer.lookupEnum("LayerType").values.EFFECTS, 3);
+  assert.equal(rain.fields["angle"], undefined);
+  assert.equal(rain.fields.dropSize.id, 11);
+  assert.ok(rain.reserved?.some((entry) => Array.isArray(entry) && entry[0] === 10 && entry[1] === 10));
+
+  const experimentalBytes = protobuf.Writer.create()
+    .uint32(10 * 8 + 1).double(-0.2)
+    .uint32(11 * 8 + 1).double(1.25)
+    .finish();
+  assert.deepEqual(rain.toObject(rain.decode(experimentalBytes)), { dropSize: 1.25 });
+});
+
+test("frozen stable-v1 decode and re-encode drops effects while preserving known fields", () => {
+  const source = Scene.toJSON(fullScene) as Record<string, any>;
+  const canonical = CurrentScene.fromObject({
+    ...source,
+    layers: [
+      source.layers[0],
+      {
+        effectsLayer: {
+          id: "layer-weather",
+          name: "Weather",
+          visible: true,
+          type: "EFFECTS",
+          effects: [{
+            rain: {
+              id: "rain-1",
+              name: "Rain",
+              visible: true,
+              vertices: [{ x: 1, y: 2 }, { x: 3, y: 4 }],
+              seed: 42,
+              color: { r: 100, g: 150, b: 200 },
+              opacity: 0.5,
+              density: 0.75,
+              speed: 3,
+              dropSize: 1.25,
+            },
+          }],
+        },
+      },
+      ...source.layers.slice(1),
+    ],
+  });
+
+  const stableDecoded = decodeScene(CurrentScene.encode(canonical).finish());
+  const reencoded = encodeScene(stableDecoded);
+  const returned = CurrentScene.toObject(CurrentScene.decode(reencoded), objectOptions) as Record<string, any>;
+
+  assert.equal(returned.id, source.id);
+  assert.equal(returned.name, source.name);
+  assert.deepEqual(returned.table, source.table);
+  assert.deepEqual(returned.layers.map((entry: Record<string, any>) =>
+    entry.assetLayer?.id ?? entry.fogLayer?.id ?? entry.effectsLayer?.id
+  ), ["layer-background", "layer-fog", "layer-video"]);
+  assert.deepEqual(sceneJson(stableDecoded), sceneJson(fullScene));
 });

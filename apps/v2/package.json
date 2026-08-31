@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "shader:check": "for shader in src/renderer/vgpu/shaders/*.wgsl; do vgpu check \"$shader\" --require-validation || exit 1; done",
+    "shader:check": "for shader in src/renderer/vgpu/shaders/*.wgsl src/renderer/particles/wgsl/*.wgsl test/fixtures/particle-consumer.wgsl; do vgpu check \"$shader\" --require-validation || exit 1; done",
     "test": "node --import tsx --test test/*.test.ts",
     "render:scene": "tsx scripts/render-scene.ts",
     "render:performance": "npm run render:scene -- --performance --out artifacts/performance-4k.png",

@@ -6,8 +6,8 @@ import { createSceneEngine } from "@/engine/scene-engine";
 import type { SceneEngine } from "@/engine/scene-engine";
 import { createTableSession } from "@/engine/table-session";
 import { EditorToolbar } from "@/features/editor/editor-toolbar";
-import type { EditorTool } from "@/features/editor/editor-tool";
-import { ensureFogLayer } from "@/features/editor/editor-tool";
+import type { EditorTool, EffectTool } from "@/features/editor/editor-tool";
+import { ensureEffectsLayer, ensureFogLayer } from "@/features/editor/editor-tool";
 import { useEditorInteractions } from "@/features/editor/use-editor-interactions";
 import { useSceneViewport } from "@/features/editor/use-scene-viewport";
 import { CameraStatus, EditorGestureHints, RendererGate } from "@/features/editor/viewport-status";
@@ -32,6 +32,8 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
   const editorScene = useEditorScene();
   const [ownedSession] = useState(createTableSession);
   const [tool, setTool] = useState<EditorTool>("assets");
+  const [effectTool, setEffectTool] = useState<EffectTool>("rain");
+  const [rainLayerId, setRainLayerId] = useState<string | null>(null);
   const session = sharedSession ?? ownedSession;
   const [ownedEngine] = useState(createSceneEngine);
   const [ownedImageLoader] = useState(() => {
@@ -64,11 +66,19 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
     assetRotation: asset?.transform.rotation ?? 0,
     canvasRef,
     engine,
+    effectTool,
     onToolChange: setTool,
     profile,
+    rainLayerId,
     session,
     tool,
   });
+  const selectEffect = (nextEffect: EffectTool, layerId: string) => {
+    engine.cancelActivePreview();
+    setEffectTool(nextEffect);
+    setRainLayerId(layerId);
+    setTool("effects");
+  };
 
   return (
     <div className="relative size-full overflow-hidden bg-[#03050d]">
@@ -106,10 +116,21 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
               if ((nextTool === "fog" || nextTool === "fog-clear" || nextTool === "wall" || nextTool === "light") && !sceneSnapshot.scene.layers.some((layer) => layer.type === "fog")) {
                 ensureFogLayer(engine);
               }
+              if (nextTool === "effects") setRainLayerId(ensureEffectsLayer(engine));
               setTool(nextTool);
             }}
+            effectTool={effectTool}
+            onEffectToolChange={(nextEffect) => {
+              selectEffect(nextEffect, ensureEffectsLayer(engine));
+            }}
           />
-          <WorkspacePanels engine={engine} sceneSnapshot={sceneSnapshot} />
+          <WorkspacePanels
+            engine={engine}
+            sceneSnapshot={sceneSnapshot}
+            activeEffectLayerId={tool === "effects" ? rainLayerId : null}
+            effectTool={effectTool}
+            onAddEffect={(layerId, effect) => selectEffect(effect, layerId)}
+          />
           <EditorGestureHints tool={tool} />
           {status === "ready" ? (
             <CameraStatus sceneSnapshot={sceneSnapshot} tableSnapshot={tableSnapshot} />

@@ -77,9 +77,35 @@ export interface V1FogLayer {
   readonly fogClearPolygons: readonly V1Polygon[];
 }
 
+export interface V1RainEffect {
+  readonly id: string;
+  readonly name: string;
+  readonly visible: boolean;
+  readonly vertices: readonly V1Vector[];
+  readonly seed: number;
+  readonly color?: { readonly r: number; readonly g: number; readonly b: number };
+  readonly opacity: number;
+  readonly density: number;
+  readonly speed: number;
+  readonly dropSize: number;
+}
+
+export interface V1Effect {
+  readonly rain?: V1RainEffect;
+}
+
+export interface V1EffectsLayer {
+  readonly id: string;
+  readonly name: string;
+  readonly visible: boolean;
+  readonly type: number;
+  readonly effects: readonly V1Effect[];
+}
+
 export interface V1Layer {
   readonly assetLayer?: V1AssetLayer;
   readonly fogLayer?: V1FogLayer;
+  readonly effectsLayer?: V1EffectsLayer;
 }
 
 export interface V1TableOptions {

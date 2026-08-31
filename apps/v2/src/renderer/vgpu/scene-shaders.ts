@@ -1,6 +1,8 @@
 import type { ShaderSource } from "vgpu";
+import type { ParticleEmitterShaders } from "../particles/particle-emitter";
 
 export interface SceneShaders {
+  readonly particleEmitter: ParticleEmitterShaders;
   readonly assets: string | ShaderSource;
   readonly fogMask: string | ShaderSource;
   readonly fogComposite: string | ShaderSource;
@@ -13,5 +15,7 @@ export interface SceneShaders {
   readonly present: string | ShaderSource;
   readonly radianceCascade: string | ShaderSource;
   readonly radianceResolve: string | ShaderSource;
+  readonly rain: string | ShaderSource;
+  readonly rainContext: string | ShaderSource;
   readonly sceneCopy: string | ShaderSource;
 }

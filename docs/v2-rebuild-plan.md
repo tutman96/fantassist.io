@@ -63,11 +63,11 @@ IndexedDB access is restricted to an exact origin: scheme, hostname, and port. U
 
 V1 and v2 must therefore remain on the same permanent browser origin to share live data. CORS, `document.domain`, and cross-origin iframes do not provide access to another origin's IndexedDB.
 
-### The V1 Scene Format Is Frozen
+### V1 Compatibility Is Explicit And Lossy For V2 Extensions
 
-The existing protobuf schema and LocalForage storage configuration are compatibility boundaries. V2 may have a richer internal engine model, but shared scene records must remain representable by v1.
+The existing protobuf field allocations and LocalForage storage configuration are compatibility boundaries. V2 may extend the shared protobuf with new wire-compatible fields and layer variants. Existing field numbers, enum values, and meanings must not change.
 
-V1 protobuf readers ignore unknown fields but may discard them when a scene is saved. V2 must not depend on new protobuf fields surviving a v1 edit. Any future v2-only information must live in an optional sidecar store and must not be required to render or edit the shared v1 scene.
+V1 protobuf readers ignore unknown fields and may discard them when a scene is saved, imported, or exported. This data loss is accepted for v2 effects and future extensions that explicitly choose the same policy. V1 must continue to decode and edit recognized scene data before and after it removes an extension. Features that must survive v1 writes still require a sidecar or another preservation mechanism.
 
 Removed marker field numbers and enum values must be marked `reserved` before future schema evolution so they cannot be reused accidentally.
 
@@ -194,6 +194,8 @@ V2 must open the same LocalForage databases with the same names, drivers, store 
 - Preserve ordered layer semantics.
 - Preserve all table, transform, calibration, fog, wall, light, visibility, snap, and volume fields.
 - Preserve existing protobuf field numbers and enum meanings.
+- Add new protobuf fields only with wire-compatible allocations and frozen-v1 decode tests.
+- Accept that v1 re-encoding removes effects layers introduced by ADR 0010.
 - Continue incrementing `Scene.version` for committed changes that must reach the table display.
 - Treat missing optional fields as valid old data.
 - Apply defaults at the engine or adapter boundary without rewriting unrelated data.
@@ -218,6 +220,7 @@ Capture fixtures using the current v1 implementation before replacing it:
 - Hidden layers and editor-only polygons
 - A complete `.scene` export with embedded media
 - A campaign tar containing multiple scenes
+- A v2 effects scene that the frozen v1 codec can decode and re-encode as an effects-free scene
 
 Each fixture must pass this round trip:
 
@@ -1042,8 +1045,7 @@ Do not begin broad interface work until the first three milestones have passed.
 | Unsupported browser behavior | Block v2 or redirect to v1 | Offer a direct switch back to v1 |
 | Renderer threading | Main thread or worker | Start on main thread; preserve worker-compatible APIs |
 | Picking | CPU bounds or GPU ID pass | CPU for simple assets, GPU where pixel accuracy is required |
-| Internal scene representation | V1 schema directly or richer engine model | V1-compatible canonical document plus derived engine state |
-| V2-only persisted features | Extend shared protobuf or sidecar store | Sidecar only; never require it for v1-compatible rendering |
+| Internal scene representation | Protobuf schema directly or richer engine model | Protobuf-backed canonical document plus derived engine state |
 | Lighting shadow method | Extruded segment geometry, polar shadow maps, or ray tests | Begin with GPU-extruded segment shadows |
 | Color pipeline | Canvas format only or HDR intermediate | Validate `rgba16float` during the spike |
 | Undo persistence | Session-only or persisted history | Session-only initially |
@@ -1063,6 +1065,9 @@ Do not begin broad interface work until the first three milestones have passed.
 | Deployment runtime | Node.js 24 or newer for gateway, v1, and v2 |
 | Headless renderer | `vgpu/node` with Dawn and the production render plan |
 | Engine interaction prototype | Immutable engine snapshots with CPU asset picking and replaceable transform previews |
+| V2 schema extension policy | Decide by feature; effects use a wire-compatible protobuf layer and accept removal by v1, while data that must survive v1 writes uses a sidecar |
+| Effects persistence | Ordered shared-protobuf layer; v1 may remove effects when it re-encodes a scene |
+| Effects animation | Shared vgpu shaders with independent editor and output clocks |
 
 ## Risks
 
@@ -1071,7 +1076,7 @@ Do not begin broad interface work until the first three milestones have passed.
 | Vgpu API instability | Pin a validated release and wrap it behind renderer interfaces |
 | Video texture limitations | Deferred by product priority; prove upload and lifecycle behavior before implementing video assets |
 | 4K lighting cost | Benchmark multiple algorithms during the spike |
-| V1 dropping v2 protobuf fields | Freeze shared schema and use optional sidecar storage |
+| V1 dropping v2 protobuf fields | Accept and test loss for effects; use sidecars only for features that must survive v1 writes |
 | IndexedDB unavailable across deployments | Keep both versions on one exact origin |
 | Concurrent v1/v2 writes | Detect external revisions and warn; document single-writer behavior |
 | GPU/device loss | Centralize resource ownership and rebuild from engine snapshots |

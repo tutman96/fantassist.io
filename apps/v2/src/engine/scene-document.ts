@@ -40,6 +40,22 @@ export interface SceneLight {
   readonly color: { readonly r: number; readonly g: number; readonly b: number; readonly a: number };
 }
 
+export interface RainEffect {
+  readonly id: string;
+  readonly kind: "rain";
+  readonly name: string;
+  readonly visible: boolean;
+  readonly vertices: readonly { readonly x: number; readonly y: number }[];
+  readonly seed: number;
+  readonly color: { readonly r: number; readonly g: number; readonly b: number };
+  readonly opacity: number;
+  readonly density: number;
+  readonly speed: number;
+  readonly dropSize: number;
+}
+
+export type SceneEffect = RainEffect;
+
 interface SceneLayerBase {
   readonly id: string;
   readonly name: string;
@@ -60,7 +76,12 @@ export interface FogSceneLayer extends SceneLayerBase {
   readonly lightSources: readonly SceneLight[];
 }
 
-export type SceneLayer = AssetSceneLayer | FogSceneLayer;
+export interface EffectsSceneLayer extends SceneLayerBase {
+  readonly type: "effects";
+  readonly effects: readonly SceneEffect[];
+}
+
+export type SceneLayer = AssetSceneLayer | FogSceneLayer | EffectsSceneLayer;
 
 export interface SceneDocument {
   readonly id: string;
@@ -124,9 +145,12 @@ export function freezeSceneDocument(scene: SceneDocumentInput): SceneDocument {
       ...table,
       originGrid: Object.freeze({ ...table.originGrid }),
     }),
-    layers: Object.freeze(scene.layers.map((layer) => layer.type === "assets"
-      ? Object.freeze({ ...layer, assetIds: Object.freeze([...layer.assetIds]) })
-      : Object.freeze({
+    layers: Object.freeze(scene.layers.map((layer) => {
+      if (layer.type === "assets") {
+        return Object.freeze({ ...layer, assetIds: Object.freeze([...layer.assetIds]) });
+      }
+      if (layer.type === "fog") {
+        return Object.freeze({
           ...layer,
           assetIds: Object.freeze([]),
           fogPolygons: freezePolygons(layer.fogPolygons),
@@ -137,7 +161,17 @@ export function freezeSceneDocument(scene: SceneDocumentInput): SceneDocument {
             position: Object.freeze({ ...light.position }),
             color: Object.freeze({ ...light.color }),
           }))),
+        });
+      }
+      return Object.freeze({
+        ...layer,
+        effects: Object.freeze(layer.effects.map((effect) => Object.freeze({
+          ...effect,
+          vertices: Object.freeze(effect.vertices.map((vertex) => Object.freeze({ ...vertex }))),
+          color: Object.freeze({ ...effect.color }),
         }))),
+      });
+    })),
     assets: Object.freeze(
       scene.assets.map((asset) =>
         Object.freeze({

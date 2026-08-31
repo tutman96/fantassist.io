@@ -18,23 +18,39 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
           .map((asset) => asset.id),
       };
     }
-    const fogLayer = layer.fogLayer;
-    return {
-      id: fogLayer?.id ?? "",
-      name: fogLayer?.name ?? "Fog",
-      type: "fog" as const,
-      visible: fogLayer?.visible ?? false,
-      assetIds: [] as const,
-      fogPolygons: projectPolygons(fogLayer?.fogPolygons ?? []),
-      fogClearPolygons: projectPolygons(fogLayer?.fogClearPolygons ?? []),
-      obstructionPolygons: projectPolygons(fogLayer?.obstructionPolygons ?? []),
-      lightSources: (fogLayer?.lightSources ?? []).map((light) => ({
-        position: { ...(light.position ?? { x: 0, y: 0 }) },
-        brightLightDistance: light.brightLightDistance,
-        dimLightDistance: light.dimLightDistance,
-        color: { ...(light.color ?? { r: 255, g: 255, b: 255, a: 255 }) },
-      })),
-    };
+    if (layer.fogLayer) {
+      return {
+        id: layer.fogLayer.id,
+        name: layer.fogLayer.name,
+        type: "fog" as const,
+        visible: layer.fogLayer.visible,
+        assetIds: [] as const,
+        fogPolygons: projectPolygons(layer.fogLayer.fogPolygons),
+        fogClearPolygons: projectPolygons(layer.fogLayer.fogClearPolygons),
+        obstructionPolygons: projectPolygons(layer.fogLayer.obstructionPolygons),
+        lightSources: layer.fogLayer.lightSources.map((light) => ({
+          position: { ...(light.position ?? { x: 0, y: 0 }) },
+          brightLightDistance: light.brightLightDistance,
+          dimLightDistance: light.dimLightDistance,
+          color: { ...(light.color ?? { r: 255, g: 255, b: 255, a: 255 }) },
+        })),
+      };
+    }
+    if (layer.effectsLayer) {
+      return {
+        id: layer.effectsLayer.id,
+        name: layer.effectsLayer.name,
+        type: "effects" as const,
+        visible: layer.effectsLayer.visible,
+        effects: layer.effectsLayer.effects.flatMap((effect) => effect.rain ? [{
+          ...effect.rain,
+          kind: "rain" as const,
+          vertices: effect.rain.vertices.map((vertex) => ({ ...vertex })),
+          color: { ...(effect.rain.color ?? { r: 255, g: 255, b: 255 }) },
+        }] : []),
+      };
+    }
+    throw new Error("Unsupported persisted layer");
   });
   const assets = scene.layers.flatMap((layer) => {
     const assetLayer = layer.assetLayer;
@@ -102,7 +118,7 @@ export function patchV1SceneTransforms(
   const clone = decodeV1Scene(encodeV1Scene(source));
   const images = new Map(document.assets.map((asset) => [asset.id, asset]));
   const sourceLayers = new Map(clone.layers.map((layer) => [
-    layer.assetLayer?.id ?? layer.fogLayer?.id ?? "",
+    layer.assetLayer?.id ?? layer.fogLayer?.id ?? layer.effectsLayer?.id ?? "",
     layer,
   ]));
   return {
@@ -118,6 +134,7 @@ export function patchV1SceneTransforms(
     layers: document.layers.map((domainLayer) => {
       const layer = sourceLayers.get(domainLayer.id);
       if (layer?.assetLayer) {
+        if (domainLayer.type !== "assets") throw new Error(`Layer '${domainLayer.id}' changed type`);
         return {
           assetLayer: {
             ...layer.assetLayer,
@@ -146,6 +163,17 @@ export function patchV1SceneTransforms(
           },
         };
       }
+      if (layer?.effectsLayer) {
+        if (domainLayer.type !== "effects") throw new Error(`Layer '${domainLayer.id}' changed type`);
+        return {
+          effectsLayer: {
+            ...layer.effectsLayer,
+            name: domainLayer.name,
+            visible: domainLayer.visible,
+            effects: persistEffects(domainLayer.effects),
+          },
+        };
+      }
       if (domainLayer.type === "assets") {
         return {
           assetLayer: {
@@ -157,20 +185,48 @@ export function patchV1SceneTransforms(
           },
         };
       }
+      if (domainLayer.type === "fog") {
+        return {
+          fogLayer: {
+            id: domainLayer.id,
+            name: domainLayer.name,
+            visible: domainLayer.visible,
+            type: 1,
+            lightSources: domainLayer.lightSources.map((light) => ({ ...light, position: { ...light.position }, color: { ...light.color } })),
+            obstructionPolygons: persistPolygons(domainLayer.obstructionPolygons, 2),
+            fogPolygons: persistPolygons(domainLayer.fogPolygons, 0),
+            fogClearPolygons: persistPolygons(domainLayer.fogClearPolygons, 1),
+          },
+        };
+      }
       return {
-        fogLayer: {
+        effectsLayer: {
           id: domainLayer.id,
           name: domainLayer.name,
           visible: domainLayer.visible,
-          type: 1,
-          lightSources: [],
-          obstructionPolygons: [],
-          fogPolygons: persistPolygons(domainLayer.fogPolygons, 0),
-          fogClearPolygons: persistPolygons(domainLayer.fogClearPolygons, 1),
+          type: 3,
+          effects: persistEffects(domainLayer.effects),
         },
       };
     }),
   };
+}
+
+function persistEffects(effects: readonly import("@/engine/scene-document").SceneEffect[]) {
+  return effects.map((effect) => ({
+    rain: {
+      id: effect.id,
+      name: effect.name,
+      visible: effect.visible,
+      vertices: effect.vertices.map((vertex) => ({ ...vertex })),
+      seed: effect.seed,
+      color: { ...effect.color },
+      opacity: effect.opacity,
+      density: effect.density,
+      speed: effect.speed,
+      dropSize: effect.dropSize,
+    },
+  }));
 }
 
 function projectPolygons(polygons: readonly import("./types").V1Polygon[]) {

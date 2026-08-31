@@ -87,6 +87,7 @@ async function renderThumbnail(request: SceneThumbnailRequest): Promise<SceneThu
     } else {
       await executor.replaceAssets(snapshot, uploads);
       await executor.replaceFog(snapshot);
+      await executor.replaceEffects(snapshot);
       executor.setSnapshot(snapshot);
       executor.setView({ kind: "output", table: document.table, display: DEFAULT_DISPLAY });
       executor.setGridVisible(document.table.displayGrid);

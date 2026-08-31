@@ -16,19 +16,26 @@ export interface RenderPlan {
   readonly showEditorGrid: boolean;
   readonly showGrid: boolean;
   readonly fogOpacity: number;
+  readonly rainDensityScale: number;
+  readonly rainMaxDensity: number;
 }
 
 export type SceneLayerOperation =
   | { readonly type: "assets"; readonly layerId: string; readonly assetIds: readonly string[] }
-  | { readonly type: "fog"; readonly layerId: string };
+  | { readonly type: "fog"; readonly layerId: string }
+  | { readonly type: "effects"; readonly layerId: string; readonly effectIds: readonly string[] };
 
 export function compileSceneLayerOperations(scene: SceneDocument): readonly SceneLayerOperation[] {
   const operations: SceneLayerOperation[] = [];
   for (const layer of scene.layers) {
     if (!layer.visible) continue;
-    operations.push(layer.type === "assets"
-      ? { type: "assets", layerId: layer.id, assetIds: layer.assetIds }
-      : { type: "fog", layerId: layer.id });
+    if (layer.type === "assets") {
+      operations.push({ type: "assets", layerId: layer.id, assetIds: layer.assetIds });
+    } else if (layer.type === "fog") {
+      operations.push({ type: "fog", layerId: layer.id });
+    } else {
+      operations.push({ type: "effects", layerId: layer.id, effectIds: layer.effects.map((effect) => effect.id) });
+    }
   }
   return Object.freeze(operations);
 }
@@ -43,5 +50,7 @@ export function createRenderPlan(
     showEditorGrid: profile === "editor",
     showGrid: options.showGrid ?? profile === "editor",
     fogOpacity: profile === "editor" ? 0.58 : 1,
+    rainDensityScale: profile === "editor" ? 0.5 : 1,
+    rainMaxDensity: 8,
   });
 }

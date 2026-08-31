@@ -31,11 +31,13 @@ message Layer {
   oneof layerType {
     AssetLayer assetLayer = 1;
     FogLayer fogLayer = 2;
+    EffectsLayer effectsLayer = 4;
   }
   enum LayerType {
     ASSETS = 0;
     FOG = 1;
     reserved 2;
+    EFFECTS = 3;
   }
 }
 
@@ -113,6 +115,42 @@ message FogLayer {
 
     repeated Vector2d verticies = 2;
     bool visibleOnTable = 3;
+  }
+}
+
+message EffectsLayer {
+  string id = 1;
+  string name = 3;
+  bool visible = 4;
+  Layer.LayerType type = 5;
+
+  repeated Effect effects = 6;
+}
+
+message Effect {
+  oneof effectType {
+    RainEffect rain = 1;
+  }
+}
+
+message RainEffect {
+  reserved 10;
+
+  string id = 1;
+  string name = 2;
+  bool visible = 3;
+  repeated Vector2d vertices = 4;
+  uint32 seed = 5;
+  Color color = 6;
+  double opacity = 7;
+  double density = 8;
+  double speed = 9;
+  double dropSize = 11;
+
+  message Color {
+    uint32 r = 1;
+    uint32 g = 2;
+    uint32 b = 3;
   }
 }
 

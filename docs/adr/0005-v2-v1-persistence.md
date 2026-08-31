@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for the first persisted-scene vertical slice.
+Accepted for the first persisted-scene vertical slice. ADR 0010 supersedes the sidecar-only extension policy for ordered effects layers.
 
 ## Context
 

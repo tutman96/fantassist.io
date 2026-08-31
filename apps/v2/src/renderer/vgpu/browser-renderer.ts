@@ -2,6 +2,9 @@ import { init, surface } from "vgpu";
 import type { Gpu, Surface } from "vgpu";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
+import { hasVisibleAnimatedEffects } from "../animation-demand";
+import { effectGeometryKey } from "../effect-resource-key";
+import { SerializedExecutorScheduler } from "../executor-scheduler";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageAssetLoader, ImageTextureUpload } from "../image-texture";
 import { createRenderPlan } from "../render-plan";
@@ -17,7 +20,6 @@ export interface BrowserSceneRenderer {
   setTableEditing(editing: boolean): void;
   setSnapshot(snapshot: SceneEngineSnapshot): void;
   setView(view: RenderView): void;
-  startAnimation(fps?: number): () => void;
   dispose(): void;
 }
 
@@ -34,9 +36,13 @@ export async function createBrowserSceneRenderer(
   let gpu: Gpu | undefined;
   let targetSurface: Surface | undefined;
   let stopResize: (() => void) | undefined;
+  let stopExecutorOperations: (() => Promise<void>) | undefined;
   let generation = 0;
   let lastTime = 0;
   let animationFrame: number | undefined;
+  let animationTime = 0;
+  let previousAnimationFrame: number | undefined;
+  let pendingEffectTransition = false;
   let pendingTime: number | undefined;
   let activeView = initialView;
   let activeSnapshot = initialSnapshot;
@@ -47,8 +53,48 @@ export async function createBrowserSceneRenderer(
   };
   let setActiveGridVisible: (visible: boolean) => void = () => undefined;
   let setActiveTableEditing: (editing: boolean) => void = () => undefined;
-  let setActiveSnapshot: (snapshot: SceneEngineSnapshot, assetsChanged: boolean, fogChanged: boolean) => boolean = () => true;
+  let setActiveSnapshot: (snapshot: SceneEngineSnapshot) => void = () => undefined;
   let setActiveView: (view: RenderView) => void = () => undefined;
+  let hasActiveAnimation = () => false;
+  const animationInterval = profile === "editor" ? 1_000 / 30 : 0;
+  const animationNeeded = () => pendingEffectTransition || hasVisibleAnimatedEffects(activeSnapshot.scene) || hasActiveAnimation();
+
+  const stopAnimationFrame = () => {
+    if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
+    animationFrame = undefined;
+    previousAnimationFrame = undefined;
+  };
+  const tickAnimation = (now: number) => {
+    animationFrame = undefined;
+    if (disposed || document.hidden || !animationNeeded()) {
+      previousAnimationFrame = undefined;
+      return;
+    }
+    if (previousAnimationFrame === undefined) previousAnimationFrame = now;
+    const elapsed = now - previousAnimationFrame;
+    if (elapsed >= animationInterval) {
+      animationTime += elapsed / 1_000;
+      previousAnimationFrame = now;
+      lastTime = animationTime;
+      requestActiveRender(animationTime);
+    }
+    animationFrame = requestAnimationFrame(tickAnimation);
+  };
+  const updateAnimationDemand = () => {
+    if (disposed || document.hidden || !animationNeeded()) {
+      stopAnimationFrame();
+    } else if (animationFrame === undefined) {
+      animationFrame = requestAnimationFrame(tickAnimation);
+    }
+  };
+  const handleVisibilityChange = () => {
+    updateAnimationDemand();
+    if (!document.hidden) {
+      lastTime = animationTime;
+      requestActiveRender(animationTime);
+    }
+  };
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 
   const initialize = async () => {
     const ownGeneration = ++generation;
@@ -89,18 +135,83 @@ export async function createBrowserSceneRenderer(
         return;
       }
 
+      await stopExecutorOperations?.();
       stopResize?.();
       targetSurface?.dispose();
       gpu?.dispose();
       gpu = nextGpu;
       targetSurface = nextSurface;
-      let pendingResize: readonly [number, number] | undefined;
-      stopResize = nextSurface.onResize(({ width, height }) => {
-        pendingResize = [width, height];
-        requestRender(0);
+      let appliedAssets = activeSnapshot;
+      let appliedFog = activeSnapshot;
+      let appliedEffects = activeSnapshot;
+      const resourcesCurrent = (snapshot: SceneEngineSnapshot) =>
+        assetKey(appliedAssets) === assetKey(snapshot)
+        && fogKey(appliedFog) === fogKey(snapshot)
+        && effectGeometryKey(appliedEffects) === effectGeometryKey(snapshot);
+      const executorScheduler = new SerializedExecutorScheduler({
+        resourcesCurrent,
+        async synchronizeResources(snapshot, isCurrent) {
+          const assetsChanged = assetKey(appliedAssets) !== assetKey(snapshot);
+          const uploads = assetsChanged
+            ? await Promise.all(snapshot.scene.assets.map(async (asset) =>
+                (imageLoader ? await imageLoader.loadImage(asset.mediaId) : null) ?? createFallbackImageUpload()
+              ))
+            : [];
+          try {
+            if (!isCurrent()) return false;
+            if (assetsChanged) {
+              await executor.replaceAssets(snapshot, uploads);
+              appliedAssets = snapshot;
+              if (!isCurrent()) return false;
+            }
+            if (fogKey(appliedFog) !== fogKey(snapshot)) {
+              await executor.replaceFog(snapshot);
+              appliedFog = snapshot;
+              if (!isCurrent()) return false;
+            }
+            if (effectGeometryKey(appliedEffects) !== effectGeometryKey(snapshot)) {
+              await executor.replaceEffects(snapshot);
+              appliedEffects = snapshot;
+              if (!isCurrent()) return false;
+            }
+            return resourcesCurrent(snapshot);
+          } finally {
+            uploads.forEach((upload) => upload.dispose());
+          }
+        },
+        resize: (size) => executor.resize(size),
+        setView: (view) => executor.setView(view),
+        setGridVisible: (visible) => executor.setGridVisible(visible),
+        setTableEditing: (editing) => executor.setTableEditing(editing),
+        setSnapshot(snapshot) {
+          executor.setSnapshot(snapshot);
+          pendingEffectTransition = false;
+          updateAnimationDemand();
+        },
+        render: (time) => executor.render(time),
+      }, {
+        snapshot: activeSnapshot,
+        view: activeView,
+        gridVisible: activeGridVisible,
+        tableEditing: activeTableEditing,
+      }, (error) => {
+        console.error("Unable to update the v2 renderer", error);
+        onFatalError?.(error);
       });
-      void nextGpu.gpu.lost.then(() => {
+      stopExecutorOperations = () => {
+        executorScheduler.dispose();
+        return executorScheduler.settled();
+      };
+      stopResize = nextSurface.onResize(({ width, height }) => {
+        executorScheduler.resize([width, height]);
+        executorScheduler.requestRender(lastTime);
+      });
+      void nextGpu.gpu.lost.then(async () => {
         if (!disposed && ownGeneration === generation) {
+          executorScheduler.dispose();
+          await executorScheduler.settled();
+          if (disposed || ownGeneration !== generation) return;
+          stopExecutorOperations = undefined;
           stopResize?.();
           stopResize = undefined;
           targetSurface?.dispose();
@@ -113,72 +224,15 @@ export async function createBrowserSceneRenderer(
           });
         }
       });
-      requestActiveRender = requestRender;
-      setActiveGridVisible = (visible: boolean) => executor.setGridVisible(visible);
-      setActiveTableEditing = (editing: boolean) => executor.setTableEditing(editing);
-      let replacementRevision = 0;
-      let replacementQueue = Promise.resolve();
-      setActiveSnapshot = (snapshot: SceneEngineSnapshot, assetsChanged: boolean, fogChanged: boolean) => {
-        if (!assetsChanged && !fogChanged) {
-          executor.setSnapshot(snapshot);
-          return true;
-        }
-        const ownReplacement = ++replacementRevision;
-        replacementQueue = replacementQueue.then(async () => {
-          if (disposed || ownGeneration !== generation || ownReplacement !== replacementRevision) return;
-          const uploads = assetsChanged
-            ? await Promise.all(snapshot.scene.assets.map(async (asset) =>
-                (imageLoader ? await imageLoader.loadImage(asset.mediaId) : null) ?? createFallbackImageUpload()
-              ))
-            : [];
-          if (disposed || ownGeneration !== generation || ownReplacement !== replacementRevision) {
-            uploads.forEach((upload) => upload.dispose());
-            return;
-          }
-          try {
-            if (assetsChanged) await executor.replaceAssets(snapshot, uploads);
-            if (fogChanged) await executor.replaceFog(snapshot);
-            executor.setSnapshot(activeSnapshot);
-          } finally {
-            uploads.forEach((upload) => upload.dispose());
-          }
-          if (!disposed && ownGeneration === generation && ownReplacement === replacementRevision) {
-            requestRender(lastTime);
-          }
-        }).catch((error: unknown) => {
-          console.error("Unable to replace v2 scene resources", error);
-          onFatalError?.(error);
-        });
-        return false;
-      };
-      setActiveView = (view: RenderView) => executor.setView(view);
-      requestRender(0);
-
-      let rendering = false;
-      async function drain() {
-        if (rendering || disposed || ownGeneration !== generation) return;
-        rendering = true;
-        try {
-          while ((pendingTime !== undefined || pendingResize) && !disposed && ownGeneration === generation) {
-            const time = pendingTime ?? lastTime;
-            pendingTime = undefined;
-            const resize = pendingResize;
-            pendingResize = undefined;
-            if (resize) executor.resize(resize);
-            await executor.render(time);
-          }
-        } catch (error) {
-          console.error("Unable to render the v2 scene", error);
-          onFatalError?.(error);
-        } finally {
-          rendering = false;
-        }
-      }
-
-      function requestRender(time: number) {
-        pendingTime = time;
-        queueMicrotask(() => void drain());
-      }
+      requestActiveRender = (time) => executorScheduler.requestRender(time);
+      hasActiveAnimation = () => executor.hasAnimationDemand();
+      setActiveGridVisible = (visible) => executorScheduler.setGridVisible(visible);
+      setActiveTableEditing = (editing) => executorScheduler.setTableEditing(editing);
+      setActiveSnapshot = (snapshot) => executorScheduler.setSnapshot(snapshot);
+      setActiveView = (view) => executorScheduler.setView(view);
+      executorScheduler.requestRender(pendingTime ?? lastTime);
+      pendingTime = undefined;
+      updateAnimationDemand();
     } catch (error) {
       imageUploads.forEach((upload) => upload.dispose());
       nextSurface?.dispose();
@@ -191,16 +245,19 @@ export async function createBrowserSceneRenderer(
     await initialize();
   } catch (error) {
     disposed = true;
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    stopAnimationFrame();
     stopResize?.();
     targetSurface?.dispose();
     gpu?.dispose();
     throw error;
   }
 
-  const render = (time = 0) => {
+  const render = (time = lastTime) => {
     if (!disposed) {
-      lastTime = time;
-      requestActiveRender(time);
+      lastTime = Math.max(lastTime, time);
+      animationTime = Math.max(animationTime, lastTime);
+      requestActiveRender(lastTime);
     }
   };
   const resizeObserver = new ResizeObserver(() => render(lastTime));
@@ -224,10 +281,13 @@ export async function createBrowserSceneRenderer(
     },
     setSnapshot(nextSnapshot) {
       if (disposed) return;
-      const assetsChanged = assetKey(activeSnapshot) !== assetKey(nextSnapshot);
-      const fogChanged = fogKey(activeSnapshot) !== fogKey(nextSnapshot);
+      if (hasVisibleAnimatedEffects(activeSnapshot.scene) && !hasVisibleAnimatedEffects(nextSnapshot.scene)) {
+        pendingEffectTransition = true;
+      }
       activeSnapshot = nextSnapshot;
-      if (setActiveSnapshot(nextSnapshot, assetsChanged, fogChanged)) render(lastTime);
+      setActiveSnapshot(nextSnapshot);
+      render(lastTime);
+      updateAnimationDemand();
     },
     setView(view) {
       if (disposed) return;
@@ -235,40 +295,31 @@ export async function createBrowserSceneRenderer(
       setActiveView(view);
       render(lastTime);
     },
-    startAnimation(fps = 30) {
-      let active = true;
-      let previousFrame = 0;
-      const interval = 1_000 / fps;
-      const tick = (now: number) => {
-        if (!active || disposed) return;
-        if (now - previousFrame >= interval) {
-          previousFrame = now;
-          render(now / 1_000);
-        }
-        animationFrame = requestAnimationFrame(tick);
-      };
-      animationFrame = requestAnimationFrame(tick);
-      return () => {
-        active = false;
-        if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
-        animationFrame = undefined;
-      };
-    },
     dispose() {
       if (disposed) return;
       disposed = true;
       generation++;
+      const executorSettled = stopExecutorOperations?.() ?? Promise.resolve();
+      stopExecutorOperations = undefined;
       requestActiveRender = () => undefined;
       setActiveGridVisible = () => undefined;
       setActiveTableEditing = () => undefined;
-      setActiveSnapshot = () => true;
+      setActiveSnapshot = () => undefined;
       setActiveView = () => undefined;
-      if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
+      hasActiveAnimation = () => false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      stopAnimationFrame();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleWindowResize);
       stopResize?.();
-      targetSurface?.dispose();
-      gpu?.dispose();
+      const disposingSurface = targetSurface;
+      const disposingGpu = gpu;
+      targetSurface = undefined;
+      gpu = undefined;
+      void executorSettled.finally(() => {
+        disposingSurface?.dispose();
+        disposingGpu?.dispose();
+      });
     },
   };
 

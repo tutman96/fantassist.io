@@ -170,7 +170,9 @@ test("commands validate input and snapshots remain deeply frozen", () => {
   assert.equal(Object.isFrozen(engine.getSnapshot()), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.layers), true);
-  assert.equal(Object.isFrozen(engine.getSnapshot().scene.layers[0].assetIds), true);
+  const firstLayer = engine.getSnapshot().scene.layers[0];
+  assert.ok(firstLayer.type === "assets");
+  assert.equal(Object.isFrozen(firstLayer.assetIds), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.assets), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.assets[0].transform), true);
   assert.equal(Object.isFrozen(engine.getSnapshot().scene.table), true);
@@ -599,7 +601,9 @@ test("asset insertion stays inside its target layer's intermingled paint order",
     inserted.id,
     top.id,
   ]);
-  assert.deepEqual(engine.getSnapshot().scene.layers[0].assetIds, [bottom.id, inserted.id]);
+  const bottomLayer = engine.getSnapshot().scene.layers[0];
+  assert.ok(bottomLayer.type === "assets");
+  assert.deepEqual(bottomLayer.assetIds, [bottom.id, inserted.id]);
 });
 
 test("asset layer insertion preserves index and supports undo and redo", () => {
@@ -688,10 +692,14 @@ test("asset deletion supports an empty scene and restores exact membership on un
     revision: 1,
   });
   assert.deepEqual(engine.getSnapshot().scene.assets, []);
-  assert.deepEqual(engine.getSnapshot().scene.layers[0].assetIds, []);
+  let assetLayer = engine.getSnapshot().scene.layers[0];
+  assert.ok(assetLayer.type === "assets");
+  assert.deepEqual(assetLayer.assetIds, []);
   engine.undo();
   assert.equal(engine.getSnapshot().scene.assets[0].id, asset.id);
-  assert.equal(engine.getSnapshot().scene.layers[0].assetIds[0], asset.id);
+  assetLayer = engine.getSnapshot().scene.layers[0];
+  assert.ok(assetLayer.type === "assets");
+  assert.equal(assetLayer.assetIds[0], asset.id);
 });
 
 test("layer deletion removes contained assets and undo restores index and contents", () => {

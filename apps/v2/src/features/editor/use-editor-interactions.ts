@@ -7,10 +7,10 @@ import type { GridPoint } from "@/engine/table-camera";
 import type { AssetHandle, PreviewToken, ResizeHandle, SceneEngine, TableResizeHandle } from "@/engine/scene-engine";
 import type { FogPolygonCollection } from "@/engine/scene-engine";
 import { snapPointToGrid } from "@/engine/scene-engine";
-import type { SceneLight } from "@/engine/scene-document";
+import type { RainEffect, SceneLight } from "@/engine/scene-document";
 import type { TableSession } from "@/engine/table-session";
-import type { EditorTool } from "@/features/editor/editor-tool";
-import { ensureFogLayer } from "@/features/editor/editor-tool";
+import type { EditorTool, EffectTool } from "@/features/editor/editor-tool";
+import { ensureEffectsLayer, ensureFogLayer } from "@/features/editor/editor-tool";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 
 type PointerDrag =
@@ -18,6 +18,7 @@ type PointerDrag =
   | { readonly kind: "asset"; readonly pointerId: number; readonly token: PreviewToken }
   | { readonly kind: "light"; readonly pointerId: number; readonly token: PreviewToken }
   | { readonly kind: "fog-edit"; readonly pointerId: number; readonly token: PreviewToken }
+  | { readonly kind: "effect-edit"; readonly pointerId: number; readonly token: PreviewToken }
   | { readonly kind: "table"; readonly pointerId: number; readonly token: PreviewToken };
 
 interface TouchGesture {
@@ -29,16 +30,20 @@ export function useEditorInteractions({
   assetRotation,
   canvasRef,
   engine,
+  effectTool,
   onToolChange,
   profile,
+  rainLayerId,
   session,
   tool,
 }: {
   readonly assetRotation: number;
   readonly canvasRef: React.RefObject<HTMLCanvasElement | null>;
   readonly engine: SceneEngine;
+  readonly effectTool: EffectTool;
   readonly onToolChange: (tool: EditorTool) => void;
   readonly profile: RenderProfile;
+  readonly rainLayerId?: string | null;
   readonly session: TableSession;
   readonly tool: EditorTool;
 }) {
@@ -47,6 +52,7 @@ export function useEditorInteractions({
   const spacePressed = useRef(false);
   const drag = useRef<PointerDrag | null>(null);
   const fogDraft = useRef<PreviewToken | null>(null);
+  const rainDraft = useRef<PreviewToken | null>(null);
   const lightDraft = useRef<{ readonly token: PreviewToken; readonly layerId: string; readonly index: number } | null>(null);
   const previousTool = useRef(tool);
   const touchPoints = useRef(new Map<number, GridPoint>());
@@ -69,11 +75,15 @@ export function useEditorInteractions({
           engine.cancelPreview(fogDraft.current);
           fogDraft.current = null;
         }
+        if (rainDraft.current) {
+          engine.cancelPreview(rainDraft.current);
+          rainDraft.current = null;
+        }
         if (lightDraft.current) {
           engine.cancelPreview(lightDraft.current.token);
           lightDraft.current = null;
         }
-        if (drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table") {
+        if (drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "effect-edit" || drag.current?.kind === "table") {
           engine.cancelPreview(drag.current.token);
           drag.current = null;
         }
@@ -81,12 +91,19 @@ export function useEditorInteractions({
         if (snapshot.selectedAssetId) engine.dispatch({ type: "selection.set", assetId: null });
         else if (snapshot.selectedFogPolygon) engine.dispatch({ type: "fog.selection.set", selection: null });
         else if (snapshot.selectedLight) engine.dispatch({ type: "light.selection.set", selection: null });
+        else if (snapshot.selectedEffect) engine.dispatch({ type: "effect.selection.set", selection: null });
         else onToolChange("assets");
       }
-      if (event.key === "Enter" && fogDraft.current && !textEditing) {
-        event.preventDefault();
-        engine.commitFogPolygon(fogDraft.current);
-        fogDraft.current = null;
+      if (event.key === "Enter" && !textEditing) {
+        if (fogDraft.current) {
+          event.preventDefault();
+          const result = engine.commitFogPolygon(fogDraft.current);
+          if (result.ok) fogDraft.current = null;
+        } else if (rainDraft.current) {
+          event.preventDefault();
+          const result = engine.commitRainEffect(rainDraft.current);
+          if (result.ok) rainDraft.current = null;
+        }
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && !interactive) {
         event.preventDefault();
@@ -103,6 +120,12 @@ export function useEditorInteractions({
           if (light) {
             event.preventDefault();
             engine.dispatch({ type: "light.remove", layerId: light.layerId, lightIndex: light.lightIndex });
+          } else {
+            const selectedEffect = engine.getSnapshot().selectedEffect;
+            if (selectedEffect) {
+              event.preventDefault();
+              engine.dispatch({ type: "effect.remove", layerId: selectedEffect.layerId, effectId: selectedEffect.effectId });
+            }
           }
         }
       }
@@ -123,16 +146,22 @@ export function useEditorInteractions({
       engine.cancelPreview(fogDraft.current);
       fogDraft.current = null;
     }
+    if (tool !== previousTool.current && rainDraft.current) {
+      engine.cancelPreview(rainDraft.current);
+      rainDraft.current = null;
+    }
     if (tool !== previousTool.current && lightDraft.current) {
       engine.cancelPreview(lightDraft.current.token);
       lightDraft.current = null;
     }
     if (tool !== previousTool.current) engine.setFogCursor(null, "fog");
+    if (tool !== previousTool.current) engine.setRainCursor(null);
     previousTool.current = tool;
   }, [engine, tool]);
 
   useEffect(() => engine.subscribe(() => {
     if (fogDraft.current && !engine.getSnapshot().fogDrawingActive) fogDraft.current = null;
+    if (rainDraft.current && !engine.getSnapshot().effectDrawingActive) rainDraft.current = null;
     if (lightDraft.current && !engine.getSnapshot().previewActive) lightDraft.current = null;
   }), [engine]);
 
@@ -169,7 +198,8 @@ export function useEditorInteractions({
         setHoveredHandle(null);
         setTableHandle(null);
       }
-      if (!fogDraft.current && isPolygonTool(tool)) engine.setFogCursor(null, "fog");
+      if (!fogDraft.current && isFogPolygonTool(tool)) engine.setFogCursor(null, "fog");
+      if (!rainDraft.current && tool === "effects") engine.setRainCursor(null);
       if (lightDraft.current) {
         engine.cancelPreview(lightDraft.current.token);
         lightDraft.current = null;
@@ -183,14 +213,17 @@ export function useEditorInteractions({
         touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (touchPoints.current.size >= 2) {
           multiTouchActive.current = true;
-          if (drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table") engine.cancelPreview(drag.current.token);
+          if (drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "effect-edit" || drag.current?.kind === "table") engine.cancelPreview(drag.current.token);
           drag.current = null;
           touchGesture.current = readTouchGesture(touchPoints.current);
           return;
         }
         if (isPolygonTool(tool)) {
           const pointGrid = pointerGrid(event, session);
-          if (fogDraft.current) {
+          if (tool === "effects") {
+            if (rainDraft.current) engine.appendRainEffectVertex(rainDraft.current, pointGrid);
+            else rainDraft.current = engine.beginRainEffect(rainLayerId ?? ensureEffectsLayer(engine), defaultEffect(effectTool), pointGrid);
+          } else if (fogDraft.current) {
             engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
           } else {
             const scene = engine.getSnapshot();
@@ -210,6 +243,14 @@ export function useEditorInteractions({
           const lightToken = engine.beginLightDrag(pointerGrid(event, session), current.editorCamera.cssPixelsPerGrid);
           if (lightToken) {
             drag.current = { kind: "light", pointerId: event.pointerId, token: lightToken };
+            return;
+          }
+          const effectInteraction = engine.beginEffectSelectionInteraction(
+            pointerGrid(event, session),
+            current.editorCamera.cssPixelsPerGrid
+          );
+          if (effectInteraction.handled) {
+            if (effectInteraction.token) drag.current = { kind: "effect-edit", pointerId: event.pointerId, token: effectInteraction.token };
             return;
           }
           const fogInteraction = engine.beginFogSelectionInteraction(
@@ -234,7 +275,10 @@ export function useEditorInteractions({
       if (!forcePan && event.button === 0) {
         if (isPolygonTool(tool)) {
           const pointGrid = pointerGrid(event, session);
-          if (fogDraft.current) {
+          if (tool === "effects") {
+            if (rainDraft.current) engine.appendRainEffectVertex(rainDraft.current, pointGrid);
+            else rainDraft.current = engine.beginRainEffect(rainLayerId ?? ensureEffectsLayer(engine), defaultEffect(effectTool), pointGrid);
+          } else if (fogDraft.current) {
             engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
           } else {
             const scene = engine.getSnapshot();
@@ -258,6 +302,18 @@ export function useEditorInteractions({
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
             drag.current = { kind: "light", pointerId: event.pointerId, token: lightToken };
+            return;
+          }
+          const effectInteraction = engine.beginEffectSelectionInteraction(
+            pointerGrid(event, session),
+            current.editorCamera.cssPixelsPerGrid
+          );
+          if (effectInteraction.handled) {
+            event.preventDefault();
+            if (effectInteraction.token) {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              drag.current = { kind: "effect-edit", pointerId: event.pointerId, token: effectInteraction.token };
+            }
             return;
           }
           const fogInteraction = engine.beginFogSelectionInteraction(
@@ -292,7 +348,10 @@ export function useEditorInteractions({
     onPointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
       if (isPolygonTool(tool)) {
         const point = pointerGrid(event, session);
-        if (fogDraft.current) engine.updateFogPolygonCursor(fogDraft.current, point);
+        if (tool === "effects") {
+          if (rainDraft.current) engine.updateRainEffectCursor(rainDraft.current, point);
+          else engine.setRainCursor(point);
+        } else if (fogDraft.current) engine.updateFogPolygonCursor(fogDraft.current, point);
         else engine.setFogCursor(point, polygonCollection(tool));
       }
       if (tool === "light" && !drag.current) updateLightPlacement(engine, lightDraft, pointerGrid(event, session));
@@ -358,6 +417,8 @@ export function useEditorInteractions({
         engine.updateLightDrag(previous.token, pointerGrid(event, session));
       } else if (previous.kind === "fog-edit") {
         engine.updateFogSelectionInteraction(previous.token, pointerGrid(event, session));
+      } else if (previous.kind === "effect-edit") {
+        engine.updateEffectSelectionInteraction(previous.token, pointerGrid(event, session));
       } else {
         const bounds = event.currentTarget.getBoundingClientRect();
         const current = session.getSnapshot();
@@ -383,7 +444,7 @@ export function useEditorInteractions({
       }
       const current = drag.current;
       if (!current || current.pointerId !== event.pointerId) return;
-      if (current.kind === "asset" || current.kind === "light" || current.kind === "fog-edit" || current.kind === "table") engine.commitPreview(current.token);
+      if (current.kind === "asset" || current.kind === "light" || current.kind === "fog-edit" || current.kind === "effect-edit" || current.kind === "table") engine.commitPreview(current.token);
       drag.current = null;
     },
     onPointerCancel(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -392,16 +453,21 @@ export function useEditorInteractions({
         touchGesture.current = readTouchGesture(touchPoints.current);
         if (touchPoints.current.size === 0) multiTouchActive.current = false;
       }
-      if ((drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "table") && drag.current.pointerId === event.pointerId) {
+      if ((drag.current?.kind === "asset" || drag.current?.kind === "light" || drag.current?.kind === "fog-edit" || drag.current?.kind === "effect-edit" || drag.current?.kind === "table") && drag.current.pointerId === event.pointerId) {
         engine.cancelPreview(drag.current.token);
       }
       drag.current = null;
     },
     onDoubleClick(event: React.MouseEvent<HTMLCanvasElement>) {
-      if (!fogDraft.current || !isPolygonTool(tool)) return;
+      if (!isPolygonTool(tool)) return;
       event.preventDefault();
-      engine.commitFogPolygon(fogDraft.current);
-      fogDraft.current = null;
+      if (tool === "effects" && rainDraft.current) {
+        const result = engine.commitRainEffect(rainDraft.current);
+        if (result.ok) rainDraft.current = null;
+      } else if (tool !== "effects" && fogDraft.current) {
+        const result = engine.commitFogPolygon(fogDraft.current);
+        if (result.ok) fogDraft.current = null;
+      }
     },
   };
 }
@@ -419,12 +485,33 @@ function pointerGrid(
   );
 }
 
-function isPolygonTool(tool: EditorTool): tool is "fog" | "fog-clear" | "wall" {
+function isPolygonTool(tool: EditorTool): tool is "fog" | "fog-clear" | "wall" | "effects" {
+  return isFogPolygonTool(tool) || tool === "effects";
+}
+
+function isFogPolygonTool(tool: EditorTool): tool is "fog" | "fog-clear" | "wall" {
   return tool === "fog" || tool === "fog-clear" || tool === "wall";
 }
 
 function polygonCollection(tool: "fog" | "fog-clear" | "wall"): FogPolygonCollection {
   return tool === "fog" ? "fog" : tool === "fog-clear" ? "clear" : "wall";
+}
+
+function defaultEffect(effect: EffectTool): RainEffect {
+  if (effect !== "rain") throw new Error(`Unsupported effect '${effect}'`);
+  return {
+    id: crypto.randomUUID(),
+    kind: "rain",
+    name: "Rain",
+    visible: true,
+    vertices: [],
+    seed: crypto.getRandomValues(new Uint32Array(1))[0],
+    color: { r: 166, g: 211, b: 255 },
+    opacity: 0.2,
+    density: 3.5,
+    speed: 9,
+    dropSize: 0.3,
+  };
 }
 
 function defaultLight(position: GridPoint): SceneLight {

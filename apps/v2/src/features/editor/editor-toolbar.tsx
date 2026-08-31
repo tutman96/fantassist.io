@@ -11,10 +11,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { TableSession, TableSessionSnapshot } from "@/engine/table-session";
 import { getTableBounds, zoomTableCameraAt } from "@/engine/table-camera";
-import type { EditorTool } from "@/features/editor/editor-tool";
+import type { EditorTool, EffectTool } from "@/features/editor/editor-tool";
+import { EffectPicker } from "@/features/editor/effect-picker";
 
 export function EditorToolbar({
   engine,
+  effectTool,
+  onEffectToolChange,
   sceneSnapshot,
   session,
   tableSnapshot,
@@ -22,6 +25,8 @@ export function EditorToolbar({
   onToolChange,
 }: {
   readonly engine: SceneEngine;
+  readonly effectTool: EffectTool;
+  readonly onEffectToolChange: (tool: EffectTool) => void;
   readonly sceneSnapshot: SceneEngineSnapshot;
   readonly session: TableSession;
   readonly tableSnapshot: TableSessionSnapshot;
@@ -57,14 +62,15 @@ export function EditorToolbar({
         <ToolToggle label="Clear fog" pressed={tool === "fog-clear"} onPressedChange={() => onToolChange("fog-clear")}><Eraser /></ToolToggle>
         <ToolToggle label="Draw wall" pressed={tool === "wall"} onPressedChange={() => onToolChange("wall")}><BrickWall /></ToolToggle>
         <ToolToggle label="Place light" pressed={tool === "light"} onPressedChange={() => onToolChange("light")}><Lightbulb /></ToolToggle>
+        <EffectPicker active={tool === "effects"} effect={effectTool} onSelect={onEffectToolChange} />
         <ToolToggle label="Edit display view" pressed={tool === "table"} onPressedChange={() => onToolChange("table")}><Monitor /></ToolToggle>
       </ButtonGroup>
-      {sceneSnapshot.fogDrawingActive ? (
+      {sceneSnapshot.fogDrawingActive || sceneSnapshot.effectDrawingActive ? (
         <>
           <ToolbarSeparator />
           <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l [&_[data-slot=tooltip-trigger]]:rounded-none!">
-            <ToolButton label={tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => engine.commitActiveFogPolygon()}><Check /></ToolButton>
-            <ToolButton label={tool === "wall" ? "Cancel wall" : "Cancel fog polygon"} onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
+            <ToolButton label={tool === "effects" ? "Finish effect area" : tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => tool === "effects" ? engine.commitActiveRainEffect() : engine.commitActiveFogPolygon()}><Check /></ToolButton>
+            <ToolButton label={tool === "effects" ? "Cancel effect area" : tool === "wall" ? "Cancel wall" : "Cancel fog polygon"} onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
           </ButtonGroup>
         </>
       ) : null}

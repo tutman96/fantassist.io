@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fogHandleVertices, tessellateFogPolygons, wallSegmentVertices } from "../src/renderer/fog-geometry";
+import { fogHandleVertices, outlinePolygon, polygonCentroid, polygonHandleVertices, tessellateFogPolygons, tessellatePolygon, wallSegmentVertices } from "../src/renderer/fog-geometry";
 
 test("fog tessellation supports concave polygons and skips editor-only geometry", () => {
   const mesh = tessellateFogPolygons([
@@ -28,6 +28,25 @@ test("fog tessellation normalizes a repeated closing vertex", () => {
   assert.ok(mesh);
   assert.equal(mesh.vertices.length, 6);
   assert.equal(mesh.indices.length, 3);
+});
+
+test("generic polygon tessellation clips a concave effect conservatively", () => {
+  const mesh = tessellatePolygon([
+    { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 2, y: 2 }, { x: 0, y: 4 },
+  ]);
+  assert.ok(mesh);
+  assert.equal(mesh.vertices.length, 10);
+  assert.equal(mesh.indices.length, 9);
+});
+
+test("generic polygon guides close outlines and create screen-space handle quads", () => {
+  const vertices = [{ x: 1, y: 2 }, { x: 5, y: 2 }, { x: 5, y: 6 }];
+  assert.deepEqual([...outlinePolygon(vertices)!], [1, 2, 5, 2, 5, 2, 5, 6, 5, 6, 1, 2]);
+  assert.equal(polygonHandleVertices(vertices).length, 3 * 6 * 4);
+});
+
+test("polygon centroid provides a stable rain vanishing-point basis", () => {
+  assert.deepEqual(polygonCentroid([{ x: 2, y: 3 }, { x: 10, y: 3 }, { x: 10, y: 9 }, { x: 2, y: 9 }]), { x: 6, y: 6 });
 });
 
 test("fog handle geometry creates one independent ring quad per vertex", () => {

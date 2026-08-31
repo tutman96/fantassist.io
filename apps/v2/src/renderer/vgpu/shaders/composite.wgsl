@@ -20,6 +20,7 @@ struct Params {
   interaction_active: f32,
   interaction_clear: f32,
   interaction_wall: f32,
+  interaction_effect: f32,
   snap_active: f32,
 }
 
@@ -109,7 +110,8 @@ fn box_distance(point: vec2f, center: vec2f, half_size: vec2f) -> f32 {
   let interaction_distance = distance(world, params.interaction_point) * params.pixels_per_grid;
   let interaction_ring = (1.0 - smoothstep(5.5 * css_scale, 6.5 * css_scale, interaction_distance)) * smoothstep(2.75 * css_scale, 3.75 * css_scale, interaction_distance);
   let fog_interaction_color = mix(vec3f(0.82, 0.2, 0.95), vec3f(0.12, 0.68, 1.0), params.interaction_clear);
-  let interaction_color = mix(fog_interaction_color, vec3f(1.4, 0.72, 0.08), params.interaction_wall);
+  let fog_or_wall_color = mix(fog_interaction_color, vec3f(1.4, 0.72, 0.08), params.interaction_wall);
+  let interaction_color = mix(fog_or_wall_color, vec3f(0.18, 0.92, 1.0), params.interaction_effect);
   color = mix(color, interaction_color, interaction_ring * params.interaction_active);
   let snap_delta = abs(world - params.snap_point) * params.pixels_per_grid;
   let snap_extent = 11.0 * css_scale;

@@ -9,8 +9,9 @@ message TableOptions { bool displayGrid = 1; Vector2d offset = 2; double rotatio
 message Vector2d { double x = 1; double y = 2; }
 message Size { double width = 1; double height = 2; }
 message Layer {
-  oneof layerType { AssetLayer assetLayer = 1; FogLayer fogLayer = 2; }
-  enum LayerType { ASSETS = 0; FOG = 1; }
+  reserved 3;
+  oneof layerType { AssetLayer assetLayer = 1; FogLayer fogLayer = 2; EffectsLayer effectsLayer = 4; }
+  enum LayerType { ASSETS = 0; FOG = 1; reserved 2; EFFECTS = 3; }
 }
 message AssetLayer {
   string id = 1; string name = 3; bool visible = 4; Layer.LayerType type = 5; map<string, Asset> assets = 6;
@@ -36,6 +37,16 @@ message FogLayer {
     enum PolygonType { FOG = 0; FOG_CLEAR = 1; LIGHT_OBSTRUCTION = 2; }
     PolygonType type = 1; repeated Vector2d verticies = 2; bool visibleOnTable = 3;
   }
+}
+message EffectsLayer {
+  string id = 1; string name = 3; bool visible = 4; Layer.LayerType type = 5; repeated Effect effects = 6;
+}
+message Effect { oneof effectType { RainEffect rain = 1; } }
+message RainEffect {
+  reserved 10;
+  string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
+  double opacity = 7; double density = 8; double speed = 9; double dropSize = 11;
+  message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
 }
 message SceneExport {
   Scene scene = 1;
@@ -143,7 +154,7 @@ function normalizeScene(value: Record<string, unknown>): V1Scene {
       .map(record)
       .filter((layer): layer is Record<string, unknown> => layer !== null)
       .map(normalizeLayer)
-      .filter((layer) => layer.assetLayer !== undefined || layer.fogLayer !== undefined),
+      .filter((layer) => layer.assetLayer !== undefined || layer.fogLayer !== undefined || layer.effectsLayer !== undefined),
   };
 }
 
@@ -160,6 +171,7 @@ function normalizeTable(value: Record<string, unknown>) {
 function normalizeLayer(value: Record<string, unknown>) {
   const assetLayer = record(value.assetLayer);
   const fogLayer = record(value.fogLayer);
+  const effectsLayer = record(value.effectsLayer);
   return {
     ...(assetLayer ? { assetLayer: {
       id: string(assetLayer.id),
@@ -203,6 +215,29 @@ function normalizeLayer(value: Record<string, unknown>) {
       obstructionPolygons: polygons(fogLayer.obstructionPolygons),
       fogPolygons: polygons(fogLayer.fogPolygons),
       fogClearPolygons: polygons(fogLayer.fogClearPolygons),
+    } } : {}),
+    ...(effectsLayer ? { effectsLayer: {
+      id: string(effectsLayer.id),
+      name: string(effectsLayer.name),
+      visible: boolean(effectsLayer.visible),
+      type: number(effectsLayer.type),
+      effects: array(effectsLayer.effects).flatMap((item) => {
+        const rain = record(record(item)?.rain);
+        if (!rain) return [];
+        const color = record(rain.color);
+        return [{ rain: {
+          id: string(rain.id),
+          name: string(rain.name),
+          visible: boolean(rain.visible),
+          vertices: array(rain.vertices).map((point) => vector(record(point) ?? {})),
+          seed: number(rain.seed),
+          ...(color ? { color: { r: number(color.r), g: number(color.g), b: number(color.b) } } : {}),
+          opacity: number(rain.opacity),
+          density: number(rain.density),
+          speed: number(rain.speed),
+          dropSize: number(rain.dropSize),
+        } }];
+      }),
     } } : {}),
   };
 }

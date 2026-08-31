@@ -9,7 +9,7 @@ import { applyAssetVisibilityMetadata, hydrateAssetDisplayNames, patchV1SceneTra
 import { prepareV1CampaignExport } from "../src/persistence/v1/campaign-export";
 import { createBlankV1SceneRecord, prepareV1SceneExport, prepareV1SceneImport } from "../src/persistence/v1/scene-lifecycle";
 import { SceneConflictError } from "../src/persistence/v1/types";
-import type { V1Scene, V1SceneRecord } from "../src/persistence/v1/types";
+import type { V1Layer, V1Scene, V1SceneRecord } from "../src/persistence/v1/types";
 
 const sceneKey = "campaign-1/scene-1";
 
@@ -64,6 +64,34 @@ const fullScene: V1Scene = {
   ],
 };
 
+const effectsLayer: V1Layer = {
+  effectsLayer: {
+    id: "effects-1",
+    name: "Weather",
+    visible: true,
+    type: 3,
+    effects: [{
+      rain: {
+        id: "rain-1",
+        name: "Driving rain",
+        visible: true,
+        vertices: [{ x: -2.5, y: 1 }, { x: 18, y: 1 }, { x: 18, y: 14.25 }],
+        seed: 4294967295,
+        color: { r: 130, g: 180, b: 255 },
+        opacity: 0.625,
+        density: 0.42,
+        speed: 7.75,
+        dropSize: 1.125,
+      },
+    }],
+  },
+};
+
+const effectsScene: V1Scene = {
+  ...fullScene,
+  layers: [fullScene.layers[0], effectsLayer, fullScene.layers[1]],
+};
+
 test("v1 codec preserves the complete supported scene schema", () => {
   const decoded = decodeV1Scene(encodeV1Scene(fullScene));
   assert.deepEqual(decoded, fullScene);
@@ -73,6 +101,14 @@ test("v1 codec preserves the complete supported scene schema", () => {
   assert.equal(image?.snapToGrid, false);
   assert.equal(Object.hasOwn(video ?? {}, "volume"), true);
   assert.equal(video?.volume, 0);
+});
+
+test("scene codec round-trips effects and exact interleaved layer order", () => {
+  const decoded = decodeV1Scene(encodeV1Scene(effectsScene));
+  assert.deepEqual(decoded, effectsScene);
+  assert.deepEqual(decoded.layers.map((layer) =>
+    layer.assetLayer?.id ?? layer.fogLayer?.id ?? layer.effectsLayer?.id
+  ), ["assets-1", "effects-1", "fog-1"]);
 });
 
 test("v1 scene export codec round-trips the exact envelope and requires a scene", () => {
@@ -181,6 +217,31 @@ test("scene import remaps IDs while preserving scene data and resolves name coll
   assert.deepEqual(new Uint8Array(await prepared.files[0].file.arrayBuffer()), new Uint8Array([1, 2]));
 });
 
+test("scene export and import preserve effects without treating them as assets", async () => {
+  const record = { key: sceneKey, campaignId: "campaign-1", scene: effectsScene };
+  const files = new Map([
+    ["campaign-1/image-1", new File([new Uint8Array([1])], "map.png", { type: "image/png" })],
+    ["campaign-1/video-1", new File([new Uint8Array([2])], "rain-reference.mp4", { type: "video/mp4" })],
+  ]);
+  const exported = await prepareV1SceneExport(record, async (id) => files.get(id) ?? null);
+  assert.deepEqual(decodeV1SceneExport(exported).scene, effectsScene);
+  const archive = await prepareV1CampaignExport([record], async (id) => files.get(id) ?? null);
+  const reader = await TarReader.load(archive);
+  const archived = new Uint8Array(await reader.getFileBlob("Persisted dungeon.scene").arrayBuffer());
+  assert.deepEqual(decodeV1SceneExport(archived).scene, effectsScene);
+
+  const imported = prepareV1SceneImport(
+    exported,
+    "campaign-2",
+    [],
+    uuidSequence("new-scene", "new-image", "new-video")
+  );
+  assert.deepEqual(imported.record.scene.layers[1], effectsLayer);
+  assert.deepEqual(imported.record.scene.layers.map((layer) =>
+    layer.assetLayer?.id ?? layer.fogLayer?.id ?? layer.effectsLayer?.id
+  ), ["assets-1", "effects-1", "fog-1"]);
+});
+
 test("scene import rejects missing referenced files before producing writes", () => {
   const bytes = encodeV1SceneExport({
     scene: fullScene,
@@ -211,6 +272,32 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   );
   assert.deepEqual(patched.layers[0].assetLayer?.assets["campaign-1/video-1"], fullScene.layers[0].assetLayer?.assets["campaign-1/video-1"]);
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
+});
+
+test("scene adapter projects and patches ordered rain effects", () => {
+  const document = projectV1Scene(effectsScene);
+  assert.deepEqual(document.layers.map((layer) => layer.type), ["assets", "effects", "fog"]);
+  const effects = document.layers[1];
+  assert.equal(effects.type, "effects");
+  assert.deepEqual(effects.effects[0], {
+    ...effectsLayer.effectsLayer?.effects[0].rain,
+    kind: "rain",
+  });
+
+  const patched = patchV1SceneTransforms(effectsScene, {
+    ...document,
+    layers: document.layers.map((layer) => layer.type === "effects" ? {
+      ...layer,
+      name: "Storm",
+      effects: layer.effects.map((effect) => ({ ...effect, density: 0.9, visible: false })),
+    } : layer),
+  }, 8);
+  assert.equal(patched.layers[1].effectsLayer?.name, "Storm");
+  assert.equal(patched.layers[1].effectsLayer?.effects[0].rain?.density, 0.9);
+  assert.equal(patched.layers[1].effectsLayer?.effects[0].rain?.visible, false);
+  assert.deepEqual(patched.layers.map((layer) =>
+    layer.assetLayer?.id ?? layer.fogLayer?.id ?? layer.effectsLayer?.id
+  ), ["assets-1", "effects-1", "fog-1"]);
 });
 
 test("scene adapter persists scene and layer names", () => {

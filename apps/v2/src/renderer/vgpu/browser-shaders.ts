@@ -1,4 +1,9 @@
 import assets from "./shaders/assets.wgsl";
+import particleRetimeLifetime from "../particles/wgsl/retime-lifetime.wgsl";
+import particleSpawn from "../particles/wgsl/spawn.wgsl";
+import particleStateUpdate from "../particles/wgsl/state-update.wgsl";
+import particleSteadyStateFill from "../particles/wgsl/steady-state-fill.wgsl";
+import particleSteadyStateUpdate from "../particles/wgsl/steady-state-update.wgsl";
 import composite from "./shaders/composite.wgsl";
 import fogMask from "./shaders/fog-mask.wgsl";
 import fogComposite from "./shaders/fog-composite.wgsl";
@@ -10,9 +15,18 @@ import lightGuide from "./shaders/light-guide.wgsl";
 import present from "./shaders/present.wgsl";
 import radianceCascade from "./shaders/radiance-cascade.wgsl";
 import radianceResolve from "./shaders/radiance-resolve.wgsl";
+import rain from "./shaders/rain.wgsl";
+import rainContext from "./shaders/rain-context.wgsl";
 import sceneCopy from "./shaders/scene-copy.wgsl";
 
 export const browserSceneShaders = {
+  particleEmitter: {
+    stateUpdate: particleStateUpdate,
+    spawn: particleSpawn,
+    steadyStateUpdate: particleSteadyStateUpdate,
+    steadyStateFill: particleSteadyStateFill,
+    retimeLifetime: particleRetimeLifetime,
+  },
   assets,
   composite,
   fogMask,
@@ -25,5 +39,7 @@ export const browserSceneShaders = {
   present,
   radianceCascade,
   radianceResolve,
+  rain,
+  rainContext,
   sceneCopy,
 };
