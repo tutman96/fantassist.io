@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 
 import { requestSceneThumbnail } from "./scene-thumbnail-client";
 
-export function SceneCardThumbnail({ sceneKey, version }: { readonly sceneKey: string; readonly version: number }) {
+export function SceneCardThumbnail({ sceneKey, version, zoomOnHover = true }: {
+  readonly sceneKey: string;
+  readonly version: number;
+  readonly zoomOnHover?: boolean;
+}) {
   const requestKey = `${sceneKey}:${version}`;
   const [result, setResult] = useState<{ readonly key: string; readonly url: string } | null>(null);
   const [failedKey, setFailedKey] = useState<string | null>(null);
@@ -42,7 +46,9 @@ export function SceneCardThumbnail({ sceneKey, version }: { readonly sceneKey: s
   );
   return (
     <div
-      className="absolute inset-0 scale-100 bg-cover bg-center opacity-80 transition duration-500 ease-out group-hover:scale-[1.025] group-hover:opacity-95"
+      className={zoomOnHover
+        ? "absolute inset-0 scale-100 bg-cover bg-center opacity-80 transition duration-500 ease-out group-hover:scale-[1.025] group-hover:opacity-95"
+        : "absolute inset-0 bg-cover bg-center opacity-90"}
       style={{ backgroundImage: `url(${JSON.stringify(url)})` }}
       aria-hidden="true"
     />
