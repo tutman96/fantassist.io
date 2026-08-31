@@ -29,7 +29,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
   const importInput = useRef<HTMLInputElement>(null);
   const sceneGrid = useRef<HTMLDivElement>(null);
   const [creationMode, setCreationMode] = useState<CreationMode>(initialCreationMode);
-  const activeCreationMode = creationMode ?? initialCreationMode;
+  const activeCreationMode = creationMode;
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -170,7 +170,7 @@ export function CampaignObservatory({ campaignId, initialCreationMode = null, la
             <div className="relative w-full max-w-3xl text-center">
               <div className="pointer-events-none absolute left-1/2 top-1/2 size-[34rem] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 rounded-full border border-violet-300/8 [box-shadow:0_0_120px_rgba(91,33,182,0.16),inset_0_0_90px_rgba(59,130,246,0.06)]" />
               <div className="pointer-events-none absolute left-1/2 top-1/2 size-[24rem] max-w-[68vw] -translate-x-1/2 -translate-y-1/2 rotate-12 rounded-full border border-dashed border-blue-300/10" />
-              {!landing ? (
+              {!landing && !inlineOnboarding ? (
                 <div className="relative mx-auto mb-5 grid h-40 w-48 place-items-center sm:h-44 sm:w-56">
                   <Image src={appIcon} priority alt="Fantassist" className="relative w-48 max-w-none object-contain drop-shadow-[0_0_18px_rgba(139,92,246,0.62)] sm:w-52" />
                 </div>
