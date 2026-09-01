@@ -1,49 +1,36 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BrickWall, CloudFog, CloudRain, Eraser, Eye, EyeOff, GripVertical, ImageIcon, ImagePlus, Layers3, Lightbulb, ListPlus, MousePointer2, Pencil, Trash2, WandSparkles } from "lucide-react";
+import { BrickWall, CloudFog, CloudRain, Eraser, Eye, EyeOff, GripVertical, ImageIcon, Layers3, Lightbulb, MousePointer2, Pencil, Plus, Trash2, WandSparkles } from "lucide-react";
 
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import type { PreviewToken, SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { LightSelection } from "@/engine/scene-engine";
-import type { RainEffect, SceneLight } from "@/engine/scene-document";
+import type { RainEffect, SceneLayer, SceneLight } from "@/engine/scene-document";
 import { EditorPanel, Metric } from "@/features/editor/editor-panel";
-import { useEditorScene } from "@/features/scenes/editor-scene-context";
-import { useSharedTableSession } from "@/features/table/table-session-context";
 import { AssetThumbnail } from "@/features/editor/asset-thumbnail";
 import { AssetCalibrationDialog } from "@/features/editor/asset-calibration-dialog";
-import { EffectPicker } from "@/features/editor/effect-picker";
-import type { EffectTool } from "@/features/editor/editor-tool";
+import { useEditorScene } from "@/features/scenes/editor-scene-context";
 
 export function WorkspacePanels({
   engine,
-  activeEffectLayerId,
-  effectTool,
-  onAddEffect,
   sceneSnapshot,
 }: {
   readonly engine: SceneEngine;
-  readonly activeEffectLayerId: string | null;
-  readonly effectTool: EffectTool;
-  readonly onAddEffect: (layerId: string, effect: EffectTool) => void;
   readonly sceneSnapshot: SceneEngineSnapshot;
 }) {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [layerError, setLayerError] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ readonly layerId: string; readonly edge: "before" | "after" } | null>(null);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-  const uploadLayerId = useRef<string | null>(null);
   const draggedLayerIdRef = useRef<string | null>(null);
   const editorScene = useEditorScene();
-  const tableSession = useSharedTableSession();
   const asset = sceneSnapshot.scene.assets.find((item) => item.id === sceneSnapshot.selectedAssetId)
     ?? sceneSnapshot.scene.assets[0];
   const assetSelected = asset !== undefined && sceneSnapshot.selectedAssetId === asset.id;
@@ -127,94 +114,27 @@ export function WorkspacePanels({
         <div className="p-2">
           <div className="mb-1 flex items-center justify-between px-1">
             <p className="font-mono text-[9px] font-medium tracking-[0.12em] text-violet-100/60 uppercase">Content</p>
-            <Input
-              ref={uploadInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(event) => {
-                const files = [...(event.currentTarget.files ?? [])];
-                event.currentTarget.value = "";
-                const layerId = uploadLayerId.current;
-                if (!editorScene || !tableSession || !layerId || files.length === 0) return;
-                const table = tableSession.getSnapshot();
-                setUploading(true);
-                setUploadError(null);
-                void editorScene.uploadImages(files, {
-                  centerGrid: table.editorCamera.centerGrid,
-                  heightGrid: table.viewportCss.height / table.editorCamera.cssPixelsPerGrid / 2,
-                  layerId,
-                }).catch((cause: unknown) => {
-                  setUploadError(cause instanceof Error ? cause.message : "Unable to upload the image");
-                }).finally(() => setUploading(false));
+            <LayerTypePicker
+              disabled={!editorScene || editorScene.status === "prototype" || editorScene.status === "loading" || editorScene.status === "conflict"}
+              onSelect={(type) => {
+                try {
+                  if (type === "assets") editorScene?.createAssetLayer();
+                  else if (type === "fog") editorScene?.createFogLayer();
+                  else editorScene?.createEffectsLayer();
+                  setLayerError(null);
+                  return true;
+                } catch (cause) {
+                  setLayerError(cause instanceof Error ? cause.message : "Unable to create the layer");
+                  return false;
+                }
               }}
             />
-            <span className="flex gap-1">
-              <Button
-                disabled={!editorScene || editorScene.status === "prototype" || editorScene.status === "loading" || editorScene.status === "conflict"}
-                variant="ghost"
-                size="icon-sm"
-                type="button"
-                title="Add effects layer"
-                aria-label="Add effects layer"
-                onClick={() => {
-                  try {
-                    editorScene?.createEffectsLayer();
-                    setUploadError(null);
-                  } catch (cause) {
-                    setUploadError(cause instanceof Error ? cause.message : "Unable to create the effects layer");
-                  }
-                }}
-                className="rounded-none border border-violet-300/12 text-violet-100/60"
-              >
-                <WandSparkles className="size-3.5" aria-hidden="true" />
-              </Button>
-              <Button
-                disabled={!editorScene || editorScene.status === "prototype" || editorScene.status === "loading" || editorScene.status === "conflict"}
-                variant="ghost"
-                size="icon-sm"
-                type="button"
-                title="Add fog layer"
-                aria-label="Add fog layer"
-                onClick={() => {
-                  try {
-                    editorScene?.createFogLayer();
-                    setUploadError(null);
-                  } catch (cause) {
-                    setUploadError(cause instanceof Error ? cause.message : "Unable to create the fog layer");
-                  }
-                }}
-                className="rounded-none border border-violet-300/12 text-violet-100/60"
-              >
-                <CloudFog className="size-3.5" aria-hidden="true" />
-              </Button>
-              <Button
-                disabled={!editorScene || editorScene.status === "prototype" || editorScene.status === "loading" || editorScene.status === "conflict"}
-                variant="ghost"
-                size="icon-sm"
-                type="button"
-                title={editorScene?.status === "prototype" ? "Upload an image to create a persisted scene first" : "Add asset layer"}
-                aria-label="Add asset layer"
-                onClick={() => {
-                  try {
-                    editorScene?.createAssetLayer();
-                    setUploadError(null);
-                  } catch (cause) {
-                    setUploadError(cause instanceof Error ? cause.message : "Unable to create the asset layer");
-                  }
-                }}
-                className="rounded-none border border-violet-300/12 text-violet-100/60"
-              >
-                <ListPlus className="size-3.5" aria-hidden="true" />
-              </Button>
-            </span>
           </div>
-          <div className="grid gap-1">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
             {[...sceneSnapshot.scene.layers].reverse().map((layer) => (
               <div
                 key={layer.id}
-                className="relative border-t border-violet-300/8 first:border-t-0"
+                className="relative min-w-0 border-t border-violet-300/8 first:border-t-0"
                 data-visible={layer.visible}
                 onDragOver={(event) => {
                   const draggedId = draggedLayerIdRef.current;
@@ -243,102 +163,18 @@ export function WorkspacePanels({
                 {dropTarget?.layerId === layer.id ? (
                   <span className={`pointer-events-none absolute inset-x-1 z-20 h-0.5 bg-blue-300 shadow-[0_0_8px_rgba(125,211,252,0.8)] ${dropTarget.edge === "before" ? "top-0" : "bottom-0"}`} />
                 ) : null}
-                <div className={`flex items-center justify-between gap-2 border border-transparent px-2 py-1.5 transition-colors ${layer.type === "fog" ? `[&_[data-slot=button]]:hover:bg-transparent ${sceneSnapshot.selectedFogLayerId === layer.id ? "border-fuchsia-300/15 bg-fuchsia-400/10" : "hover:border-violet-300/10 hover:bg-violet-400/5"}` : layer.type === "effects" ? "border-cyan-300/8 bg-cyan-400/3 hover:border-cyan-300/15" : ""}`}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    draggable
-                    aria-label={`Reorder ${layer.name}`}
-                    title={`Drag to reorder ${layer.name}; use Arrow Up or Arrow Down from the keyboard`}
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", layer.id);
-                      draggedLayerIdRef.current = layer.id;
-                    }}
-                    onDragEnd={() => {
-                      draggedLayerIdRef.current = null;
-                      setDropTarget(null);
-                    }}
-                    onKeyDown={(event) => {
-                      const index = sceneSnapshot.scene.layers.findIndex((candidate) => candidate.id === layer.id);
-                      if (event.key === "ArrowUp" && index < sceneSnapshot.scene.layers.length - 1) {
-                        event.preventDefault();
-                        engine.dispatch({ type: "layer.move", layerId: layer.id, toIndex: index + 1 });
-                      } else if (event.key === "ArrowDown" && index > 0) {
-                        event.preventDefault();
-                        engine.dispatch({ type: "layer.move", layerId: layer.id, toIndex: index - 1 });
-                      }
-                    }}
-                    className="-ml-1 cursor-grab rounded-none text-violet-100/40 hover:bg-violet-400/10 hover:text-violet-100 active:cursor-grabbing [&_svg]:size-3.5"
-                  >
-                    <GripVertical aria-hidden="true" />
-                  </Button>
-                  {layer.type === "fog" ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      aria-pressed={sceneSnapshot.selectedFogLayerId === layer.id}
-                      onClick={() => engine.dispatch({ type: "fog.layer.select", layerId: layer.id })}
-                      className={`h-7 min-w-0 flex-1 justify-start rounded-none px-1 text-[11px] font-medium hover:bg-transparent aria-pressed:text-fuchsia-100 ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`}
-                      title={`Edit ${layer.name}`}
-                    >
-                      <span className="truncate">{layer.name}</span>
-                    </Button>
-                  ) : (
-                    <span className={`min-w-0 flex-1 truncate text-[11px] font-medium ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`} title={layer.name}>{layer.name}</span>
-                  )}
-                  <span className="flex shrink-0 items-center gap-1">
-                    <span className="font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
-                    <RenameDialog
-                      subject="layer"
-                      currentName={layer.name}
-                      onRename={(name) => engine.dispatch({ type: "layer.rename", layerId: layer.id, name })}
-                      trigger={<LayerIconButton label={`Rename ${layer.name}`}><Pencil /></LayerIconButton>}
-                    />
-                    <LayerIconButton
-                      label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
-                      onClick={() => engine.dispatch({ type: "layer.visibility", layerId: layer.id, visible: !layer.visible })}
-                    >
-                      {layer.visible ? <Eye /> : <EyeOff />}
-                    </LayerIconButton>
-                    <DeleteConfirmation
-                      title="Delete layer?"
-                      description={layer.type === "assets"
-                        ? `${layer.name} and ${layer.assetIds.length} contained image${layer.assetIds.length === 1 ? "" : "s"} will be removed from the scene.`
-                        : layer.type === "fog"
-                          ? `${layer.name} and ${layer.fogPolygons.length + layer.fogClearPolygons.length} contained polygon${layer.fogPolygons.length + layer.fogClearPolygons.length === 1 ? "" : "s"} will be removed from the scene.`
-                          : `${layer.name} and ${layer.effects.length} contained effect${layer.effects.length === 1 ? "" : "s"} will be removed from the scene.`}
-                      onConfirm={() => engine.dispatch({ type: "layer.remove", layerId: layer.id })}
-                      trigger={<LayerIconButton label={`Delete ${layer.name}`}><Trash2 /></LayerIconButton>}
-                    />
-                    {layer.type === "assets" ? (
-                      <Button
-                        disabled={!editorScene || editorScene.status === "loading" || editorScene.status === "conflict" || uploading}
-                        variant="ghost"
-                        size="icon-sm"
-                        type="button"
-                        title={editorScene?.status === "prototype" ? `Upload images to ${layer.name} and create a local scene` : `Upload images to ${layer.name}`}
-                        aria-label={`Upload images to ${layer.name}`}
-                        onClick={() => {
-                          uploadLayerId.current = layer.id;
-                          uploadInputRef.current?.click();
-                        }}
-                        className="rounded-none border border-violet-300/12 text-violet-100/60"
-                      >
-                        <ImagePlus className="size-3.5" aria-hidden="true" />
-                      </Button>
-                    ) : layer.type === "effects" ? (
-                      <EffectPicker
-                        active={activeEffectLayerId === layer.id}
-                        effect={effectTool}
-                        label={`Add effect to ${layer.name}`}
-                        onSelect={(effect) => onAddEffect(layer.id, effect)}
-                        variant="layer"
-                      />
-                    ) : null}
-                  </span>
-                </div>
+                <LayerHeader
+                  engine={engine}
+                  layer={layer}
+                  layerIndex={sceneSnapshot.scene.layers.findIndex((candidate) => candidate.id === layer.id)}
+                  layerCount={sceneSnapshot.scene.layers.length}
+                  selectedFogLayerId={sceneSnapshot.selectedFogLayerId}
+                  onDragStart={() => { draggedLayerIdRef.current = layer.id; }}
+                  onDragEnd={() => {
+                    draggedLayerIdRef.current = null;
+                    setDropTarget(null);
+                  }}
+                />
                 {layer.type === "assets" ? layer.assetIds.map((assetId) => {
                   const layerAsset = sceneSnapshot.scene.assets.find((candidate) => candidate.id === assetId);
                   if (!layerAsset) return null;
@@ -346,7 +182,7 @@ export function WorkspacePanels({
                   return (
                     <div
                       key={layerAsset.id}
-                      className={`flex items-center gap-1 border border-transparent transition-colors [&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/12 hover:bg-violet-400/5"}`}
+                      className={`flex items-center gap-1 border border-transparent pr-4 transition-colors [&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/12 hover:bg-violet-400/5"}`}
                       data-visible={layerAsset.visible && layer.visible}
                     >
                       <Button
@@ -369,14 +205,20 @@ export function WorkspacePanels({
                       >
                         {layerAsset.visible ? <Eye /> : <EyeOff />}
                       </LayerIconButton>
+                      <LayerIconButton
+                        label={`Delete ${layerAsset.name}`}
+                        onClick={() => engine.dispatch({ type: "asset.remove", assetId: layerAsset.id })}
+                      >
+                        <Trash2 />
+                      </LayerIconButton>
                     </div>
                   );
                 }) : layer.type === "effects" ? (
-                  <div className="grid gap-0.5 pb-1">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5 pb-1">
                     {layer.effects.map((effect) => {
                       const selected = sceneSnapshot.selectedEffect?.layerId === layer.id && sceneSnapshot.selectedEffect.effectId === effect.id;
                       return (
-                        <div key={effect.id} className={`flex min-h-8 items-center gap-1 border border-transparent px-1 pl-7 text-[9px] transition-colors ${selected ? "border-cyan-300/20 bg-gradient-to-r from-cyan-500/14 to-blue-500/8" : "hover:border-cyan-300/10 hover:bg-cyan-400/5"}`}>
+                        <div key={effect.id} className={`flex min-h-8 items-center gap-1 border border-transparent pr-4 pl-7 text-[9px] transition-colors ${selected ? "border-cyan-300/20 bg-gradient-to-r from-cyan-500/14 to-blue-500/8" : "hover:border-cyan-300/10 hover:bg-cyan-400/5"}`}>
                           <CloudRain className="size-3 text-cyan-100/70" aria-hidden="true" />
                           <Button
                             type="button"
@@ -412,18 +254,18 @@ export function WorkspacePanels({
                     })}
                   </div>
                 ) : (
-                  <div className="grid gap-0.5 pb-1">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5 pb-1">
                     {layer.lightSources.map((light, index) => {
                       const selected = sceneSnapshot.selectedLight?.layerId === layer.id && sceneSnapshot.selectedLight.lightIndex === index;
                       return (
-                        <div key={`light-${index}`} className={`flex min-h-8 items-center gap-1 border border-transparent px-1 pl-7 text-[9px] transition-colors ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}>
+                        <div key={`light-${index}`} className={`flex min-h-8 items-center gap-1 border border-transparent pr-4 pl-7 text-[9px] transition-colors ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}>
                            <Lightbulb className="size-3" style={{ color: rgbHex(light.color) }} />
-                          <Button type="button" variant="ghost" aria-pressed={selected} onClick={() => {
-                            engine.dispatch({ type: "light.selection.set", selection: { layerId: layer.id, lightIndex: index } });
-                            revealInspector();
-                          }} className="h-7 min-w-0 flex-1 justify-start rounded-none px-1 font-mono text-[9px] tracking-wide text-violet-100/60 uppercase hover:bg-transparent aria-pressed:text-blue-100">
-                            Light {index + 1} · {light.dimLightDistance * 5} ft
-                          </Button>
+                           <Button type="button" variant="ghost" aria-pressed={selected} onClick={() => {
+                             engine.dispatch({ type: "light.selection.set", selection: { layerId: layer.id, lightIndex: index } });
+                             revealInspector();
+                           }} className="h-7 min-w-0 flex-1 justify-start rounded-none px-1 font-mono text-[9px] tracking-wide text-violet-100/60 uppercase hover:bg-transparent aria-pressed:text-blue-100">
+                              <span className="truncate">Light {index + 1} · {formatFeet(light.dimLightDistance)} ft</span>
+                           </Button>
                           <LayerIconButton label={`Delete light ${index + 1}`} onClick={() => engine.dispatch({ type: "light.remove", layerId: layer.id, lightIndex: index })}><Trash2 /></LayerIconButton>
                         </div>
                       );
@@ -437,7 +279,7 @@ export function WorkspacePanels({
                       return (
                         <div
                           key={`${collection}-${index}`}
-                          className={`flex min-h-8 items-center gap-1 border border-transparent px-1 pl-7 text-[9px] text-violet-100/60 transition-colors [&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}
+                          className={`flex min-h-8 items-center gap-1 border border-transparent pr-4 pl-7 text-[9px] text-violet-100/60 transition-colors [&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-blue-300/20 bg-gradient-to-r from-blue-500/14 to-violet-500/8" : "hover:border-violet-300/10 hover:bg-violet-400/5"}`}
                         >
                           {collection === "fog" ? <CloudFog className="size-3 text-fuchsia-200/65" /> : collection === "clear" ? <Eraser className="size-3 text-sky-200/65" /> : <BrickWall className="size-3 text-amber-200/65" />}
                           <Button
@@ -478,9 +320,118 @@ export function WorkspacePanels({
               </div>
             ))}
           </div>
-          {uploadError ? <p role="alert" className="mt-1.5 px-1 text-[10px] text-red-300 [overflow-wrap:anywhere]">{uploadError}</p> : null}
+          {layerError ? <p role="alert" className="mt-1.5 px-1 text-[10px] text-red-300 [overflow-wrap:anywhere]">{layerError}</p> : null}
         </div>
       </EditorPanel>
+    </div>
+  );
+}
+
+function LayerTypePicker({ disabled, onSelect }: {
+  readonly disabled: boolean;
+  readonly onSelect: (type: SceneLayer["type"]) => boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const options = [
+    { type: "assets", label: "Assets layer", Icon: ImageIcon },
+    { type: "fog", label: "Fog layer", Icon: CloudFog },
+    { type: "effects", label: "Effects layer", Icon: WandSparkles },
+  ] as const;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="ghost" size="icon-xs" disabled={disabled} aria-label="Add layer" title="Add layer" className="rounded-none border border-violet-300/12 text-violet-100/60 hover:border-violet-300/25 hover:bg-violet-400/10 hover:text-white">
+          <Plus aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="left" align="start" collisionPadding={12} className="w-44 rounded-none border-violet-300/20 bg-[#100d20] p-1.5 text-violet-50">
+        <p className="px-2 py-1 font-mono text-[9px] tracking-[0.12em] text-violet-100/45 uppercase">Choose layer type</p>
+        {options.map((option) => (
+          <Button
+            key={option.type}
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              if (onSelect(option.type)) setOpen(false);
+            }}
+            className="w-full justify-start rounded-none text-xs text-violet-100/75 hover:bg-violet-400/10 hover:text-white"
+          >
+            <option.Icon aria-hidden="true" /> {option.label}
+          </Button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function LayerHeader({ engine, layer, layerIndex, layerCount, selectedFogLayerId, onDragStart, onDragEnd }: {
+  readonly engine: SceneEngine;
+  readonly layer: SceneLayer;
+  readonly layerIndex: number;
+  readonly layerCount: number;
+  readonly selectedFogLayerId: string | null;
+  readonly onDragStart: () => void;
+  readonly onDragEnd: () => void;
+}) {
+  const selected = layer.type === "fog" && selectedFogLayerId === layer.id;
+  return (
+    <div className={`flex items-center gap-2 border border-transparent py-1.5 pr-4 pl-2 transition-colors ${layer.type === "fog" ? `[&_[data-slot=button]]:hover:bg-transparent ${selected ? "border-fuchsia-300/15 bg-fuchsia-400/10" : "hover:border-violet-300/10 hover:bg-violet-400/5"}` : layer.type === "effects" ? "border-cyan-300/8 bg-cyan-400/3 hover:border-cyan-300/15" : ""}`}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        draggable
+        aria-label={`Reorder ${layer.name}`}
+        title={`Drag to reorder ${layer.name}; use Arrow Up or Arrow Down from the keyboard`}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", layer.id);
+          onDragStart();
+        }}
+        onDragEnd={onDragEnd}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowUp" && layerIndex < layerCount - 1) {
+            event.preventDefault();
+            engine.dispatch({ type: "layer.move", layerId: layer.id, toIndex: layerIndex + 1 });
+          } else if (event.key === "ArrowDown" && layerIndex > 0) {
+            event.preventDefault();
+            engine.dispatch({ type: "layer.move", layerId: layer.id, toIndex: layerIndex - 1 });
+          }
+        }}
+        className="-ml-1 self-center cursor-grab rounded-none text-violet-100/40 hover:bg-violet-400/10 hover:text-violet-100 active:cursor-grabbing [&_svg]:size-3.5 [&_svg]:-translate-y-px"
+      >
+        <GripVertical aria-hidden="true" />
+      </Button>
+      {layer.type === "fog" ? (
+        <Button
+          type="button"
+          variant="ghost"
+          aria-pressed={selected}
+          onClick={() => engine.dispatch({ type: "fog.layer.select", layerId: layer.id })}
+          className={`h-7 min-w-0 flex-1 justify-start rounded-none px-1 text-[11px] font-medium hover:bg-transparent aria-pressed:text-fuchsia-100 ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`}
+          title={`Edit ${layer.name}`}
+        >
+          <span className="truncate">{layer.name}</span>
+        </Button>
+      ) : (
+        <span className={`flex h-7 min-w-0 flex-1 items-center truncate px-1 text-[11px] font-medium ${layer.visible ? "text-violet-50/80" : "text-violet-100/35"}`} title={layer.name}>{layer.name}</span>
+      )}
+      <span className="w-11 shrink-0 font-mono text-[8px] text-violet-100/45 uppercase">{layer.type}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        <RenameDialog
+          subject="layer"
+          currentName={layer.name}
+          onRename={(name) => engine.dispatch({ type: "layer.rename", layerId: layer.id, name })}
+          trigger={<LayerIconButton label={`Rename ${layer.name}`}><Pencil /></LayerIconButton>}
+        />
+        <LayerIconButton
+          label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+          onClick={() => engine.dispatch({ type: "layer.visibility", layerId: layer.id, visible: !layer.visible })}
+        >
+          {layer.visible ? <Eye /> : <EyeOff />}
+        </LayerIconButton>
+        <LayerIconButton label={`Delete ${layer.name}`} onClick={() => engine.dispatch({ type: "layer.remove", layerId: layer.id })}><Trash2 /></LayerIconButton>
+      </span>
     </div>
   );
 }
@@ -556,12 +507,7 @@ function AssetInspector({ engine, sceneSnapshot }: { readonly engine: SceneEngin
         </Button>
         <Button disabled variant="outline" className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 text-[10px] text-violet-100/35">Replace media</Button>
         <AssetCalibrationDialog asset={asset} engine={engine} />
-        <DeleteConfirmation
-          title="Delete asset?"
-          description={`${asset.name} will be removed from its layer.`}
-          onConfirm={() => engine.dispatch({ type: "asset.remove", assetId: asset.id })}
-          trigger={<Button variant="destructive" className="col-span-2 h-8 w-full rounded-none text-[10px]"><Trash2 aria-hidden="true" /> Delete selected asset</Button>}
-        />
+        <Button variant="destructive" className="col-span-2 h-8 w-full rounded-none text-[10px]" onClick={() => engine.dispatch({ type: "asset.remove", assetId: asset.id })}><Trash2 aria-hidden="true" /> Delete selected asset</Button>
       </div>
     </div>
   );
@@ -708,7 +654,7 @@ function LightRadiusControl({ color, light, onChange, onCommit, onStart }: {
   return (
     <fieldset className="space-y-1">
       <legend className="font-mono text-[9px] tracking-[0.12em] text-violet-100/55 uppercase">Light radius</legend>
-      <div className="flex justify-between font-mono text-[9px] text-violet-100/50"><span>Bright {Math.round(light.brightLightDistance * 5)} ft</span><span>Dim {Math.round(light.dimLightDistance * 5)} ft</span></div>
+      <div className="flex justify-between font-mono text-[9px] text-violet-100/50"><span>Bright {formatFeet(light.brightLightDistance)} ft</span><span>Dim {formatFeet(light.dimLightDistance)} ft</span></div>
       <div className="relative h-8">
         <div className="absolute top-3 right-0 left-0 h-2 border border-white/10" style={{ background: `linear-gradient(to right, ${color} 0%, ${color} ${bright / maximum * 100}%, color-mix(in srgb, ${color} 45%, transparent) ${bright / maximum * 100}%, transparent ${dim / maximum * 100}%)` }} />
         <input aria-label="Bright light radius" type="range" min="0" max={maximum} step="0.1" value={bright} onPointerDown={onStart} onPointerUp={onCommit} onKeyDown={onStart} onKeyUp={onCommit} onChange={(event) => onChange(Math.min(Number(event.currentTarget.value), light.dimLightDistance), light.dimLightDistance)} className={`${rangeClass} z-20`} />
@@ -768,36 +714,6 @@ function FogPolygonInspector({
         </Button>
       </div>
     </div>
-  );
-}
-
-function DeleteConfirmation({
-  description,
-  onConfirm,
-  title,
-  trigger,
-}: {
-  readonly description: string;
-  readonly onConfirm: () => void;
-  readonly title: string;
-  readonly trigger: React.ReactElement;
-}) {
-  return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
-      <AlertDialogContent className="rounded-none border border-violet-300/20 bg-[#100d20] text-violet-50 ring-0">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription className="text-violet-100/60 [overflow-wrap:anywhere]">
-            {description} You can undo this action during the current session.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter className="rounded-none border-violet-300/12 bg-black/15">
-          <AlertDialogCancel className="rounded-none border-violet-300/15 bg-transparent text-violet-100/70">Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" className="rounded-none" onClick={onConfirm}>Delete</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 
@@ -871,6 +787,10 @@ const LIGHT_PRESETS = [
 
 function rgbHex(color: { readonly r: number; readonly g: number; readonly b: number }): string {
   return `#${[color.r, color.g, color.b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function formatFeet(gridDistance: number): string {
+  return String(Number((gridDistance * 5).toFixed(1)));
 }
 
 function rgbToHsl(color: { readonly r: number; readonly g: number; readonly b: number }): { readonly h: number; readonly s: number; readonly l: number } {

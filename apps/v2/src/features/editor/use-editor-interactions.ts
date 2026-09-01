@@ -111,20 +111,21 @@ export function useEditorInteractions({
         else engine.undo();
       }
       if ((event.key === "Delete" || event.key === "Backspace") && !interactive) {
-        const selection = engine.getSnapshot().selectedFogPolygon;
-        if (selection) {
+        const snapshot = engine.getSnapshot();
+        if (snapshot.selectedAssetId) {
           event.preventDefault();
-          engine.dispatch({ type: "fog.polygon.remove", ...selection });
+          engine.dispatch({ type: "asset.remove", assetId: snapshot.selectedAssetId });
+        } else if (snapshot.selectedFogPolygon) {
+          event.preventDefault();
+          engine.dispatch({ type: "fog.polygon.remove", ...snapshot.selectedFogPolygon });
         } else {
-          const light = engine.getSnapshot().selectedLight;
-          if (light) {
+          if (snapshot.selectedLight) {
             event.preventDefault();
-            engine.dispatch({ type: "light.remove", layerId: light.layerId, lightIndex: light.lightIndex });
+            engine.dispatch({ type: "light.remove", layerId: snapshot.selectedLight.layerId, lightIndex: snapshot.selectedLight.lightIndex });
           } else {
-            const selectedEffect = engine.getSnapshot().selectedEffect;
-            if (selectedEffect) {
+            if (snapshot.selectedEffect) {
               event.preventDefault();
-              engine.dispatch({ type: "effect.remove", layerId: selectedEffect.layerId, effectId: selectedEffect.effectId });
+              engine.dispatch({ type: "effect.remove", layerId: snapshot.selectedEffect.layerId, effectId: snapshot.selectedEffect.effectId });
             }
           }
         }

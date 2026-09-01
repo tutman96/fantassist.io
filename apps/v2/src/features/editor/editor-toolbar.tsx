@@ -1,6 +1,7 @@
 "use client";
 
-import { BrickWall, Check, CloudFog, Eraser, Grid3X3, Lightbulb, LocateFixed, Minus, Monitor, MousePointer2, Plus, Redo2, RotateCcw, Undo2, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { BrickWall, Check, CloudFog, Eraser, Grid3X3, ImagePlus, Lightbulb, LocateFixed, Minus, Monitor, MousePointer2, Plus, Redo2, RotateCcw, Undo2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -12,7 +13,9 @@ import type { SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { TableSession, TableSessionSnapshot } from "@/engine/table-session";
 import { getTableBounds, zoomTableCameraAt } from "@/engine/table-camera";
 import type { EditorTool, EffectTool } from "@/features/editor/editor-tool";
+import { ensureAssetLayer } from "@/features/editor/editor-tool";
 import { EffectPicker } from "@/features/editor/effect-picker";
+import { useEditorScene } from "@/features/scenes/editor-scene-context";
 
 export function EditorToolbar({
   engine,
@@ -33,6 +36,10 @@ export function EditorToolbar({
   readonly tool: EditorTool;
   readonly onToolChange: (tool: EditorTool) => void;
 }) {
+  const editorScene = useEditorScene();
+  const uploadInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const zoomAtCenter = (factor: number) => {
     if (tool !== "table") {
       session.zoomAt(
@@ -56,8 +63,46 @@ export function EditorToolbar({
 
   return (
     <aside aria-label="Editor tools" className="absolute top-3 left-3 z-10 flex items-center gap-1 border border-violet-300/15 bg-[#100d20]/92 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:top-4 sm:left-4 sm:flex-col">
+      <input
+        ref={uploadInput}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        aria-label="Add image assets"
+        onChange={(event) => {
+          const files = [...(event.currentTarget.files ?? [])];
+          event.currentTarget.value = "";
+          if (!editorScene || files.length === 0) return;
+          setUploading(true);
+          setUploadError(null);
+          void (async () => {
+            const selectedAsset = sceneSnapshot.selectedAssetId
+              ? sceneSnapshot.scene.assets.find((asset) => asset.id === sceneSnapshot.selectedAssetId)
+              : undefined;
+            const layerId = selectedAsset?.layerId ?? ensureAssetLayer(engine);
+            await editorScene.uploadImages(files, {
+              centerGrid: tableSnapshot.editorCamera.centerGrid,
+              heightGrid: tableSnapshot.viewportCss.height / tableSnapshot.editorCamera.cssPixelsPerGrid / 2,
+              layerId,
+            });
+          })().catch((cause: unknown) => {
+            setUploadError(cause instanceof Error ? cause.message : "Unable to upload the image");
+          }).finally(() => setUploading(false));
+        }}
+      />
       <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l">
-        <ToolToggle label="Edit assets" pressed={tool === "assets"} onPressedChange={() => onToolChange("assets")}><MousePointer2 /></ToolToggle>
+        <ToolToggle label="Edit assets" pressed={tool === "assets"} onPressedChange={() => onToolChange("assets")} showTooltip={false}><MousePointer2 /></ToolToggle>
+        <ToolButton
+          label={uploading ? "Adding assets" : "Add asset"}
+          disabled={!editorScene || editorScene.status === "loading" || editorScene.status === "conflict" || uploading}
+          onClick={() => {
+            setUploadError(null);
+            uploadInput.current?.click();
+          }}
+        >
+          <ImagePlus />
+        </ToolButton>
         <ToolToggle label="Draw fog" pressed={tool === "fog"} onPressedChange={() => onToolChange("fog")}><CloudFog /></ToolToggle>
         <ToolToggle label="Clear fog" pressed={tool === "fog-clear"} onPressedChange={() => onToolChange("fog-clear")}><Eraser /></ToolToggle>
         <ToolToggle label="Draw wall" pressed={tool === "wall"} onPressedChange={() => onToolChange("wall")}><BrickWall /></ToolToggle>
@@ -111,30 +156,33 @@ export function EditorToolbar({
         <ToolButton label={tool === "table" ? "Zoom display view in" : "Zoom in"} onClick={() => zoomAtCenter(1.15)}><Plus /></ToolButton>
         <ToolButton label={tool === "table" ? "Zoom display view out" : "Zoom out"} onClick={() => zoomAtCenter(1 / 1.15)}><Minus /></ToolButton>
       </ButtonGroup>
+      {uploadError ? <p role="alert" className="absolute top-full left-0 mt-2 w-60 border border-red-300/20 bg-[#100d20]/96 px-2.5 py-2 text-[10px] text-red-300 shadow-lg [overflow-wrap:anywhere] sm:top-0 sm:left-full sm:mt-0 sm:ml-2">{uploadError}</p> : null}
     </aside>
   );
 }
 
-function ToolToggle({ children, label, pressed, onPressedChange }: {
+function ToolToggle({ children, label, pressed, onPressedChange, showTooltip = true }: {
   readonly children: React.ReactNode;
   readonly label: string;
   readonly pressed: boolean;
   readonly onPressedChange: () => void;
+  readonly showTooltip?: boolean;
 }) {
+  const toggle = (
+    <Toggle
+      aria-label={label}
+      pressed={pressed}
+      onPressedChange={onPressedChange}
+      style={{ borderRadius: 0 }}
+      className="size-9 rounded-none border border-transparent text-violet-100/60 hover:border-violet-300/20 hover:bg-violet-400/12 hover:text-white data-[state=on]:border-sky-200/80 data-[state=on]:bg-blue-500/45 data-[state=on]:text-white data-[state=on]:shadow-[inset_3px_0_0_#7dd3fc,0_0_14px_rgba(59,130,246,0.42)] data-[state=on]:[&_svg]:stroke-white data-[state=on]:[&_svg]:stroke-[2.5] data-[state=on]:[&_svg]:drop-shadow-[0_0_4px_rgba(186,230,253,0.7)]"
+    >
+      {children}
+    </Toggle>
+  );
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Toggle
-          aria-label={label}
-          pressed={pressed}
-          onPressedChange={onPressedChange}
-          style={{ borderRadius: 0 }}
-          className="size-9 rounded-none border border-transparent text-violet-100/60 hover:border-violet-300/20 hover:bg-violet-400/12 hover:text-white data-[state=on]:border-sky-200/80 data-[state=on]:bg-blue-500/45 data-[state=on]:text-white data-[state=on]:shadow-[inset_3px_0_0_#7dd3fc,0_0_14px_rgba(59,130,246,0.42)] data-[state=on]:[&_svg]:stroke-white data-[state=on]:[&_svg]:stroke-[2.5] data-[state=on]:[&_svg]:drop-shadow-[0_0_4px_rgba(186,230,253,0.7)]"
-        >
-          {children}
-        </Toggle>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="rounded-none">{label}</TooltipContent>
+      <TooltipTrigger asChild>{toggle}</TooltipTrigger>
+      {showTooltip ? <TooltipContent side="right" className="rounded-none">{label}</TooltipContent> : null}
     </Tooltip>
   );
 }

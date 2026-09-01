@@ -17,50 +17,33 @@ const EFFECT_OPTIONS = [
   readonly Icon: typeof CloudRain;
 }>;
 
-export function EffectPicker({ active, effect, label = "Effects", onSelect, variant = "toolbar" }: {
+export function EffectPicker({ active, effect, label = "Effects", onSelect }: {
   readonly active: boolean;
   readonly effect: EffectTool;
   readonly label?: string;
   readonly onSelect: (effect: EffectTool) => void;
-  readonly variant?: "toolbar" | "layer";
 }) {
   const [open, setOpen] = useState(false);
-  const toolbar = variant === "toolbar";
-  const trigger = toolbar ? (
-    <Toggle
-      aria-label={label}
-      pressed={active}
-      style={{ borderRadius: 0 }}
-      className="size-9 rounded-none border border-transparent text-violet-100/60 hover:border-violet-300/20 hover:bg-violet-400/12 hover:text-white data-[state=on]:border-sky-200/80 data-[state=on]:bg-blue-500/45 data-[state=on]:text-white data-[state=on]:shadow-[inset_3px_0_0_#7dd3fc,0_0_14px_rgba(59,130,246,0.42)] data-[state=on]:[&_svg]:stroke-white data-[state=on]:[&_svg]:stroke-[2.5] data-[state=on]:[&_svg]:drop-shadow-[0_0_4px_rgba(186,230,253,0.7)]"
-    >
-      <WandSparkles aria-hidden="true" />
-    </Toggle>
-  ) : (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      aria-label={label}
-      aria-pressed={active}
-      title={label}
-      className="rounded-none border border-cyan-300/15 text-cyan-100/65 aria-pressed:border-cyan-200/35 aria-pressed:bg-cyan-400/10 [&_svg]:size-3.5"
-    >
-      <WandSparkles aria-hidden="true" />
-    </Button>
-  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            {trigger}
+            <Toggle
+              aria-label={label}
+              pressed={active}
+              style={{ borderRadius: 0 }}
+              className="size-9 rounded-none border border-transparent text-violet-100/60 hover:border-violet-300/20 hover:bg-violet-400/12 hover:text-white data-[state=on]:border-sky-200/80 data-[state=on]:bg-blue-500/45 data-[state=on]:text-white data-[state=on]:shadow-[inset_3px_0_0_#7dd3fc,0_0_14px_rgba(59,130,246,0.42)] data-[state=on]:[&_svg]:stroke-white data-[state=on]:[&_svg]:stroke-[2.5] data-[state=on]:[&_svg]:drop-shadow-[0_0_4px_rgba(186,230,253,0.7)]"
+            >
+              <WandSparkles aria-hidden="true" />
+            </Toggle>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side={toolbar ? "right" : "left"} className="rounded-none">{label}</TooltipContent>
+        <TooltipContent side="right" className="rounded-none">{label}</TooltipContent>
       </Tooltip>
       <PopoverContent
-        side={toolbar ? "right" : "left"}
+        side="right"
         align="start"
         collisionPadding={12}
         className="w-48 rounded-none border-violet-300/20 bg-[#100d20] p-1.5 text-violet-50"

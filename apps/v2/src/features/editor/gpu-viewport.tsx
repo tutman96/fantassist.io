@@ -127,9 +127,6 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
           <WorkspacePanels
             engine={engine}
             sceneSnapshot={sceneSnapshot}
-            activeEffectLayerId={tool === "effects" ? rainLayerId : null}
-            effectTool={effectTool}
-            onAddEffect={(layerId, effect) => selectEffect(effect, layerId)}
           />
           <EditorGestureHints tool={tool} />
           {status === "ready" ? (

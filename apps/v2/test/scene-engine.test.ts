@@ -11,7 +11,7 @@ import {
   snapCalibratedAssetTransform,
   snapFogPolygonTranslation,
 } from "../src/engine/scene-engine";
-import { ensureFogLayer } from "../src/features/editor/editor-tool";
+import { ensureAssetLayer, ensureFogLayer } from "../src/features/editor/editor-tool";
 import {
   DEFAULT_DISPLAY,
   getTableBounds,
@@ -869,6 +869,26 @@ test("fog tools create and select one empty fog layer only when needed", () => {
   });
   assert.equal(ensureFogLayer(engine, () => "unused"), id);
   assert.equal(engine.getSnapshot().scene.layers.filter((layer) => layer.type === "fog").length, 1);
+});
+
+test("asset tool creates one empty asset layer only when needed", () => {
+  const base = createSampleSceneDocument();
+  const engine = createSceneEngine(freezeSceneDocument({
+    ...base,
+    assets: [],
+    layers: base.layers.filter((layer) => layer.type !== "assets"),
+  }));
+  const id = ensureAssetLayer(engine, () => "automatic-assets");
+  assert.equal(id, "automatic-assets");
+  assert.deepEqual(engine.getSnapshot().scene.layers.at(-1), {
+    id,
+    name: "Assets",
+    type: "assets",
+    visible: true,
+    assetIds: [],
+  });
+  assert.equal(ensureAssetLayer(engine, () => "unused"), id);
+  assert.equal(engine.getSnapshot().scene.layers.filter((layer) => layer.type === "assets").length, 1);
 });
 
 test("dragging inside a selected fog polygon translates every vertex", () => {
