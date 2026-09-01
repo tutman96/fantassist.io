@@ -112,13 +112,25 @@ test("removed marker layers are discarded at the compatibility boundary", () => 
 
 test("canonical effects fields do not reuse frozen stable-v1 marker identities", () => {
   const layer = currentSchema.lookupType("Layer");
+  const effect = currentSchema.lookupType("Effect");
   const rain = currentSchema.lookupType("RainEffect");
+  const embers = currentSchema.lookupType("EmbersEffect");
   assert.equal(layer.fields.effectsLayer.id, 4);
   assert.equal(layer.fields["markerLayer"], undefined);
   assert.equal(layer.lookupEnum("LayerType").values.EFFECTS, 3);
+  assert.equal(effect.fields.rain.id, 1);
+  assert.equal(effect.fields.embers.id, 2);
   assert.equal(rain.fields["angle"], undefined);
   assert.equal(rain.fields.dropSize.id, 11);
   assert.ok(rain.reserved?.some((entry) => Array.isArray(entry) && entry[0] === 10 && entry[1] === 10));
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(embers.fields).map(([name, field]) => [name, field.id])),
+    { id: 1, name: 2, visible: 3, vertices: 4, seed: 5, color: 6, opacity: 7, density: 8, speed: 9, particleSize: 10 }
+  );
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(currentSchema.lookupType("EmbersEffect.Color").fields).map(([name, field]) => [name, field.id])),
+    { r: 1, g: 2, b: 3 }
+  );
 
   const experimentalBytes = protobuf.Writer.create()
     .uint32(10 * 8 + 1).double(-0.2)
@@ -139,8 +151,7 @@ test("frozen stable-v1 decode and re-encode drops effects while preserving known
           name: "Weather",
           visible: true,
           type: "EFFECTS",
-          effects: [{
-            rain: {
+          effects: [{ rain: {
               id: "rain-1",
               name: "Rain",
               visible: true,
@@ -152,7 +163,18 @@ test("frozen stable-v1 decode and re-encode drops effects while preserving known
               speed: 3,
               dropSize: 1.25,
             },
-          }],
+          }, { embers: {
+            id: "embers-1",
+            name: "Embers",
+            visible: true,
+            vertices: [{ x: 5, y: 6 }, { x: 7, y: 8 }],
+            seed: 84,
+            color: { r: 255, g: 96, b: 24 },
+            opacity: 0.8,
+            density: 0.4,
+            speed: 2,
+            particleSize: 0.75,
+          } }],
         },
       },
       ...source.layers.slice(1),

@@ -47,8 +47,6 @@ test("profiles vary policy without varying the pipeline", () => {
   assert.equal(output.showGrid, false);
   assert.ok(editor.fogOpacity < output.fogOpacity);
   assert.equal(output.fogOpacity, 1);
-  assert.ok(editor.rainDensityScale < output.rainDensityScale);
-  assert.equal(editor.rainMaxDensity, 8);
-  assert.equal(output.rainMaxDensity, 8);
+  assert.ok(editor.particleDensityScale < output.particleDensityScale);
   assert.equal(createRenderPlan("editor", { showGrid: false }).showGrid, false);
 });

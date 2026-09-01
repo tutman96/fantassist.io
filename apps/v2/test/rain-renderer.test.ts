@@ -9,7 +9,8 @@ import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA, fitTableCamera, getTableBounds }
 import { hasVisibleAnimatedEffects } from "../src/renderer/animation-demand";
 import { compileProjection, gridToTargetPx, targetPxToGrid } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
-import { createSceneExecutor, rainVanishingPoint } from "../src/renderer/vgpu/scene-executor";
+import { rainVanishingPoint } from "../src/renderer/particle-effect-definitions";
+import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
 import { renderHeadlessScene } from "../scripts/render-scene";
 import { loadSceneShaders } from "../scripts/load-scene-shaders";
 
@@ -880,10 +881,10 @@ test("editor rain guides strengthen on selection while output omits all guides",
     assert.notEqual(digest(ordinaryEditor), digest(selectedEditor));
     assert.equal(digest(ordinaryOutput), digest(selectedOutput));
 
-    const token = engine.beginRainEffect("weather", { ...rainLayer().effects[0], id: "rain/draft", vertices: [] }, { x: 5, y: 5 });
-    engine.appendRainEffectVertex(token, { x: 10, y: 5 });
-    engine.appendRainEffectVertex(token, { x: 10, y: 10 });
-    engine.updateRainEffectCursor(token, { x: 5, y: 10 });
+    const token = engine.beginEffect("weather", { ...rainLayer().effects[0], id: "rain/draft", vertices: [] }, { x: 5, y: 5 });
+    engine.appendEffectVertex(token, { x: 10, y: 5 });
+    engine.appendEffectVertex(token, { x: 10, y: 10 });
+    engine.updateEffectCursor(token, { x: 5, y: 10 });
     await editor.replaceEffects(engine.getSnapshot());
     editor.setSnapshot(engine.getSnapshot());
     await editor.render(1);

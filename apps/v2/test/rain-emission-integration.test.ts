@@ -9,7 +9,8 @@ import { createSampleSceneDocument, freezeSceneDocument } from "../src/engine/sc
 import { DEFAULT_DISPLAY } from "../src/engine/table-camera";
 import { compileProjection, targetPxToGrid } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
-import { createSceneExecutor, rainVanishingPoint } from "../src/renderer/vgpu/scene-executor";
+import { rainVanishingPoint } from "../src/renderer/particle-effect-definitions";
+import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
 import { loadSceneShaders } from "../scripts/load-scene-shaders";
 
 const digest = (pixels: Uint8Array) => createHash("sha256").update(pixels).digest("hex");

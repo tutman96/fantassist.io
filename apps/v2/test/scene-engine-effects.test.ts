@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createSampleSceneDocument, freezeSceneDocument } from "../src/engine/scene-document";
-import type { RainEffect, SceneDocument } from "../src/engine/scene-document";
+import type { EmbersEffect, RainEffect, SceneDocument, SceneEffect } from "../src/engine/scene-document";
 import { createSceneEngine } from "../src/engine/scene-engine";
 import type { SceneCommand } from "../src/engine/scene-engine";
 
@@ -20,7 +20,21 @@ const RAIN: RainEffect = {
   dropSize: 0.8,
 };
 
-function effectsScene(effects: readonly RainEffect[] = []): SceneDocument {
+const EMBERS: EmbersEffect = {
+  id: "embers/one",
+  kind: "embers",
+  name: "Embers",
+  visible: true,
+  vertices: [{ x: 1, y: 2 }, { x: 9, y: 2 }, { x: 5, y: 8 }],
+  seed: 73,
+  color: { r: 255, g: 112, b: 38 },
+  opacity: 0.8,
+  density: 1.6,
+  speed: 1.2,
+  particleSize: 0.12,
+};
+
+function effectsScene(effects: readonly SceneEffect[] = []): SceneDocument {
   const scene = createSampleSceneDocument();
   return freezeSceneDocument({
     ...scene,
@@ -32,7 +46,7 @@ function effectsScene(effects: readonly RainEffect[] = []): SceneDocument {
   });
 }
 
-function effects(engine: ReturnType<typeof createSceneEngine>): readonly RainEffect[] {
+function effects(engine: ReturnType<typeof createSceneEngine>): readonly SceneEffect[] {
   const layer = engine.getSnapshot().scene.layers.find((candidate) => candidate.id === "weather");
   assert.ok(layer?.type === "effects");
   return layer.effects;
@@ -62,7 +76,8 @@ test("effect insert, update, remove, and global history preserve stable IDs and 
   assert.deepEqual(engine.dispatch({ type: "effect.update", layerId: "weather", effectId: RAIN.id, effect: updated }), {
     ok: true, changed: true, revision: 2,
   });
-  assert.equal(effects(engine)[0].dropSize, 1.2);
+  const updatedEffect = effects(engine)[0];
+  assert.equal(updatedEffect.kind === "rain" ? updatedEffect.dropSize : undefined, 1.2);
   engine.dispatch({ type: "table.camera", table: { ...engine.getSnapshot().scene.table, scale: 2 } });
   assert.equal(engine.dispatch({ type: "effect.remove", layerId: "weather", effectId: RAIN.id }).ok, true);
   assert.equal(engine.getSnapshot().selectedEffect, null);
@@ -76,6 +91,40 @@ test("effect insert, update, remove, and global history preserve stable IDs and 
   assert.deepEqual(effects(engine), [RAIN]);
   engine.redo();
   assert.deepEqual(effects(engine), [updated]);
+});
+
+test("mixed effect kinds share CRUD, immutable snapshots, and ordered history", () => {
+  const engine = createSceneEngine(effectsScene([RAIN]));
+  assert.equal(engine.dispatch({ type: "effect.insert", layerId: "weather", effect: EMBERS }).ok, true);
+  assert.deepEqual(effects(engine).map((effect) => effect.kind), ["rain", "embers"]);
+  const updated = { ...EMBERS, speed: 2.25, particleSize: 0.2 };
+  assert.equal(engine.dispatch({ type: "effect.update", layerId: "weather", effectId: EMBERS.id, effect: updated }).ok, true);
+  assert.deepEqual(effects(engine)[1], updated);
+  assert.equal(Object.isFrozen(effects(engine)[1]), true);
+  engine.undo();
+  assert.deepEqual(effects(engine)[1], EMBERS);
+  engine.undo();
+  assert.deepEqual(effects(engine), [RAIN]);
+});
+
+test("embers validation and generic polygon authoring reject malformed values and commit once", () => {
+  const engine = createSceneEngine(effectsScene());
+  for (const effect of [
+    { ...EMBERS, seed: -1 },
+    { ...EMBERS, seed: 0x1_0000_0000 },
+    { ...EMBERS, particleSize: 0 },
+    { ...EMBERS, particleSize: Number.POSITIVE_INFINITY },
+  ]) {
+    assert.equal(engine.dispatch({ type: "effect.insert", layerId: "weather", effect }).ok, false);
+  }
+  const token = engine.beginEffect("weather", { ...EMBERS, vertices: [] }, { x: 0, y: 0 });
+  engine.appendEffectVertex(token, { x: 4, y: 0 });
+  engine.appendEffectVertex(token, { x: 4, y: 4 });
+  engine.updateEffectCursor(token, { x: 0, y: 4 });
+  assert.deepEqual(engine.commitEffect(token), { ok: true, changed: true, revision: 1 });
+  assert.equal(effects(engine)[0].kind, "embers");
+  engine.undo();
+  assert.deepEqual(effects(engine), []);
 });
 
 test("effect commands reject malformed fields, duplicate IDs, changed IDs, and wrong layers", () => {
@@ -130,35 +179,35 @@ test("rain drawing previews cursor geometry, snaps, commits once, selects by ID,
   const base = effectsScene();
   const engine = createSceneEngine(freezeSceneDocument({ ...base, table: { ...base.table, displayGrid: true } }));
   const draft = { ...RAIN, vertices: [] };
-  engine.setRainCursor({ x: 0.94, y: 1.04 });
-  assert.deepEqual(engine.getSnapshot().rainCursorPoint, { x: 1, y: 1 });
+  engine.setEffectCursor({ x: 0.94, y: 1.04 });
+  assert.deepEqual(engine.getSnapshot().effectCursorPoint, { x: 1, y: 1 });
   assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 1, y: 1 });
   assert.equal(engine.getSnapshot().revision, 0);
-  const token = engine.beginRainEffect("weather", draft, { x: 0.94, y: 1.04 });
+  const token = engine.beginEffect("weather", draft, { x: 0.94, y: 1.04 });
   assert.equal(engine.getSnapshot().effectDrawingActive, true);
-  assert.deepEqual(engine.getSnapshot().rainCursorPoint, { x: 1, y: 1 });
+  assert.deepEqual(engine.getSnapshot().effectCursorPoint, { x: 1, y: 1 });
   assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: 1, y: 1 });
   assert.deepEqual(effects(engine)[0].vertices.slice(0, 1), [{ x: 1, y: 1 }]);
-  engine.appendRainEffectVertex(token, { x: 5.04, y: 1.02 });
-  engine.appendRainEffectVertex(token, { x: 4.97, y: 6.04 });
-  engine.updateRainEffectCursor(token, { x: 0.96, y: 5.98 });
+  engine.appendEffectVertex(token, { x: 5.04, y: 1.02 });
+  engine.appendEffectVertex(token, { x: 4.97, y: 6.04 });
+  engine.updateEffectCursor(token, { x: 0.96, y: 5.98 });
   assert.deepEqual(effects(engine)[0].vertices, [{ x: 1, y: 1 }, { x: 5, y: 1 }, { x: 5, y: 6 }, { x: 1, y: 6 }]);
   assert.equal(engine.getSnapshot().revision, 0);
-  assert.deepEqual(engine.commitActiveRainEffect(), { ok: true, changed: true, revision: 1 });
+  assert.deepEqual(engine.commitActiveEffect(), { ok: true, changed: true, revision: 1 });
   assert.equal(engine.getSnapshot().effectDrawingActive, false);
-  assert.equal(engine.getSnapshot().rainCursorPoint, null);
+  assert.equal(engine.getSnapshot().effectCursorPoint, null);
   assert.deepEqual(engine.getSnapshot().selectedEffect, { layerId: "weather", effectId: RAIN.id });
-  assert.deepEqual(engine.commitActiveRainEffect(), { ok: false, error: "No active rain effect", revision: 1 });
+  assert.deepEqual(engine.commitActiveEffect(), { ok: false, error: "No active effect", revision: 1 });
   engine.undo();
   assert.deepEqual(effects(engine), []);
 });
 
 test("rain drawing enforces three fixed vertices and supports cancellation", () => {
   const engine = createSceneEngine(effectsScene());
-  const token = engine.beginRainEffect("weather", { ...RAIN, vertices: [] }, { x: 0, y: 0 });
-  engine.appendRainEffectVertex(token, { x: 2, y: 0 });
-  assert.deepEqual(engine.commitRainEffect(token), {
-    ok: false, error: "Rain effects require at least three vertices", revision: 0,
+  const token = engine.beginEffect("weather", { ...RAIN, vertices: [] }, { x: 0, y: 0 });
+  engine.appendEffectVertex(token, { x: 2, y: 0 });
+  assert.deepEqual(engine.commitEffect(token), {
+    ok: false, error: "Effects require at least three vertices", revision: 0,
   });
   assert.equal(engine.getSnapshot().previewActive, true);
   engine.cancelPreview(token);
@@ -246,14 +295,14 @@ test("selected rain vertex drag snaps, previews immutably, cancels exactly, and 
   assert.ok(canceled.token);
   engine.updateEffectSelectionInteraction(canceled.token, { x: -2.04, y: 3.02 });
   assert.deepEqual(effects(engine)[0].vertices[0], { x: -2, y: 3 });
-  assert.deepEqual(engine.getSnapshot().rainCursorPoint, { x: -2, y: 3 });
+  assert.deepEqual(engine.getSnapshot().effectCursorPoint, { x: -2, y: 3 });
   assert.deepEqual(engine.getSnapshot().gridSnapPoint, { x: -2, y: 3 });
   assert.equal(engine.getSnapshot().revision, 0);
   assert.equal(Object.isFrozen(effects(engine)[0].vertices), true);
   assert.equal(Object.isFrozen(effects(engine)[0].vertices[0]), true);
   engine.cancelPreview(canceled.token);
   assert.deepEqual(effects(engine)[0], before);
-  assert.equal(engine.getSnapshot().rainCursorPoint, null);
+  assert.equal(engine.getSnapshot().effectCursorPoint, null);
 
   const committed = engine.beginEffectSelectionInteraction(before.vertices[0], 20);
   assert.ok(committed.token);

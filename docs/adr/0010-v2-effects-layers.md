@@ -53,6 +53,7 @@ message EffectsLayer {
 message Effect {
   oneof effectType {
     RainEffect rain = 1;
+    EmbersEffect embers = 2;
   }
 }
 
@@ -68,6 +69,19 @@ message RainEffect {
   double speed = 9;
   reserved 10;
   double dropSize = 11;
+}
+
+message EmbersEffect {
+  string id = 1;
+  string name = 2;
+  bool visible = 3;
+  repeated Vector2d vertices = 4;
+  uint32 seed = 5;
+  Color color = 6;
+  double opacity = 7;
+  double density = 8;
+  double speed = 9;
+  double particleSize = 10;
 }
 ```
 
@@ -144,6 +158,8 @@ Polygon fills reuse a renderer-owned concave tessellation utility generalized fr
 
 Animated particle effects use the reusable in-scope renderer library under `src/renderer/particles`. Its vgpu compute passes own current and target emission rates, fractional accumulation, monotonic emission sequence, parallel burst spawning, and a fixed particle ring in GPU storage. Particle records contain spawn time, lifetime, initialization seed, and allocation state. WGSL derives spawn position, projected motion, geometry, and opacity from each initialization seed and local renderer time. CPU responsibilities are setting target rate, advancing the local clock, and scheduling the compute dispatches. Cloud effects derive animation from procedural world-space fields. Additional stateful simulation is deferred until a concrete effect cannot be expressed with emitted records, deterministic shader initialization, or procedural fields.
 
+Particle effect lifecycle is shared. Each supported kind registers a renderer definition containing its shader, blend mode, quality-scaled density limit, lifetime policy, live uniforms, editor guide palette, and optional per-particle spawn context. The executor owns allocation, prewarming, rate changes, retiming, transitions, ordered drawing, draining, and disposal once for all registered particle effects. Editor definitions similarly own defaults and inspector range metadata, while effect icons and engine polygon authoring use exhaustive kind-aware entry points. Adding a particle effect must extend these exhaustive registries instead of copying the Rain lifecycle.
+
 Effect resources follow the existing renderer lifecycle:
 
 - Tessellate and pack geometry outside the frame loop.
@@ -219,11 +235,13 @@ The first implementation establishes reusable shader families rather than one un
 - Obscuring family: magical darkness within a polygon.
 - Point family: portal, vortex, aura, and ritual glyph within a radius.
 
-Additional candidates include ash, embers, leaves, sand, flower petals, spores, fireflies, webs, creeping vines, acid pools, lava, flowing water, ice fields, lightning barriers, electrical arcs, holy or necrotic auras, heat distortion, underwater caustics, dimensional tears, localized wind, dream distortion, gravity wells, and scene-wide lightning flashes.
+Additional candidates include ash, leaves, sand, flower petals, spores, fireflies, webs, creeping vines, acid pools, lava, flowing water, ice fields, lightning barriers, electrical arcs, holy or necrotic auras, heat distortion, underwater caustics, dimensional tears, localized wind, dream distortion, gravity wells, and scene-wide lightning flashes.
 
 Rain is viewed from above. Authored density maps to emissions per grid area per second. Every emission allocates one drop with a monotonic initialization seed. WGSL uses that seed to choose an independent ground-impact point, lifetime, perspective path, size, intensity, length, and width. A drop begins at low opacity at an outer point on the perspective ray, moves inward toward its own impact point, reaches the authored opacity during travel, then fades to zero. The next emission receives a new seed and path. Drops do not share a reset or global sideways fall angle.
 
 Rain position advances linearly in grid space. The vanishing point is the midpoint of the physical table bounds after applying table origin, scale, display resolution, and display size. Editor camera pan and zoom do not change it. A rain-specific GPU context stores the current vanishing point beside each newly initialized package particle slot; existing particles retain their original point when the table configuration changes. Perspective travel is proportional to distance from that snapshotted point, so drops near the center have less apparent lateral movement over the same interval while retaining the same depth speed. Streak length represents motion blur and scales with the square root of each particle's recorded fall speed. The shader evaluates an anisotropic Gaussian in grid units: `dropSize` controls only cross-streak sigma, while fall speed controls the longer longitudinal sigma. Both axes contract toward the vanishing point to match their lower apparent camera motion. Center opacity falls to 7.5 percent of authored strength and reaches full strength over six grid units. Per-emission seed variation keeps width within 90 to 110 percent and opacity within 82 to 100 percent of authored values. Streak dimensions remain stable during one drop's lifetime. The opacity envelope completes at 88 percent of the path, leaving the final 12 percent invisible before the particle record expires.
+
+Embers are also viewed from above. Their polygon is a source region: seeded particles spawn only inside it, then vertical lift toward the camera is represented by subtle growth while randomized planar convection and curl keep movement independent of screen north. Particles use additive warm-core and soft-halo composition, seeded size and flicker variation, and a smooth lifetime envelope. `density` is emissions per grid area per second, `speed` controls lift lifetime, and `particleSize` is authored in grid units. Embers are decorative emissive pixels and do not implicitly become scene lights.
 
 ## Performance And Caching
 

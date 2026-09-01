@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BrickWall, CloudFog, CloudRain, Eraser, Eye, EyeOff, GripVertical, ImageIcon, Layers3, Lightbulb, MousePointer2, Pencil, Plus, Trash2, WandSparkles } from "lucide-react";
+import { BrickWall, CloudFog, Eraser, Eye, EyeOff, GripVertical, ImageIcon, Layers3, Lightbulb, MousePointer2, Pencil, Plus, Trash2, WandSparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,8 +12,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator";
 import type { PreviewToken, SceneEngine, SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { LightSelection } from "@/engine/scene-engine";
-import type { RainEffect, SceneLayer, SceneLight } from "@/engine/scene-document";
+import type { SceneEffect, SceneLayer, SceneLight } from "@/engine/scene-document";
 import { EditorPanel, Metric } from "@/features/editor/editor-panel";
+import { editorEffectDefinition } from "@/features/editor/effect-definitions";
+import { EffectIcon } from "@/features/editor/effect-icon";
 import { AssetThumbnail } from "@/features/editor/asset-thumbnail";
 import { AssetCalibrationDialog } from "@/features/editor/asset-calibration-dialog";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
@@ -53,6 +55,7 @@ export function WorkspacePanels({
   const selectedEffect = selectedEffectsLayer?.type === "effects" && effectSelection
     ? selectedEffectsLayer.effects.find((effect) => effect.id === effectSelection.effectId)
     : undefined;
+  const selectedEffectDefinition = selectedEffect ? editorEffectDefinition(selectedEffect) : undefined;
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 640px)");
@@ -79,8 +82,8 @@ export function WorkspacePanels({
         onOpenChange={setInspectorOpen}
         eyebrow="Inspector"
         title={assetSelected ? asset.name : selectedEffect ? selectedEffect.name : selectedLight && lightSelection ? `Light ${lightSelection.lightIndex + 1}` : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : fogSelection.collection === "clear" ? "Clear" : "Wall"} ${fogSelection.collection === "wall" ? "" : "polygon "}${fogSelection.polygonIndex + 1}` : sceneSnapshot.scene.name}
-        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedEffect ? `Rain area · ${selectedEffect.vertices.length} points · revision ${sceneSnapshot.revision}` : selectedLight ? `Colored light · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
-        icon={assetSelected ? <ImageIcon /> : selectedEffect ? <CloudRain /> : selectedLight ? <Lightbulb /> : selectedFogPolygon ? fogSelection?.collection === "wall" ? <BrickWall /> : <CloudFog /> : <MousePointer2 />}
+        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedEffect && selectedEffectDefinition ? `${selectedEffectDefinition.label} area · ${selectedEffect.vertices.length} points · revision ${sceneSnapshot.revision}` : selectedLight ? `Colored light · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
+        icon={assetSelected ? <ImageIcon /> : selectedEffect ? <EffectIcon effect={selectedEffect.kind} /> : selectedLight ? <Lightbulb /> : selectedFogPolygon ? fogSelection?.collection === "wall" ? <BrickWall /> : <CloudFog /> : <MousePointer2 />}
         className="top-20 right-3 left-3 max-h-[55%] sm:pointer-events-auto sm:relative sm:top-auto sm:right-auto sm:left-auto sm:flex sm:max-h-[55%] sm:w-full sm:shrink-0 sm:flex-col"
         contentClassName="max-h-[calc(55svh-5rem)] sm:h-full sm:max-h-none"
       >
@@ -90,7 +93,7 @@ export function WorkspacePanels({
             sceneSnapshot={sceneSnapshot}
           />
         ) : selectedEffect && effectSelection ? (
-          <RainInspector key={`${effectSelection.layerId}:${effectSelection.effectId}:${sceneSnapshot.revision}`} engine={engine} selection={effectSelection} rain={selectedEffect} />
+          <EffectInspector key={`${effectSelection.layerId}:${effectSelection.effectId}:${sceneSnapshot.revision}`} engine={engine} selection={effectSelection} effect={selectedEffect} />
         ) : selectedLight && lightSelection ? (
           <LightInspector key={`${lightSelection.layerId}:${lightSelection.lightIndex}:${sceneSnapshot.revision}`} engine={engine} selection={lightSelection} light={selectedLight} />
         ) : selectedFogPolygon && fogSelection ? (
@@ -219,7 +222,7 @@ export function WorkspacePanels({
                       const selected = sceneSnapshot.selectedEffect?.layerId === layer.id && sceneSnapshot.selectedEffect.effectId === effect.id;
                       return (
                         <div key={effect.id} className={`flex min-h-8 items-center gap-1 border border-transparent pr-4 pl-7 text-[9px] transition-colors ${selected ? "border-cyan-300/20 bg-gradient-to-r from-cyan-500/14 to-blue-500/8" : "hover:border-cyan-300/10 hover:bg-cyan-400/5"}`}>
-                          <CloudRain className="size-3 text-cyan-100/70" aria-hidden="true" />
+                           <EffectIcon effect={effect.kind} className={effect.kind === "rain" ? "size-3 text-cyan-100/70" : "size-3 text-orange-300/80"} aria-hidden="true" />
                           <Button
                             type="button"
                             variant="ghost"
@@ -513,12 +516,12 @@ function AssetInspector({ engine, sceneSnapshot }: { readonly engine: SceneEngin
   );
 }
 
-function RainInspector({ engine, rain, selection }: {
+function EffectInspector({ effect, engine, selection }: {
   readonly engine: SceneEngine;
-  readonly rain: RainEffect;
+  readonly effect: SceneEffect;
   readonly selection: NonNullable<SceneEngineSnapshot["selectedEffect"]>;
 }) {
-  const [draft, setDraft] = useState(rain);
+  const [draft, setDraft] = useState(effect);
   const previewToken = useRef<PreviewToken | null>(null);
   const beginPreview = () => {
     if (previewToken.current) return;
@@ -526,7 +529,7 @@ function RainInspector({ engine, rain, selection }: {
     const current = layer?.type === "effects" ? layer.effects.find((effect) => effect.id === selection.effectId) : undefined;
     if (current) previewToken.current = engine.beginPreview({ type: "effect.update", layerId: selection.layerId, effectId: selection.effectId, effect: current });
   };
-  const update = (next: RainEffect) => {
+  const update = (next: SceneEffect) => {
     beginPreview();
     setDraft(next);
     if (previewToken.current) engine.updatePreview(previewToken.current, {
@@ -545,16 +548,17 @@ function RainInspector({ engine, rain, selection }: {
     if (previewToken.current) engine.cancelPreview(previewToken.current);
   }, [engine]);
   const hsl = rgbToHsl(draft.color);
+  const definition = editorEffectDefinition(draft);
   const updateHsl = (next: Partial<typeof hsl>) => update({ ...draft, color: hslToRgb({ ...hsl, ...next }) });
 
   return (
     <div className="space-y-3 p-2.5">
       <fieldset className="space-y-2 border border-cyan-300/12 bg-cyan-950/10 p-2">
-        <legend className="px-1 font-mono text-[9px] tracking-[0.12em] text-cyan-100/60 uppercase">Rain</legend>
-        <RainSlider label="Emission density" value={draft.density} min={0.1} max={8} step={0.1} display={`${draft.density.toFixed(1)} / grid² / s`} onStart={beginPreview} onCommit={commit} onChange={(density) => update({ ...draft, density })} />
-        <RainSlider label="Fall speed" value={draft.speed} min={0.5} max={24} step={0.5} display={draft.speed.toFixed(1)} onStart={beginPreview} onCommit={commit} onChange={(speed) => update({ ...draft, speed })} />
-        <RainSlider label="Drop size" value={draft.dropSize} min={0.05} max={2} step={0.05} display={`${draft.dropSize.toFixed(2)} grid`} onStart={beginPreview} onCommit={commit} onChange={(dropSize) => update({ ...draft, dropSize })} />
-        <RainSlider label="Opacity" value={draft.opacity * 100} min={1} max={100} step={1} display={`${Math.round(draft.opacity * 100)}%`} onStart={beginPreview} onCommit={commit} onChange={(opacity) => update({ ...draft, opacity: opacity / 100 })} />
+        <legend className="px-1 font-mono text-[9px] tracking-[0.12em] text-cyan-100/60 uppercase">{definition.label}</legend>
+        <EffectSlider label="Emission density" value={draft.density} min={0.1} max={definition.densityMax} step={0.1} display={`${draft.density.toFixed(1)} / grid² / s`} onStart={beginPreview} onCommit={commit} onChange={(density) => update({ ...draft, density })} />
+        <EffectSlider label={definition.speed.label} value={draft.speed} min={definition.speed.min} max={definition.speed.max} step={definition.speed.step} display={draft.speed.toFixed(definition.speed.fractionDigits)} onStart={beginPreview} onCommit={commit} onChange={(speed) => update({ ...draft, speed })} />
+        <EffectSlider label={definition.size.label} value={definition.readSize(draft)} min={definition.size.min} max={definition.size.max} step={definition.size.step} display={`${definition.readSize(draft).toFixed(definition.size.fractionDigits)} grid`} onStart={beginPreview} onCommit={commit} onChange={(size) => update(definition.writeSize(draft, size))} />
+        <EffectSlider label="Opacity" value={draft.opacity * 100} min={1} max={100} step={1} display={`${Math.round(draft.opacity * 100)}%`} onStart={beginPreview} onCommit={commit} onChange={(opacity) => update({ ...draft, opacity: opacity / 100 })} />
       </fieldset>
       <fieldset className="space-y-2 border border-violet-300/12 bg-black/15 p-2">
         <legend className="px-1 font-mono text-[9px] tracking-[0.12em] text-violet-100/55 uppercase">Color · {rgbHex(draft.color).toUpperCase()}</legend>
@@ -566,18 +570,18 @@ function RainInspector({ engine, rain, selection }: {
         <Button
           type="button"
           variant="outline"
-          onClick={() => engine.dispatch({ type: "effect.update", layerId: selection.layerId, effectId: selection.effectId, effect: { ...rain, visible: !rain.visible } })}
+          onClick={() => engine.dispatch({ type: "effect.update", layerId: selection.layerId, effectId: selection.effectId, effect: { ...effect, visible: !effect.visible } })}
           className="h-8 rounded-none border-cyan-300/18 bg-cyan-400/5 text-[10px] text-cyan-50/75"
         >
-          {rain.visible ? <EyeOff /> : <Eye />} {rain.visible ? "Stop rain" : "Start rain"}
+          {effect.visible ? <EyeOff /> : <Eye />} {effect.visible ? `Stop ${effect.kind}` : `Start ${effect.kind}`}
         </Button>
-        <Button type="button" variant="destructive" onClick={() => engine.dispatch({ type: "effect.remove", layerId: selection.layerId, effectId: selection.effectId })} className="h-8 rounded-none text-[10px]"><Trash2 /> Delete rain</Button>
+        <Button type="button" variant="destructive" onClick={() => engine.dispatch({ type: "effect.remove", layerId: selection.layerId, effectId: selection.effectId })} className="h-8 rounded-none text-[10px]"><Trash2 /> Delete {effect.kind}</Button>
       </div>
     </div>
   );
 }
 
-function RainSlider({ display, label, max, min, onChange, onCommit, onStart, step, value }: {
+function EffectSlider({ display, label, max, min, onChange, onCommit, onStart, step, value }: {
   readonly display: string;
   readonly label: string;
   readonly max: number;
@@ -591,7 +595,7 @@ function RainSlider({ display, label, max, min, onChange, onCommit, onStart, ste
   return (
     <label className="grid gap-1 font-mono text-[8px] tracking-[0.08em] text-violet-100/45 uppercase">
       <span className="flex justify-between"><span>{label}</span><span className="text-cyan-100/65">{display}</span></span>
-      <input type="range" min={min} max={max} step={step} value={value} onPointerDown={onStart} onPointerUp={onCommit} onKeyDown={onStart} onKeyUp={onCommit} onChange={(event) => onChange(Number(event.currentTarget.value))} className="h-3 w-full cursor-ew-resize accent-cyan-300" />
+      <input type="range" min={min} max={max} step={step} value={value} onPointerDown={onStart} onPointerUp={onCommit} onPointerCancel={onCommit} onBlur={onCommit} onKeyDown={(event) => { if (isRangeChangeKey(event.key)) onStart(); }} onKeyUp={(event) => { if (isRangeChangeKey(event.key)) onCommit(); }} onChange={(event) => onChange(Number(event.currentTarget.value))} className="h-3 w-full cursor-ew-resize accent-cyan-300" />
     </label>
   );
 }
@@ -674,7 +678,11 @@ function ColorSlider({ background, label, max, min, onChange, onCommit, onStart,
   readonly onStart: () => void;
   readonly value: number;
 }) {
-  return <label className="grid gap-1 font-mono text-[8px] tracking-[0.08em] text-violet-100/45 uppercase">{label}<input type="range" min={min} max={max} step="1" value={value} onPointerDown={onStart} onPointerUp={onCommit} onKeyDown={onStart} onKeyUp={onCommit} onChange={(event) => onChange(Number(event.currentTarget.value))} className="h-3 w-full cursor-ew-resize appearance-none border border-white/10 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-[#100d20]" style={{ background }} /></label>;
+  return <label className="grid gap-1 font-mono text-[8px] tracking-[0.08em] text-violet-100/45 uppercase">{label}<input type="range" min={min} max={max} step="1" value={value} onPointerDown={onStart} onPointerUp={onCommit} onPointerCancel={onCommit} onBlur={onCommit} onKeyDown={(event) => { if (isRangeChangeKey(event.key)) onStart(); }} onKeyUp={(event) => { if (isRangeChangeKey(event.key)) onCommit(); }} onChange={(event) => onChange(Number(event.currentTarget.value))} className="h-3 w-full cursor-ew-resize appearance-none border border-white/10 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-[-3px] [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-[#100d20]" style={{ background }} /></label>;
+}
+
+function isRangeChangeKey(key: string): boolean {
+  return key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown" || key === "Home" || key === "End" || key === "PageUp" || key === "PageDown";
 }
 
 function FogPolygonInspector({

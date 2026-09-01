@@ -7,10 +7,11 @@ import type { GridPoint } from "@/engine/table-camera";
 import type { AssetHandle, PreviewToken, ResizeHandle, SceneEngine, TableResizeHandle } from "@/engine/scene-engine";
 import type { FogPolygonCollection } from "@/engine/scene-engine";
 import { snapPointToGrid } from "@/engine/scene-engine";
-import type { RainEffect, SceneLight } from "@/engine/scene-document";
+import type { SceneLight } from "@/engine/scene-document";
 import type { TableSession } from "@/engine/table-session";
 import type { EditorTool, EffectTool } from "@/features/editor/editor-tool";
 import { ensureEffectsLayer, ensureFogLayer } from "@/features/editor/editor-tool";
+import { createDefaultEffect } from "@/features/editor/effect-definitions";
 import type { RenderProfile } from "@/renderer/scene-renderer";
 
 type PointerDrag =
@@ -33,7 +34,7 @@ export function useEditorInteractions({
   effectTool,
   onToolChange,
   profile,
-  rainLayerId,
+  effectsLayerId,
   session,
   tool,
 }: {
@@ -43,7 +44,7 @@ export function useEditorInteractions({
   readonly effectTool: EffectTool;
   readonly onToolChange: (tool: EditorTool) => void;
   readonly profile: RenderProfile;
-  readonly rainLayerId?: string | null;
+  readonly effectsLayerId?: string | null;
   readonly session: TableSession;
   readonly tool: EditorTool;
 }) {
@@ -52,7 +53,7 @@ export function useEditorInteractions({
   const spacePressed = useRef(false);
   const drag = useRef<PointerDrag | null>(null);
   const fogDraft = useRef<PreviewToken | null>(null);
-  const rainDraft = useRef<PreviewToken | null>(null);
+  const effectDraft = useRef<PreviewToken | null>(null);
   const lightDraft = useRef<{ readonly token: PreviewToken; readonly layerId: string; readonly index: number } | null>(null);
   const previousTool = useRef(tool);
   const touchPoints = useRef(new Map<number, GridPoint>());
@@ -75,9 +76,9 @@ export function useEditorInteractions({
           engine.cancelPreview(fogDraft.current);
           fogDraft.current = null;
         }
-        if (rainDraft.current) {
-          engine.cancelPreview(rainDraft.current);
-          rainDraft.current = null;
+        if (effectDraft.current) {
+          engine.cancelPreview(effectDraft.current);
+          effectDraft.current = null;
         }
         if (lightDraft.current) {
           engine.cancelPreview(lightDraft.current.token);
@@ -99,10 +100,10 @@ export function useEditorInteractions({
           event.preventDefault();
           const result = engine.commitFogPolygon(fogDraft.current);
           if (result.ok) fogDraft.current = null;
-        } else if (rainDraft.current) {
+        } else if (effectDraft.current) {
           event.preventDefault();
-          const result = engine.commitRainEffect(rainDraft.current);
-          if (result.ok) rainDraft.current = null;
+          const result = engine.commitEffect(effectDraft.current);
+          if (result.ok) effectDraft.current = null;
         }
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z" && !interactive) {
@@ -147,22 +148,22 @@ export function useEditorInteractions({
       engine.cancelPreview(fogDraft.current);
       fogDraft.current = null;
     }
-    if (tool !== previousTool.current && rainDraft.current) {
-      engine.cancelPreview(rainDraft.current);
-      rainDraft.current = null;
+    if (tool !== previousTool.current && effectDraft.current) {
+      engine.cancelPreview(effectDraft.current);
+      effectDraft.current = null;
     }
     if (tool !== previousTool.current && lightDraft.current) {
       engine.cancelPreview(lightDraft.current.token);
       lightDraft.current = null;
     }
     if (tool !== previousTool.current) engine.setFogCursor(null, "fog");
-    if (tool !== previousTool.current) engine.setRainCursor(null);
+    if (tool !== previousTool.current) engine.setEffectCursor(null);
     previousTool.current = tool;
   }, [engine, tool]);
 
   useEffect(() => engine.subscribe(() => {
     if (fogDraft.current && !engine.getSnapshot().fogDrawingActive) fogDraft.current = null;
-    if (rainDraft.current && !engine.getSnapshot().effectDrawingActive) rainDraft.current = null;
+    if (effectDraft.current && !engine.getSnapshot().effectDrawingActive) effectDraft.current = null;
     if (lightDraft.current && !engine.getSnapshot().previewActive) lightDraft.current = null;
   }), [engine]);
 
@@ -200,7 +201,7 @@ export function useEditorInteractions({
         setTableHandle(null);
       }
       if (!fogDraft.current && isFogPolygonTool(tool)) engine.setFogCursor(null, "fog");
-      if (!rainDraft.current && tool === "effects") engine.setRainCursor(null);
+      if (!effectDraft.current && tool === "effects") engine.setEffectCursor(null);
       if (lightDraft.current) {
         engine.cancelPreview(lightDraft.current.token);
         lightDraft.current = null;
@@ -222,8 +223,8 @@ export function useEditorInteractions({
         if (isPolygonTool(tool)) {
           const pointGrid = pointerGrid(event, session);
           if (tool === "effects") {
-            if (rainDraft.current) engine.appendRainEffectVertex(rainDraft.current, pointGrid);
-            else rainDraft.current = engine.beginRainEffect(rainLayerId ?? ensureEffectsLayer(engine), defaultEffect(effectTool), pointGrid);
+            if (effectDraft.current) engine.appendEffectVertex(effectDraft.current, pointGrid);
+            else effectDraft.current = engine.beginEffect(effectsLayerId ?? ensureEffectsLayer(engine), createDefaultEffect(effectTool), pointGrid);
           } else if (fogDraft.current) {
             engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
           } else {
@@ -277,8 +278,8 @@ export function useEditorInteractions({
         if (isPolygonTool(tool)) {
           const pointGrid = pointerGrid(event, session);
           if (tool === "effects") {
-            if (rainDraft.current) engine.appendRainEffectVertex(rainDraft.current, pointGrid);
-            else rainDraft.current = engine.beginRainEffect(rainLayerId ?? ensureEffectsLayer(engine), defaultEffect(effectTool), pointGrid);
+            if (effectDraft.current) engine.appendEffectVertex(effectDraft.current, pointGrid);
+            else effectDraft.current = engine.beginEffect(effectsLayerId ?? ensureEffectsLayer(engine), createDefaultEffect(effectTool), pointGrid);
           } else if (fogDraft.current) {
             engine.appendFogPolygonVertex(fogDraft.current, pointGrid);
           } else {
@@ -350,8 +351,8 @@ export function useEditorInteractions({
       if (isPolygonTool(tool)) {
         const point = pointerGrid(event, session);
         if (tool === "effects") {
-          if (rainDraft.current) engine.updateRainEffectCursor(rainDraft.current, point);
-          else engine.setRainCursor(point);
+          if (effectDraft.current) engine.updateEffectCursor(effectDraft.current, point);
+          else engine.setEffectCursor(point);
         } else if (fogDraft.current) engine.updateFogPolygonCursor(fogDraft.current, point);
         else engine.setFogCursor(point, polygonCollection(tool));
       }
@@ -462,9 +463,9 @@ export function useEditorInteractions({
     onDoubleClick(event: React.MouseEvent<HTMLCanvasElement>) {
       if (!isPolygonTool(tool)) return;
       event.preventDefault();
-      if (tool === "effects" && rainDraft.current) {
-        const result = engine.commitRainEffect(rainDraft.current);
-        if (result.ok) rainDraft.current = null;
+      if (tool === "effects" && effectDraft.current) {
+        const result = engine.commitEffect(effectDraft.current);
+        if (result.ok) effectDraft.current = null;
       } else if (tool !== "effects" && fogDraft.current) {
         const result = engine.commitFogPolygon(fogDraft.current);
         if (result.ok) fogDraft.current = null;
@@ -496,23 +497,6 @@ function isFogPolygonTool(tool: EditorTool): tool is "fog" | "fog-clear" | "wall
 
 function polygonCollection(tool: "fog" | "fog-clear" | "wall"): FogPolygonCollection {
   return tool === "fog" ? "fog" : tool === "fog-clear" ? "clear" : "wall";
-}
-
-function defaultEffect(effect: EffectTool): RainEffect {
-  if (effect !== "rain") throw new Error(`Unsupported effect '${effect}'`);
-  return {
-    id: crypto.randomUUID(),
-    kind: "rain",
-    name: "Rain",
-    visible: true,
-    vertices: [],
-    seed: crypto.getRandomValues(new Uint32Array(1))[0],
-    color: { r: 166, g: 211, b: 255 },
-    opacity: 0.2,
-    density: 3.5,
-    speed: 9,
-    dropSize: 0.3,
-  };
 }
 
 function defaultLight(position: GridPoint): SceneLight {

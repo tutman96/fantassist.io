@@ -18,6 +18,20 @@ const rain = {
   dropSize: 0.65,
 };
 
+const embers = {
+  id: "embers",
+  kind: "embers" as const,
+  name: "Embers",
+  visible: true,
+  vertices: rain.vertices,
+  seed: 17,
+  color: { r: 255, g: 112, b: 38 },
+  opacity: 0.8,
+  density: 1.6,
+  speed: 1.2,
+  particleSize: 0.12,
+};
+
 const effectsLayer = (visible = true) => ({ id: "weather", name: "Weather", type: "effects" as const, visible, effects: [rain] });
 
 test("new effects enter over 240ms smoothstep and keep animation demand", () => {
@@ -90,4 +104,19 @@ test("an effect deletion retains its exact position inside a surviving layer", (
   }));
   assert.deepEqual(model.effectOrder.get(layer.id), [rain.id, second.id, third.id]);
   assert.equal(model.entries.find((entry) => entry.effect.id === second.id)?.present, false);
+});
+
+test("mixed effect kinds preserve one ordered transition lifecycle", () => {
+  const base = createSampleSceneDocument();
+  const layer = { ...effectsLayer(), effects: [rain, embers] };
+  const scene = freezeSceneDocument({ ...base, layers: [...base.layers, layer] });
+  let model = createInitialEffectTransitions(scene);
+  assert.deepEqual(model.entries.map((entry) => entry.effect.kind), ["rain", "embers"]);
+  model = reconcileEffectTransitions(model, freezeSceneDocument({
+    ...scene,
+    layers: scene.layers.map((candidate) => candidate.id === layer.id ? { ...layer, effects: [embers] } : candidate),
+  }));
+  assert.deepEqual(model.effectOrder.get(layer.id), [rain.id, embers.id]);
+  assert.equal(model.entries.find((entry) => entry.effect.id === rain.id)?.present, false);
+  assert.equal(model.entries.find((entry) => entry.effect.id === embers.id)?.target, 1);
 });

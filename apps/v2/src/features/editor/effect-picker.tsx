@@ -1,21 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { CloudRain, WandSparkles } from "lucide-react";
+import { WandSparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { EffectTool } from "@/features/editor/editor-tool";
+import { EDITOR_EFFECT_DEFINITIONS } from "@/features/editor/effect-definitions";
+import { EffectIcon } from "@/features/editor/effect-icon";
 
-const EFFECT_OPTIONS = [
-  { effect: "rain", label: "Rain", Icon: CloudRain },
-] as const satisfies ReadonlyArray<{
-  readonly effect: EffectTool;
-  readonly label: string;
-  readonly Icon: typeof CloudRain;
-}>;
+const EFFECT_OPTIONS = Object.values(EDITOR_EFFECT_DEFINITIONS).map((definition) => ({
+  effect: definition.kind,
+  label: definition.label,
+}));
 
 export function EffectPicker({ active, effect, label = "Effects", onSelect }: {
   readonly active: boolean;
@@ -61,7 +60,7 @@ export function EffectPicker({ active, effect, label = "Effects", onSelect }: {
             }}
             className="w-full justify-start rounded-none text-xs text-violet-100/75 aria-pressed:bg-blue-500/25 aria-pressed:text-white"
           >
-            <option.Icon aria-hidden="true" /> {option.label}
+            <EffectIcon effect={option.effect} aria-hidden="true" /> {option.label}
           </Button>
         ))}
       </PopoverContent>

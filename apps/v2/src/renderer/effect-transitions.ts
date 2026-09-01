@@ -1,10 +1,10 @@
-import type { RainEffect, SceneDocument } from "@/engine/scene-document";
+import type { SceneDocument, SceneEffect } from "@/engine/scene-document";
 
 export const EFFECT_TRANSITION_DURATION_SECONDS = 0.24;
 
 export interface EffectTransitionEntry {
   readonly layerId: string;
-  readonly effect: RainEffect;
+  readonly effect: SceneEffect;
   readonly present: boolean;
   readonly progress: number;
   readonly target: 0 | 1;

@@ -4,15 +4,15 @@ import { createParticleEmitter } from "../particles/particle-emitter";
 import type { ParticleEmitter } from "../particles/particle-emitter";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
-import type { RainEffect, SceneLight } from "../../engine/scene-document";
-import { getTableBounds } from "../../engine/table-camera";
-import type { DisplayConfiguration, TableCamera } from "../../engine/table-camera";
+import type { SceneEffect, SceneLight } from "../../engine/scene-document";
 import { advanceEffectTransitions, createInitialEffectTransitions, hasEffectAnimationDemand, reconcileEffectTransitions } from "../effect-transitions";
 import { fogHandleVertices, outlineFogPolygons, outlinePolygon, outlineWallPolygons, polygonHandleVertices, tessellateFogPolygons, wallSegmentVertices } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
 import { compileSceneLayerOperations, FOG_EDGE_SPREAD_GRID } from "../render-plan";
 import type { RenderPlan, SceneLayerOperation } from "../render-plan";
+import { particleEffectDefinition } from "../particle-effect-definitions";
+import type { ParticleEffectDefinition } from "../particle-effect-definitions";
 import { compileProjection, projectionUniforms } from "../projection";
 import type { RenderView } from "../projection";
 import type { SceneShaders } from "./scene-shaders";
@@ -84,16 +84,18 @@ interface FogDrawEntry {
   readonly geometries: readonly Geometry[];
 }
 
-interface RainDrawEntry {
+interface EffectDrawEntry {
   readonly layerId: string;
   readonly effectId: string;
+  readonly definition: ParticleEffectDefinition;
   readonly drawable?: Draw;
   readonly guide?: Draw;
   readonly handles?: Draw;
   readonly geometries: readonly Geometry[];
   readonly polygonStorage: StorageBuffer & { destroy(): void };
-  readonly contextStorage: StorageBuffer & { destroy(): void };
-  readonly contextInitializer: Compute;
+  readonly contextStorage?: StorageBuffer & { destroy(): void };
+  readonly contextInitializer?: Compute;
+  readonly contextBytes: number;
   readonly emitter: ParticleEmitter;
   emissionRate: number;
   targetEmissionRate: number;
@@ -109,13 +111,6 @@ const EDITOR_RADIANCE_SCALE = 8;
 const OUTPUT_RADIANCE_SCALE = 2;
 const MAX_RADIANCE_CASCADES = 6;
 const WALL_BOUNCE_GAIN = 1.4;
-const RAIN_CONTEXT_BYTES = 16;
-
-export function rainVanishingPoint(table: TableCamera, display: DisplayConfiguration): readonly [number, number] {
-  const bounds = getTableBounds(table, display);
-  return [(bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2];
-}
-
 function radianceConfig(size: readonly [number, number], view: RenderView, scale: number) {
   const maxWidth = Math.max(1, Math.ceil(size[0] / scale));
   const maxHeight = Math.max(1, Math.ceil(size[1] / scale));
@@ -142,25 +137,21 @@ function radianceLightData(lights: readonly SceneLight[]): Float32Array<ArrayBuf
   ]));
 }
 
-function rainEmitterGeometry(rain: RainEffect) {
-  if (rain.vertices.length === 0) return { min: [0, 0] as const, max: [0, 0] as const, boundsArea: 0, polygonArea: 0 };
-  const xs = rain.vertices.map((vertex) => vertex.x);
-  const ys = rain.vertices.map((vertex) => vertex.y);
+function effectEmitterGeometry(sceneEffect: SceneEffect) {
+  if (sceneEffect.vertices.length === 0) return { min: [0, 0] as const, max: [0, 0] as const, boundsArea: 0, polygonArea: 0 };
+  const xs = sceneEffect.vertices.map((vertex) => vertex.x);
+  const ys = sceneEffect.vertices.map((vertex) => vertex.y);
   const min = [Math.min(...xs), Math.min(...ys)] as const;
   const max = [Math.max(...xs), Math.max(...ys)] as const;
-  const polygonArea = Math.abs(rain.vertices.reduce((sum, vertex, index) => {
-    const next = rain.vertices[(index + 1) % rain.vertices.length];
+  const polygonArea = Math.abs(sceneEffect.vertices.reduce((sum, vertex, index) => {
+    const next = sceneEffect.vertices[(index + 1) % sceneEffect.vertices.length];
     return sum + vertex.x * next.y - next.x * vertex.y;
   }, 0)) / 2;
   return { min, max, boundsArea: Math.max(0, max[0] - min[0]) * Math.max(0, max[1] - min[1]), polygonArea };
 }
 
-function rainPoolCapacity(emissionRate: number, maxLifetime: number): number {
+function effectPoolCapacity(emissionRate: number, maxLifetime: number): number {
   return Math.max(1, Math.min(12_000, Math.ceil(emissionRate * maxLifetime * 1.25)));
-}
-
-function rainParticleLifetime(speed: number): number {
-  return 1 / (Math.max(speed, 0.5) * 0.45 * 0.48);
 }
 
 export function createSceneExecutor(
@@ -223,28 +214,28 @@ export function createSceneExecutor(
       asset_rotation: (transform.rotation * Math.PI) / 180,
       selected: asset && plan.showEditorGrid && asset.visible && layerVisible ? 1 : 0,
       table_editing: tableEditing && plan.showEditorGrid ? 1 : 0,
-      interaction_point: [snapshot.fogCursorPoint?.x ?? snapshot.rainCursorPoint?.x ?? 0, snapshot.fogCursorPoint?.y ?? snapshot.rainCursorPoint?.y ?? 0],
+      interaction_point: [snapshot.fogCursorPoint?.x ?? snapshot.effectCursorPoint?.x ?? 0, snapshot.fogCursorPoint?.y ?? snapshot.effectCursorPoint?.y ?? 0],
       snap_point: [snapshot.gridSnapPoint?.x ?? 0, snapshot.gridSnapPoint?.y ?? 0],
-      interaction_active: (snapshot.fogCursorPoint || snapshot.rainCursorPoint) && plan.showEditorGrid ? 1 : 0,
+      interaction_active: (snapshot.fogCursorPoint || snapshot.effectCursorPoint) && plan.showEditorGrid ? 1 : 0,
       interaction_clear: snapshot.fogCursorCollection === "clear" ? 1 : 0,
       interaction_wall: snapshot.fogCursorCollection === "wall" ? 1 : 0,
-      interaction_effect: snapshot.rainCursorPoint && !snapshot.fogCursorPoint ? 1 : 0,
+      interaction_effect: snapshot.effectCursorPoint && !snapshot.fogCursorPoint ? 1 : 0,
       snap_active: snapshot.gridSnapPoint && plan.showEditorGrid ? 1 : 0,
     };
   };
-  const rainParams = (
-    rain: RainEffect,
+  const particleEffectParams = (
+    sceneEffect: SceneEffect,
     time: number,
     emitterMin: readonly [number, number] = [0, 0],
     emitterMax: readonly [number, number] = [0, 0],
-    polygonVertexCount = rain.vertices.length,
+    polygonVertexCount = sceneEffect.vertices.length,
   ) => ({
     ...spatialParams(),
     time,
-    seed: rain.seed,
-    color: [rain.color.r / 255, rain.color.g / 255, rain.color.b / 255],
-    opacity: rain.opacity,
-    drop_size: Math.max(rain.dropSize, 0),
+    seed: sceneEffect.seed,
+    color: [sceneEffect.color.r / 255, sceneEffect.color.g / 255, sceneEffect.color.b / 255],
+    opacity: sceneEffect.opacity,
+    ...particleEffectDefinition(sceneEffect).liveUniforms(sceneEffect),
     emitter_min: emitterMin,
     emitter_max: emitterMax,
     polygon_vertex_count: polygonVertexCount,
@@ -464,110 +455,118 @@ export function createSceneExecutor(
       }];
     });
 
-  const createRainEntry = (layerId: string, sceneEffect: RainEffect, steadyState = false): RainDrawEntry | undefined => {
-        const emitterGeometry = rainEmitterGeometry(sceneEffect);
-        const density = Math.min(Math.max(sceneEffect.density, 0), plan.rainMaxDensity) * plan.rainDensityScale;
-        const capacityDensity = plan.rainMaxDensity * plan.rainDensityScale;
-        const visibleFraction = emitterGeometry.boundsArea > 0 ? emitterGeometry.polygonArea / emitterGeometry.boundsArea : 0;
-        const emissionRate = visibleFraction > 0 ? density * emitterGeometry.polygonArea / visibleFraction : 0;
-        const capacityEmissionRate = visibleFraction > 0 ? capacityDensity * emitterGeometry.polygonArea / visibleFraction : 0;
-        const maxParticleLifetime = rainParticleLifetime(0.5);
-        const particleLifetime = rainParticleLifetime(sceneEffect.speed);
-        const emitter = createParticleEmitter(gpu, {
-          seed: sceneEffect.seed,
-          capacity: rainPoolCapacity(capacityEmissionRate, maxParticleLifetime),
-          maxLifetime: maxParticleLifetime,
-          initialParticleLifetime: particleLifetime,
-          rateRampSeconds: 0.24,
-          label: `rain-emitter:${sceneEffect.id}`,
-        }, shaders.particleEmitter);
-        const contextStorage = storage(gpu, emitter.capacity * RAIN_CONTEXT_BYTES) as StorageBuffer & { destroy(): void };
-        contextStorage.write(new Uint8Array(emitter.capacity * RAIN_CONTEXT_BYTES));
-        const contextInitializer = compute(gpu, shaders.rainContext, {
-          label: `rain-context:${sceneEffect.id}`,
-          set: { particles: emitter.particleStorage, contexts: contextStorage },
-        });
-        const polygonData = new Float32Array(sceneEffect.vertices.flatMap((vertex) => [vertex.x, vertex.y]));
-        const polygonStorage = storage(gpu, Math.max(8, polygonData.byteLength)) as StorageBuffer & { destroy(): void };
-        if (polygonData.byteLength > 0) polygonStorage.write(polygonData);
-        const guideVertices = plan.showEditorGrid ? outlinePolygon(sceneEffect.vertices) : null;
-        const guideGeometry = guideVertices ? geometry(gpu, {
-          buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: guideVertices }],
-          topology: "line-list",
-          label: `rain-guide:${sceneEffect.id}`,
-        }) : undefined;
-        const handleGeometry = plan.showEditorGrid && sceneEffect.vertices.length > 0 ? geometry(gpu, {
-          buffers: [{
-            attributes: {
-              point_grid: { format: "float32x2", location: 0, offset: 0 },
-              corner: { format: "float32x2", location: 1, offset: 8 },
-            },
-            stride: 16,
-            data: polygonHandleVertices(sceneEffect.vertices),
-          }],
-          topology: "triangle-list",
-          label: `rain-handles:${sceneEffect.id}`,
-        }) : undefined;
-        if (capacityEmissionRate <= 0 && !guideGeometry && !handleGeometry) {
-          polygonStorage.destroy();
-          contextStorage.destroy();
-          emitter.dispose();
-          return undefined;
-        }
-        return {
-          layerId,
-          effectId: sceneEffect.id,
-          geometries: [guideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
-          polygonStorage,
-          contextStorage,
-          contextInitializer,
-          emitter,
-          emissionRate,
-          targetEmissionRate: 0,
-          particleLifetime,
-          steadyStatePending: steadyState,
-          emitterMin: emitterGeometry.min,
-          emitterMax: emitterGeometry.max,
-          polygonVertexCount: sceneEffect.vertices.length,
-          geometryKey: JSON.stringify([sceneEffect.vertices, sceneEffect.seed]),
-          drawable: capacityEmissionRate > 0 ? draw(gpu, {
-            shader: shaders.rain,
-            vertices: 6,
-            instances: emitter.capacity,
-            blend: "premultiplied",
-            label: `rain:${sceneEffect.id}`,
-            set: {
-              polygon_vertices: polygonStorage,
-              particles: emitter.particleStorage,
-              contexts: contextStorage,
-              params: rainParams(sceneEffect, 0, emitterGeometry.min, emitterGeometry.max, sceneEffect.vertices.length),
-            },
-          }) : undefined,
-          guide: guideGeometry ? draw(gpu, {
-            shader: shaders.fogGuide,
-            geometry: guideGeometry,
-            blend: "premultiplied",
-            label: `rain-guide:${sceneEffect.id}`,
-            set: { params: { ...spatialParams(), color: [0.034, 0.302, 0.344, 0.42] } },
-          }) : undefined,
-          handles: handleGeometry ? draw(gpu, {
-            shader: shaders.fogHandle,
-            geometry: handleGeometry,
-            blend: "premultiplied",
-            label: `rain-handles:${sceneEffect.id}`,
-            set: { params: { ...spatialParams(), color: [0.18, 0.92, 1, 1] } },
-          }) : undefined,
-        };
+  const createEffectEntry = (layerId: string, sceneEffect: SceneEffect, steadyState = false): EffectDrawEntry | undefined => {
+    const definition = particleEffectDefinition(sceneEffect);
+    const emitterGeometry = effectEmitterGeometry(sceneEffect);
+    const maximumDensity = definition.maxDensity;
+    const densityScale = plan.particleDensityScale;
+    const density = Math.min(Math.max(sceneEffect.density, 0), maximumDensity) * densityScale;
+    const capacityDensity = maximumDensity * densityScale;
+    const visibleFraction = emitterGeometry.boundsArea > 0 ? emitterGeometry.polygonArea / emitterGeometry.boundsArea : 0;
+    const emissionRate = visibleFraction > 0 ? density * emitterGeometry.polygonArea / visibleFraction : 0;
+    const capacityEmissionRate = visibleFraction > 0 ? capacityDensity * emitterGeometry.polygonArea / visibleFraction : 0;
+    const maxParticleLifetime = definition.maxParticleLifetime;
+    const particleLifetime = definition.particleLifetime(sceneEffect.speed);
+    const emitter = createParticleEmitter(gpu, {
+      seed: sceneEffect.seed,
+      capacity: effectPoolCapacity(capacityEmissionRate, maxParticleLifetime),
+      maxLifetime: maxParticleLifetime,
+      initialParticleLifetime: particleLifetime,
+      rateRampSeconds: 0.24,
+      label: `${sceneEffect.kind}-emitter:${sceneEffect.id}`,
+    }, shaders.particleEmitter);
+    const contextBytes = definition.context?.bytesPerParticle ?? 0;
+    const contextStorage = definition.context
+      ? storage(gpu, emitter.capacity * contextBytes) as StorageBuffer & { destroy(): void }
+      : undefined;
+    contextStorage?.write(new Uint8Array(emitter.capacity * contextBytes));
+    const contextInitializer = contextStorage && definition.context ? compute(gpu, definition.context.shader(shaders), {
+      label: `${sceneEffect.kind}-context:${sceneEffect.id}`,
+      set: { particles: emitter.particleStorage, contexts: contextStorage },
+    }) : undefined;
+    const polygonData = new Float32Array(sceneEffect.vertices.flatMap((vertex) => [vertex.x, vertex.y]));
+    const polygonStorage = storage(gpu, Math.max(8, polygonData.byteLength)) as StorageBuffer & { destroy(): void };
+    if (polygonData.byteLength > 0) polygonStorage.write(polygonData);
+    const guideVertices = plan.showEditorGrid ? outlinePolygon(sceneEffect.vertices) : null;
+    const guideGeometry = guideVertices ? geometry(gpu, {
+      buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: guideVertices }],
+      topology: "line-list",
+      label: `${sceneEffect.kind}-guide:${sceneEffect.id}`,
+    }) : undefined;
+    const handleGeometry = plan.showEditorGrid && sceneEffect.vertices.length > 0 ? geometry(gpu, {
+      buffers: [{
+        attributes: {
+          point_grid: { format: "float32x2", location: 0, offset: 0 },
+          corner: { format: "float32x2", location: 1, offset: 8 },
+        },
+        stride: 16,
+        data: polygonHandleVertices(sceneEffect.vertices),
+      }],
+      topology: "triangle-list",
+      label: `${sceneEffect.kind}-handles:${sceneEffect.id}`,
+    }) : undefined;
+    if (capacityEmissionRate <= 0 && !guideGeometry && !handleGeometry) {
+      polygonStorage.destroy();
+      contextStorage?.destroy();
+      emitter.dispose();
+      return undefined;
+    }
+    return {
+      layerId,
+      effectId: sceneEffect.id,
+      definition,
+      geometries: [guideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
+      polygonStorage,
+      contextStorage,
+      contextInitializer,
+      contextBytes,
+      emitter,
+      emissionRate,
+      targetEmissionRate: 0,
+      particleLifetime,
+      steadyStatePending: steadyState,
+      emitterMin: emitterGeometry.min,
+      emitterMax: emitterGeometry.max,
+      polygonVertexCount: sceneEffect.vertices.length,
+      geometryKey: JSON.stringify([sceneEffect.kind, sceneEffect.vertices, sceneEffect.seed]),
+      drawable: capacityEmissionRate > 0 ? draw(gpu, {
+        shader: definition.shader(shaders),
+        vertices: 6,
+        instances: emitter.capacity,
+        blend: definition.blend,
+        label: `${sceneEffect.kind}:${sceneEffect.id}`,
+        set: {
+          polygon_vertices: polygonStorage,
+          particles: emitter.particleStorage,
+          ...(contextStorage ? { contexts: contextStorage } : {}),
+          params: particleEffectParams(sceneEffect, 0, emitterGeometry.min, emitterGeometry.max, sceneEffect.vertices.length),
+        },
+      }) : undefined,
+      guide: guideGeometry ? draw(gpu, {
+        shader: shaders.fogGuide,
+        geometry: guideGeometry,
+        blend: "premultiplied",
+        label: `${sceneEffect.kind}-guide:${sceneEffect.id}`,
+        set: { params: { ...spatialParams(), color: definition.guideColor } },
+      }) : undefined,
+      handles: handleGeometry ? draw(gpu, {
+        shader: shaders.fogHandle,
+        geometry: handleGeometry,
+        blend: "premultiplied",
+        label: `${sceneEffect.kind}-handles:${sceneEffect.id}`,
+        set: { params: { ...spatialParams(), color: definition.handleColor } },
+      }) : undefined,
+    };
   };
 
   let assetEntries = createAssetEntries(initialSnapshot, imageUploads);
   let fogEntries = createFogEntries(initialSnapshot);
   let effectsSceneId = initialSnapshot.scene.id;
   let effectTransitions = createInitialEffectTransitions(initialSnapshot.scene);
-  let rainEntries = effectTransitions.entries.flatMap((entry) => {
+  let effectEntries = effectTransitions.entries.flatMap((entry) => {
     if (entry.progress <= 0 && entry.target <= 0) return [];
-    const rainEntry = createRainEntry(entry.layerId, entry.effect, true);
-    return rainEntry ? [rainEntry] : [];
+    const effectEntry = createEffectEntry(entry.layerId, entry.effect, true);
+    return effectEntry ? [effectEntry] : [];
   });
   let lastTransitionTime: number | undefined;
   const fogCompositeParams = (hasLights: number) => {
@@ -661,18 +660,18 @@ export function createSceneExecutor(
         + atlasWidth * atlasHeight * 8 * 2;
     },
     get effectResourceCount() {
-      return rainEntries.length;
+      return effectEntries.length;
     },
     get effectGeometryResourceCount() {
-      return rainEntries.reduce((count, entry) => count + entry.geometries.length, 0);
+      return effectEntries.reduce((count, entry) => count + entry.geometries.length, 0);
     },
     async effectEmissionDiagnostics(time = lastTransitionTime ?? 0) {
-      return Promise.all(rainEntries.map(async (entry) => {
+      return Promise.all(effectEntries.map(async (entry) => {
         const [diagnostic, contextData] = await Promise.all([
           entry.emitter.readDiagnostics(time),
-          entry.contextStorage.read(),
+          entry.contextStorage?.read(),
         ]);
-        const contexts = new DataView(contextData);
+        const contexts = contextData ? new DataView(contextData) : null;
         return {
           layerId: entry.layerId,
           effectId: entry.effectId,
@@ -691,28 +690,28 @@ export function createSceneExecutor(
               initializationSeed: particle.initializationSeed,
               spawnTime: particle.spawnTime,
               lifetime: particle.lifetime,
-              contextInitializationSeed: contexts.getUint32(index * RAIN_CONTEXT_BYTES, true),
-              vanishingPoint: [
-                contexts.getFloat32(index * RAIN_CONTEXT_BYTES + 8, true),
-                contexts.getFloat32(index * RAIN_CONTEXT_BYTES + 12, true),
-              ] as const,
+              contextInitializationSeed: contexts?.getUint32(index * entry.contextBytes, true) ?? 0,
+              vanishingPoint: contexts ? [
+                contexts.getFloat32(index * entry.contextBytes + 8, true),
+                contexts.getFloat32(index * entry.contextBytes + 12, true),
+              ] as const : [0, 0] as const,
             }] : []),
-          particleContextRecords: diagnostic.particles.map((particle, index) => ({
+          particleContextRecords: contexts ? diagnostic.particles.map((particle, index) => ({
             slotIndex: index,
             particleInitializationSeed: particle.initializationSeed,
-            initialized: contexts.getUint32(index * RAIN_CONTEXT_BYTES + 4, true) !== 0,
-            contextInitializationSeed: contexts.getUint32(index * RAIN_CONTEXT_BYTES, true),
+            initialized: contexts.getUint32(index * entry.contextBytes + 4, true) !== 0,
+            contextInitializationSeed: contexts.getUint32(index * entry.contextBytes, true),
             vanishingPoint: [
-              contexts.getFloat32(index * RAIN_CONTEXT_BYTES + 8, true),
-              contexts.getFloat32(index * RAIN_CONTEXT_BYTES + 12, true),
+              contexts.getFloat32(index * entry.contextBytes + 8, true),
+              contexts.getFloat32(index * entry.contextBytes + 12, true),
             ] as const,
-          })),
+          })) : [],
         };
       }));
     },
     hasAnimationDemand() {
       return hasEffectAnimationDemand(effectTransitions)
-        || rainEntries.some((entry) => entry.emitter.hasAnimationDemand(lastTransitionTime ?? 0));
+        || effectEntries.some((entry) => entry.emitter.hasAnimationDemand(lastTransitionTime ?? 0));
     },
     async prewarm() {
       await Promise.all([
@@ -722,12 +721,12 @@ export function createSceneExecutor(
         ...fogEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))),
         ...fogEntries.flatMap((entry) => entry.radianceCascadeEffects.flat()).map((drawable) => drawable.compile(signature(radianceCascades[0]))),
         ...fogEntries.flatMap((entry) => entry.radianceResolveEffects).map((drawable) => drawable.compile(signature(emptyIndirectLightTarget))),
-        ...rainEntries.flatMap((entry) => entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
+        ...effectEntries.flatMap((entry) => entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
         ...(plan.showEditorGrid
           ? [
               ...fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
               ...fogEntries.flatMap((entry) => entry.lightGuides),
-              ...rainEntries.flatMap((entry) => [entry.guide, entry.handles].filter((item): item is Draw => item !== undefined)),
+              ...effectEntries.flatMap((entry) => [entry.guide, entry.handles].filter((item): item is Draw => item !== undefined)),
             ].map((drawable) => drawable.compile(signature(compositeTarget)))
           : []),
         fogComposite.compile(signature(sceneB)),
@@ -774,7 +773,7 @@ export function createSceneExecutor(
         const nextTransitions = createInitialEffectTransitions(nextSnapshot.scene);
         const nextEntries = nextTransitions.entries.flatMap((transition) => {
           if (transition.progress <= 0 && transition.target <= 0) return [];
-          const entry = createRainEntry(transition.layerId, transition.effect, true);
+          const entry = createEffectEntry(transition.layerId, transition.effect, true);
           return entry ? [entry] : [];
         });
         await Promise.all(nextEntries.flatMap((entry) => [
@@ -784,34 +783,35 @@ export function createSceneExecutor(
             .map((item) => item.compile(signature(compositeTarget))) : []),
         ]));
         await gpu.settled();
-        const previousEntries = rainEntries;
-        rainEntries = nextEntries;
+        const previousEntries = effectEntries;
+        effectEntries = nextEntries;
         effectTransitions = nextTransitions;
         effectsSceneId = nextSnapshot.scene.id;
         snapshot = nextSnapshot;
         previousEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
         previousEntries.forEach((entry) => entry.polygonStorage.destroy());
-        previousEntries.forEach((entry) => entry.contextStorage.destroy());
+        previousEntries.forEach((entry) => entry.contextStorage?.destroy());
         previousEntries.forEach((entry) => entry.emitter.dispose());
         return;
       }
       const nextTransitions = reconcileEffectTransitions(effectTransitions, nextSnapshot.scene);
-      const replacedEntries: RainDrawEntry[] = [];
+      const replacedEntries: EffectDrawEntry[] = [];
       const nextEntries = nextTransitions.entries.flatMap((transition) => {
-        const density = Math.min(Math.max(transition.effect.density, 0), plan.rainMaxDensity) * plan.rainDensityScale;
-        const geometryKey = JSON.stringify([transition.effect.vertices, transition.effect.seed]);
-        const existing = rainEntries.find((entry) =>
+        const definition = particleEffectDefinition(transition.effect);
+        const density = Math.min(Math.max(transition.effect.density, 0), definition.maxDensity) * plan.particleDensityScale;
+        const geometryKey = JSON.stringify([transition.effect.kind, transition.effect.vertices, transition.effect.seed]);
+        const existing = effectEntries.find((entry) =>
           entry.layerId === transition.layerId && entry.effectId === transition.effect.id && entry.geometryKey === geometryKey
         );
         if (existing) {
-          const emitterGeometry = rainEmitterGeometry(transition.effect);
+          const emitterGeometry = effectEmitterGeometry(transition.effect);
           const visibleFraction = emitterGeometry.boundsArea > 0 ? emitterGeometry.polygonArea / emitterGeometry.boundsArea : 0;
           existing.emissionRate = visibleFraction > 0 ? density * emitterGeometry.polygonArea / visibleFraction : 0;
-          existing.particleLifetime = rainParticleLifetime(transition.effect.speed);
+          existing.particleLifetime = definition.particleLifetime(transition.effect.speed);
           return [existing];
         }
         if (transition.progress <= 0 && transition.target <= 0) return [];
-        const created = createRainEntry(transition.layerId, transition.effect);
+        const created = createEffectEntry(transition.layerId, transition.effect);
         if (!created) return [];
         replacedEntries.push(created);
         return [created];
@@ -823,21 +823,21 @@ export function createSceneExecutor(
           .map((item) => item.compile(signature(compositeTarget))) : []),
       ]));
       await gpu.settled();
-      const previousEntries = rainEntries;
-      rainEntries = nextEntries;
+      const previousEntries = effectEntries;
+      effectEntries = nextEntries;
       effectTransitions = nextTransitions;
       snapshot = nextSnapshot;
       const replaced = previousEntries.filter((entry) => !nextEntries.includes(entry));
       replaced.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
       replaced.forEach((entry) => entry.polygonStorage.destroy());
-      replaced.forEach((entry) => entry.contextStorage.destroy());
+      replaced.forEach((entry) => entry.contextStorage?.destroy());
       replaced.forEach((entry) => entry.emitter.dispose());
     },
     async render(time) {
       const previousTransitions = effectTransitions;
       const delta = lastTransitionTime === undefined ? 0 : Math.max(0, time - lastTransitionTime);
       lastTransitionTime = time;
-      for (const entry of rainEntries) {
+      for (const entry of effectEntries) {
         const transition = effectTransitions.entries.find((candidate) => candidate.layerId === entry.layerId && candidate.effect.id === entry.effectId);
         const targetRate = transition?.target === 1 ? entry.emissionRate : 0;
         if (entry.steadyStatePending) {
@@ -857,22 +857,23 @@ export function createSceneExecutor(
           }
           entry.emitter.advance(time);
         }
-        entry.contextInitializer.set({ params: {
-          vanishing_point: rainVanishingPoint(view.table, view.display),
-          capacity: entry.emitter.capacity,
-        } }).dispatch(Math.ceil(entry.emitter.capacity / 64));
+        const context = entry.definition.context;
+        if (entry.contextInitializer && context) {
+          entry.contextInitializer.set({ params: context.params(view.table, view.display, entry.emitter.capacity) })
+            .dispatch(Math.ceil(entry.emitter.capacity / 64));
+        }
       }
-      const retainedEmitterKeys = new Set(rainEntries
+      const retainedEmitterKeys = new Set(effectEntries
         .filter((entry) => entry.emitter.hasAnimationDemand(time))
         .map((entry) => `${entry.layerId}\0${entry.effectId}`));
       effectTransitions = advanceEffectTransitions(effectTransitions, delta, retainedEmitterKeys);
       const activeTransitionKeys = new Set(effectTransitions.entries
         .filter((transition) => {
-          const entry = rainEntries.find((candidate) => candidate.layerId === transition.layerId && candidate.effectId === transition.effect.id);
+          const entry = effectEntries.find((candidate) => candidate.layerId === transition.layerId && candidate.effectId === transition.effect.id);
           return transition.target > 0 || Boolean(entry?.emitter.hasAnimationDemand(time));
         })
         .map((entry) => `${entry.layerId}\0${entry.effect.id}`));
-      const retiringEntries = rainEntries.filter((entry) => !activeTransitionKeys.has(`${entry.layerId}\0${entry.effectId}`));
+      const retiringEntries = effectEntries.filter((entry) => !activeTransitionKeys.has(`${entry.layerId}\0${entry.effectId}`));
       const nextRadianceKeys = new Map<string, string>();
       for (const entry of assetEntries) {
         const asset = snapshot.scene.assets.find((candidate) => candidate.id === entry.id);
@@ -930,7 +931,7 @@ export function createSceneExecutor(
         const current = currentOperations.get(layerId);
         const transitions = effectTransitions.entries.filter((transition) => {
           if (transition.layerId !== layerId) return false;
-          const entry = rainEntries.find((candidate) => candidate.layerId === layerId && candidate.effectId === transition.effect.id);
+          const entry = effectEntries.find((candidate) => candidate.layerId === layerId && candidate.effectId === transition.effect.id);
           return transition.target > 0 || Boolean(entry?.emitter.hasAnimationDemand(time));
         });
         if (current?.type !== "effects" && current) {
@@ -967,9 +968,9 @@ export function createSceneExecutor(
               for (const effectId of operation.effectIds) {
                 const transition = effectTransitions.entries.find((entry) => entry.layerId === operation.layerId && entry.effect.id === effectId);
                 if (!transition) continue;
-                const entry = rainEntries.find((candidate) => candidate.layerId === operation.layerId && candidate.effectId === effectId);
+                const entry = effectEntries.find((candidate) => candidate.layerId === operation.layerId && candidate.effectId === effectId);
                 if (!entry?.drawable) continue;
-                entry.drawable.set({ params: rainParams(
+                entry.drawable.set({ params: particleEffectParams(
                   transition.effect,
                   time,
                   entry.emitterMin,
@@ -1064,17 +1065,17 @@ export function createSceneExecutor(
               if (entry.handles) pass.draw(entry.handles);
               for (const light of entry.lightGuides) pass.draw(light);
             }
-            for (const entry of rainEntries) {
+            for (const entry of effectEntries) {
               const transition = effectTransitions.entries.find((candidate) => candidate.layerId === entry.layerId && candidate.effect.id === entry.effectId);
               if (!transition?.present || !transition.effect.visible) continue;
               const layer = snapshot.scene.layers.find((candidate) => candidate.id === entry.layerId);
               if (layer?.type !== "effects" || !layer.visible) continue;
               const selected = snapshot.selectedEffect?.layerId === entry.layerId && snapshot.selectedEffect.effectId === entry.effectId;
-              const cursor = snapshot.rainCursorPoint;
+              const cursor = snapshot.effectCursorPoint;
               const lastVertex = transition.effect.vertices.at(-1);
               const drawing = Boolean(snapshot.effectDrawingActive && cursor && lastVertex && cursor.x === lastVertex.x && cursor.y === lastVertex.y);
-              entry.guide?.set({ params: { ...spatialParams(), color: drawing ? [0.22, 1, 1, 1] : selected ? [0.114, 0.855, 0.95, 0.95] : [0.034, 0.302, 0.344, 0.42] } });
-              entry.handles?.set({ params: { ...spatialParams(), color: drawing ? [0.35, 1, 1, 1] : [0.18, 0.92, 1, 1] } });
+              entry.guide?.set({ params: { ...spatialParams(), color: drawing ? entry.definition.drawingGuideColor : selected ? entry.definition.selectedGuideColor : entry.definition.guideColor } });
+              entry.handles?.set({ params: { ...spatialParams(), color: drawing ? entry.definition.drawingHandleColor : entry.definition.handleColor } });
               if (entry.guide) pass.draw(entry.guide);
               if ((selected || drawing) && entry.handles) pass.draw(entry.handles);
             }
@@ -1087,10 +1088,10 @@ export function createSceneExecutor(
         entry.radianceKey = nextRadianceKeys.get(entry.layerId) ?? "";
       }
       if (previousTransitions !== effectTransitions && retiringEntries.length > 0) {
-        rainEntries = rainEntries.filter((entry) => !retiringEntries.includes(entry));
+        effectEntries = effectEntries.filter((entry) => !retiringEntries.includes(entry));
         retiringEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
         retiringEntries.forEach((entry) => entry.polygonStorage.destroy());
-        retiringEntries.forEach((entry) => entry.contextStorage.destroy());
+        retiringEntries.forEach((entry) => entry.contextStorage?.destroy());
         retiringEntries.forEach((entry) => entry.emitter.dispose());
       }
     },

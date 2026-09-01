@@ -16,8 +16,7 @@ export interface RenderPlan {
   readonly showEditorGrid: boolean;
   readonly showGrid: boolean;
   readonly fogOpacity: number;
-  readonly rainDensityScale: number;
-  readonly rainMaxDensity: number;
+  readonly particleDensityScale: number;
 }
 
 export type SceneLayerOperation =
@@ -50,7 +49,6 @@ export function createRenderPlan(
     showEditorGrid: profile === "editor",
     showGrid: options.showGrid ?? profile === "editor",
     fogOpacity: profile === "editor" ? 0.58 : 1,
-    rainDensityScale: profile === "editor" ? 0.5 : 1,
-    rainMaxDensity: 8,
+    particleDensityScale: profile === "editor" ? 0.5 : 1,
   });
 }

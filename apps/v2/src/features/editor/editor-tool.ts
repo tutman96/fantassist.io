@@ -1,7 +1,8 @@
 import type { SceneEngine } from "@/engine/scene-engine";
+import type { SceneEffect } from "@/engine/scene-document";
 
 export type EditorTool = "assets" | "fog" | "fog-clear" | "wall" | "light" | "effects" | "table";
-export type EffectTool = "rain";
+export type EffectTool = SceneEffect["kind"];
 
 export function ensureAssetLayer(engine: SceneEngine, createId: () => string = () => crypto.randomUUID()): string {
   const existing = [...engine.getSnapshot().scene.layers].reverse().find((layer) => layer.type === "assets");

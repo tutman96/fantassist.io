@@ -40,9 +40,8 @@ export interface SceneLight {
   readonly color: { readonly r: number; readonly g: number; readonly b: number; readonly a: number };
 }
 
-export interface RainEffect {
+interface SceneEffectBase {
   readonly id: string;
-  readonly kind: "rain";
   readonly name: string;
   readonly visible: boolean;
   readonly vertices: readonly { readonly x: number; readonly y: number }[];
@@ -51,10 +50,19 @@ export interface RainEffect {
   readonly opacity: number;
   readonly density: number;
   readonly speed: number;
+}
+
+export interface RainEffect extends SceneEffectBase {
+  readonly kind: "rain";
   readonly dropSize: number;
 }
 
-export type SceneEffect = RainEffect;
+export interface EmbersEffect extends SceneEffectBase {
+  readonly kind: "embers";
+  readonly particleSize: number;
+}
+
+export type SceneEffect = RainEffect | EmbersEffect;
 
 interface SceneLayerBase {
   readonly id: string;

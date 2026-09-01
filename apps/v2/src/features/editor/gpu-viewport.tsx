@@ -33,7 +33,7 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
   const [ownedSession] = useState(createTableSession);
   const [tool, setTool] = useState<EditorTool>("assets");
   const [effectTool, setEffectTool] = useState<EffectTool>("rain");
-  const [rainLayerId, setRainLayerId] = useState<string | null>(null);
+  const [effectsLayerId, setEffectsLayerId] = useState<string | null>(null);
   const session = sharedSession ?? ownedSession;
   const [ownedEngine] = useState(createSceneEngine);
   const [ownedImageLoader] = useState(() => {
@@ -69,14 +69,14 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
     effectTool,
     onToolChange: setTool,
     profile,
-    rainLayerId,
+    effectsLayerId,
     session,
     tool,
   });
   const selectEffect = (nextEffect: EffectTool, layerId: string) => {
     engine.cancelActivePreview();
     setEffectTool(nextEffect);
-    setRainLayerId(layerId);
+    setEffectsLayerId(layerId);
     setTool("effects");
   };
 
@@ -116,7 +116,7 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
               if ((nextTool === "fog" || nextTool === "fog-clear" || nextTool === "wall" || nextTool === "light") && !sceneSnapshot.scene.layers.some((layer) => layer.type === "fog")) {
                 ensureFogLayer(engine);
               }
-              if (nextTool === "effects") setRainLayerId(ensureEffectsLayer(engine));
+              if (nextTool === "effects") setEffectsLayerId(ensureEffectsLayer(engine));
               setTool(nextTool);
             }}
             effectTool={effectTool}

@@ -41,11 +41,16 @@ message FogLayer {
 message EffectsLayer {
   string id = 1; string name = 3; bool visible = 4; Layer.LayerType type = 5; repeated Effect effects = 6;
 }
-message Effect { oneof effectType { RainEffect rain = 1; } }
+message Effect { oneof effectType { RainEffect rain = 1; EmbersEffect embers = 2; } }
 message RainEffect {
   reserved 10;
   string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
   double opacity = 7; double density = 8; double speed = 9; double dropSize = 11;
+  message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
+}
+message EmbersEffect {
+  string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
+  double opacity = 7; double density = 8; double speed = 9; double particleSize = 10;
   message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
 }
 message SceneExport {
@@ -221,24 +226,30 @@ function normalizeLayer(value: Record<string, unknown>) {
       name: string(effectsLayer.name),
       visible: boolean(effectsLayer.visible),
       type: number(effectsLayer.type),
-      effects: array(effectsLayer.effects).flatMap((item) => {
-        const rain = record(record(item)?.rain);
-        if (!rain) return [];
-        const color = record(rain.color);
-        return [{ rain: {
-          id: string(rain.id),
-          name: string(rain.name),
-          visible: boolean(rain.visible),
-          vertices: array(rain.vertices).map((point) => vector(record(point) ?? {})),
-          seed: number(rain.seed),
-          ...(color ? { color: { r: number(color.r), g: number(color.g), b: number(color.b) } } : {}),
-          opacity: number(rain.opacity),
-          density: number(rain.density),
-          speed: number(rain.speed),
-          dropSize: number(rain.dropSize),
-        } }];
+      effects: array(effectsLayer.effects).flatMap<import("./types").V1Effect>((item) => {
+        const effect = record(item);
+        const rain = record(effect?.rain);
+        if (rain) return [{ rain: { ...normalizeEffect(rain), dropSize: number(rain.dropSize) } }];
+        const embers = record(effect?.embers);
+        if (embers) return [{ embers: { ...normalizeEffect(embers), particleSize: number(embers.particleSize) } }];
+        return [];
       }),
     } } : {}),
+  };
+}
+
+function normalizeEffect(value: Record<string, unknown>) {
+  const color = record(value.color);
+  return {
+    id: string(value.id),
+    name: string(value.name),
+    visible: boolean(value.visible),
+    vertices: array(value.vertices).map((point) => vector(record(point) ?? {})),
+    seed: number(value.seed),
+    ...(color ? { color: { r: number(color.r), g: number(color.g), b: number(color.b) } } : {}),
+    opacity: number(value.opacity),
+    density: number(value.density),
+    speed: number(value.speed),
   };
 }
 

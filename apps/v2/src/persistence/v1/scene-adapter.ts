@@ -1,5 +1,5 @@
 import { freezeSceneDocument } from "@/engine/scene-document";
-import type { SceneDocument } from "@/engine/scene-document";
+import type { SceneDocument, SceneEffect } from "@/engine/scene-document";
 import { normalizeTableCamera } from "@/engine/table-camera";
 
 import { decodeV1Scene, encodeV1Scene } from "./scene-codec";
@@ -42,12 +42,21 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
         name: layer.effectsLayer.name,
         type: "effects" as const,
         visible: layer.effectsLayer.visible,
-        effects: layer.effectsLayer.effects.flatMap((effect) => effect.rain ? [{
-          ...effect.rain,
-          kind: "rain" as const,
-          vertices: effect.rain.vertices.map((vertex) => ({ ...vertex })),
-          color: { ...(effect.rain.color ?? { r: 255, g: 255, b: 255 }) },
-        }] : []),
+        effects: layer.effectsLayer.effects.flatMap<SceneEffect>((effect) => {
+          if (effect.rain) return [{
+            ...effect.rain,
+            kind: "rain" as const,
+            vertices: effect.rain.vertices.map((vertex) => ({ ...vertex })),
+            color: { ...(effect.rain.color ?? { r: 255, g: 255, b: 255 }) },
+          }];
+          if (effect.embers) return [{
+            ...effect.embers,
+            kind: "embers" as const,
+            vertices: effect.embers.vertices.map((vertex) => ({ ...vertex })),
+            color: { ...(effect.embers.color ?? { r: 255, g: 255, b: 255 }) },
+          }];
+          return [];
+        }),
       };
     }
     throw new Error("Unsupported persisted layer");
@@ -213,8 +222,8 @@ export function patchV1SceneTransforms(
 }
 
 function persistEffects(effects: readonly import("@/engine/scene-document").SceneEffect[]) {
-  return effects.map((effect) => ({
-    rain: {
+  return effects.map((effect) => {
+    const common = {
       id: effect.id,
       name: effect.name,
       visible: effect.visible,
@@ -224,9 +233,20 @@ function persistEffects(effects: readonly import("@/engine/scene-document").Scen
       opacity: effect.opacity,
       density: effect.density,
       speed: effect.speed,
-      dropSize: effect.dropSize,
-    },
-  }));
+    };
+    switch (effect.kind) {
+      case "rain":
+        return { rain: { ...common, dropSize: effect.dropSize } };
+      case "embers":
+        return { embers: { ...common, particleSize: effect.particleSize } };
+      default:
+        return assertNever(effect);
+    }
+  });
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported effect '${(value as { kind?: string }).kind ?? "unknown"}'`);
 }
 
 function projectPolygons(polygons: readonly import("./types").V1Polygon[]) {

@@ -70,8 +70,8 @@ const effectsLayer: V1Layer = {
     name: "Weather",
     visible: true,
     type: 3,
-    effects: [{
-      rain: {
+    effects: [
+      { rain: {
         id: "rain-1",
         name: "Driving rain",
         visible: true,
@@ -82,8 +82,20 @@ const effectsLayer: V1Layer = {
         density: 0.42,
         speed: 7.75,
         dropSize: 1.125,
-      },
-    }],
+      } },
+      { embers: {
+        id: "embers-1",
+        name: "Campfire embers",
+        visible: false,
+        vertices: [{ x: 4, y: 5 }, { x: 9.5, y: 5 }, { x: 7, y: 11 }],
+        seed: 314159,
+        color: { r: 255, g: 96, b: 24 },
+        opacity: 0.8,
+        density: 0.35,
+        speed: 2.25,
+        particleSize: 0.75,
+      } },
+    ],
   },
 };
 
@@ -274,7 +286,7 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
 });
 
-test("scene adapter projects and patches ordered rain effects", () => {
+test("scene adapter projects and patches ordered rain and embers effects", () => {
   const document = projectV1Scene(effectsScene);
   assert.deepEqual(document.layers.map((layer) => layer.type), ["assets", "effects", "fog"]);
   const effects = document.layers[1];
@@ -283,6 +295,11 @@ test("scene adapter projects and patches ordered rain effects", () => {
     ...effectsLayer.effectsLayer?.effects[0].rain,
     kind: "rain",
   });
+  assert.deepEqual(effects.effects[1], {
+    ...effectsLayer.effectsLayer?.effects[1].embers,
+    kind: "embers",
+  });
+  assert.deepEqual(effects.effects.map((effect) => effect.kind), ["rain", "embers"]);
 
   const patched = patchV1SceneTransforms(effectsScene, {
     ...document,
@@ -295,6 +312,12 @@ test("scene adapter projects and patches ordered rain effects", () => {
   assert.equal(patched.layers[1].effectsLayer?.name, "Storm");
   assert.equal(patched.layers[1].effectsLayer?.effects[0].rain?.density, 0.9);
   assert.equal(patched.layers[1].effectsLayer?.effects[0].rain?.visible, false);
+  assert.equal(patched.layers[1].effectsLayer?.effects[1].embers?.density, 0.9);
+  assert.equal(patched.layers[1].effectsLayer?.effects[1].embers?.visible, false);
+  assert.deepEqual(patched.layers[1].effectsLayer?.effects.map((effect) => effect.rain?.id ?? effect.embers?.id), [
+    "rain-1",
+    "embers-1",
+  ]);
   assert.deepEqual(patched.layers.map((layer) =>
     layer.assetLayer?.id ?? layer.fogLayer?.id ?? layer.effectsLayer?.id
   ), ["assets-1", "effects-1", "fog-1"]);

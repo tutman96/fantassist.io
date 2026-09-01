@@ -114,7 +114,7 @@ export function EditorToolbar({
         <>
           <ToolbarSeparator />
           <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l [&_[data-slot=tooltip-trigger]]:rounded-none!">
-            <ToolButton label={tool === "effects" ? "Finish effect area" : tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => tool === "effects" ? engine.commitActiveRainEffect() : engine.commitActiveFogPolygon()}><Check /></ToolButton>
+            <ToolButton label={tool === "effects" ? "Finish effect area" : tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => tool === "effects" ? engine.commitActiveEffect() : engine.commitActiveFogPolygon()}><Check /></ToolButton>
             <ToolButton label={tool === "effects" ? "Cancel effect area" : tool === "wall" ? "Cancel wall" : "Cancel fog polygon"} onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
           </ButtonGroup>
         </>

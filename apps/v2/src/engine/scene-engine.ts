@@ -1,5 +1,5 @@
 import { createSampleSceneDocument, freezeSceneDocument } from "./scene-document";
-import type { AssetCalibration, AssetTransform, FogPolygon, ImageAsset, RainEffect, SceneDocument, SceneLayer, SceneLight } from "./scene-document";
+import type { AssetCalibration, AssetTransform, FogPolygon, ImageAsset, SceneDocument, SceneEffect, SceneLayer, SceneLight } from "./scene-document";
 import { getTableBounds, MAX_TABLE_SCALE, MIN_TABLE_SCALE } from "./table-camera";
 import type { DisplayConfiguration, GridBounds, GridPoint, TableCamera } from "./table-camera";
 
@@ -35,7 +35,7 @@ export interface SceneEngineSnapshot extends EngineSnapshot<SceneDocument> {
   readonly invalidation: RendererInvalidation;
   readonly fogCursorPoint: GridPoint | null;
   readonly fogCursorCollection: FogPolygonCollection | null;
-  readonly rainCursorPoint: GridPoint | null;
+  readonly effectCursorPoint: GridPoint | null;
   readonly gridSnapPoint: GridPoint | null;
 }
 
@@ -86,8 +86,8 @@ export type SceneCommand =
   | { readonly type: "light.update"; readonly layerId: string; readonly lightIndex: number; readonly light: SceneLight }
   | { readonly type: "light.remove"; readonly layerId: string; readonly lightIndex: number }
   | { readonly type: "light.selection.set"; readonly selection: LightSelection | null }
-  | { readonly type: "effect.insert"; readonly layerId: string; readonly effect: RainEffect; readonly index?: number }
-  | { readonly type: "effect.update"; readonly layerId: string; readonly effectId: string; readonly effect: RainEffect }
+  | { readonly type: "effect.insert"; readonly layerId: string; readonly effect: SceneEffect; readonly index?: number }
+  | { readonly type: "effect.update"; readonly layerId: string; readonly effectId: string; readonly effect: SceneEffect }
   | { readonly type: "effect.remove"; readonly layerId: string; readonly effectId: string }
   | { readonly type: "effect.selection.set"; readonly selection: EffectSelection | null }
   | { readonly type: "fog.layer.select"; readonly layerId: string | null }
@@ -151,12 +151,12 @@ export interface SceneEngine {
   updateFogSelectionInteraction(token: PreviewToken, pointGrid: GridPoint): void;
   beginLightDrag(pointGrid: GridPoint, cssPixelsPerGrid: number): PreviewToken | null;
   updateLightDrag(token: PreviewToken, pointGrid: GridPoint): void;
-  beginRainEffect(layerId: string, effect: RainEffect, pointGrid: GridPoint): PreviewToken;
-  appendRainEffectVertex(token: PreviewToken, pointGrid: GridPoint): void;
-  updateRainEffectCursor(token: PreviewToken, pointGrid: GridPoint): void;
-  setRainCursor(pointGrid: GridPoint | null): void;
-  commitRainEffect(token: PreviewToken): CommandResult;
-  commitActiveRainEffect(): CommandResult;
+  beginEffect(layerId: string, effect: SceneEffect, pointGrid: GridPoint): PreviewToken;
+  appendEffectVertex(token: PreviewToken, pointGrid: GridPoint): void;
+  updateEffectCursor(token: PreviewToken, pointGrid: GridPoint): void;
+  setEffectCursor(pointGrid: GridPoint | null): void;
+  commitEffect(token: PreviewToken): CommandResult;
+  commitActiveEffect(): CommandResult;
   beginEffectSelectionInteraction(pointGrid: GridPoint, cssPixelsPerGrid: number): { readonly handled: boolean; readonly token?: PreviewToken };
   updateEffectSelectionInteraction(token: PreviewToken, pointGrid: GridPoint): void;
   undo(): CommandResult;
@@ -210,8 +210,8 @@ type HistoryEntry =
       readonly layerId: string;
       readonly effectId: string;
       readonly index: number;
-      readonly before?: RainEffect;
-      readonly after?: RainEffect;
+      readonly before?: SceneEffect;
+      readonly after?: SceneEffect;
     };
 
 interface ActivePreview {
@@ -237,7 +237,7 @@ interface ActivePreview {
   effectDrawing?: { readonly fixedVertices: readonly GridPoint[] };
   effectVertex?: { readonly vertexIndex: number };
   effectMove?: { readonly initialPointer: GridPoint; readonly initialVertices: readonly GridPoint[] };
-  rainCursorPoint?: GridPoint;
+  effectCursorPoint?: GridPoint;
 }
 
 export type TableResizeHandle = "north-west" | "north-east" | "south-east" | "south-west";
@@ -282,7 +282,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
   let selectedEffect: EffectSelection | null = null;
   let hoverFogCursorPoint: GridPoint | null = null;
   let hoverFogCursorCollection: FogPolygonCollection | null = null;
-  let hoverRainCursorPoint: GridPoint | null = null;
+  let hoverEffectCursorPoint: GridPoint | null = null;
   let hoverGridSnapPoint: GridPoint | null = null;
   let preview: ActivePreview | undefined;
   let tokenSequence = 0;
@@ -315,7 +315,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
           ? preview.command.type === "fog.walls.update" ? "wall" : preview.command.collection
           : null
         : hoverFogCursorCollection,
-      rainCursorPoint: preview ? preview.rainCursorPoint ?? null : hoverRainCursorPoint,
+      effectCursorPoint: preview ? preview.effectCursorPoint ?? null : hoverEffectCursorPoint,
       gridSnapPoint: preview ? preview.gridSnapPoint ?? null : hoverGridSnapPoint,
     });
   }
@@ -607,7 +607,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       return { ok: false, error: `Unknown effects layer '${command.layerId}'`, revision };
     }
     if (command.type === "effect.insert") {
-      const error = validateRainEffect(command.effect);
+      const error = validateEffect(command.effect);
       if (error) return { ok: false, error, revision };
       if (findEffect(committedScene, command.effect.id)) {
         return { ok: false, error: `Effect '${command.effect.id}' already exists`, revision };
@@ -634,9 +634,9 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       if (command.effect.id !== command.effectId) {
         return { ok: false, error: "Effect ID cannot be changed", revision };
       }
-      const error = validateRainEffect(command.effect);
+      const error = validateEffect(command.effect);
       if (error) return { ok: false, error, revision };
-      if (sameRainEffect(before, command.effect)) {
+      if (sameEffect(before, command.effect)) {
         if (publishUnchanged) publish("all");
         return { ok: true, changed: false, revision };
       }
@@ -907,7 +907,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
           : command.type === "light.insert" || command.type === "light.update"
             ? validateLight(command.light)
             : command.type === "effect.insert" || command.type === "effect.update"
-              ? validateRainEffect(command.effect, true)
+              ? validateEffect(command.effect, true)
             : command.type === "fog.walls.update"
               ? command.polygons.map((polygon) => validateFogPolygon(polygon, "wall", true)).find(Boolean) ?? null
               : validateFogPolygon(command.polygon, command.collection, true);
@@ -955,7 +955,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         if (
           preview.command.type !== command.type ||
           preview.command.layerId !== command.layerId ||
-          validateRainEffect(command.effect, true) ||
+          validateEffect(command.effect, true) ||
           preview.command.effect.id !== command.effect.id ||
           (command.type === "effect.update" && (preview.command.type !== "effect.update" || preview.command.effectId !== command.effectId || command.effect.id !== command.effectId))
         ) return;
@@ -1270,13 +1270,13 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       hoverGridSnapPoint = nextSnapPoint;
       publish("editor");
     },
-    setRainCursor(pointGrid) {
+    setEffectCursor(pointGrid) {
       if (disposed || preview) return;
       const snapped = pointGrid && committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
       const nextPoint = snapped ? Object.freeze({ ...snapped }) : null;
       const nextSnapPoint = snapped && pointGrid && snapped !== pointGrid ? nextPoint : null;
-      if (sameOptionalPoint(hoverRainCursorPoint, nextPoint) && sameOptionalPoint(hoverGridSnapPoint, nextSnapPoint)) return;
-      hoverRainCursorPoint = nextPoint;
+      if (sameOptionalPoint(hoverEffectCursorPoint, nextPoint) && sameOptionalPoint(hoverGridSnapPoint, nextSnapPoint)) return;
+      hoverEffectCursorPoint = nextPoint;
       hoverGridSnapPoint = nextSnapPoint;
       publish("editor");
     },
@@ -1433,28 +1433,28 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       preview.gridSnapPoint = position === raw ? undefined : Object.freeze({ ...position });
       engine.updatePreview(token, { ...preview.command, light: { ...preview.command.light, position } });
     },
-    beginRainEffect(layerId, effect, pointGrid) {
+    beginEffect(layerId, effect, pointGrid) {
       if (!isFinitePoint(pointGrid)) throw new Error("Effect vertices must contain finite numbers");
       const layer = committedScene.layers.find((candidate) => candidate.id === layerId);
       if (layer?.type !== "effects") throw new Error(`Unknown effects layer '${layerId}'`);
-      if (effect.vertices.length > 0) throw new Error("A new rain effect must not contain vertices");
-      const baseError = validateRainEffect(effect, true);
+      if (effect.vertices.length > 0) throw new Error("A new effect must not contain vertices");
+      const baseError = validateEffect(effect, true);
       if (baseError) throw new Error(baseError);
       const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
-      hoverRainCursorPoint = null;
+      hoverEffectCursorPoint = null;
       hoverGridSnapPoint = null;
       const drawingEffect = { ...effect, vertices: [snapped, snapped] };
       const token = engine.beginPreview({ type: "effect.insert", layerId, effect: drawingEffect });
       if (preview) preview = {
         ...preview,
         effectDrawing: { fixedVertices: [Object.freeze({ ...snapped })] },
-        rainCursorPoint: Object.freeze({ ...snapped }),
+        effectCursorPoint: Object.freeze({ ...snapped }),
         gridSnapPoint: snapped === pointGrid ? undefined : Object.freeze({ ...snapped }),
       };
       publish("editor");
       return token;
     },
-    appendRainEffectVertex(token, pointGrid) {
+    appendEffectVertex(token, pointGrid) {
       if (!preview || preview.token.id !== token.id || !preview.effectDrawing || preview.command.type !== "effect.insert" || !isFinitePoint(pointGrid)) return;
       const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
       const previous = preview.effectDrawing.fixedVertices.at(-1);
@@ -1462,21 +1462,21 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         ? preview.effectDrawing.fixedVertices
         : [...preview.effectDrawing.fixedVertices, Object.freeze({ ...snapped })];
       preview.effectDrawing = { fixedVertices };
-      preview.rainCursorPoint = Object.freeze({ ...snapped });
+      preview.effectCursorPoint = Object.freeze({ ...snapped });
       preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
       engine.updatePreview(token, { ...preview.command, effect: { ...preview.command.effect, vertices: [...fixedVertices, snapped] } });
     },
-    updateRainEffectCursor(token, pointGrid) {
+    updateEffectCursor(token, pointGrid) {
       if (!preview || preview.token.id !== token.id || !preview.effectDrawing || preview.command.type !== "effect.insert" || !isFinitePoint(pointGrid)) return;
       const snapped = committedScene.table.displayGrid ? snapPointToGrid(pointGrid) : pointGrid;
-      preview.rainCursorPoint = Object.freeze({ ...snapped });
+      preview.effectCursorPoint = Object.freeze({ ...snapped });
       preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
       engine.updatePreview(token, {
         ...preview.command,
         effect: { ...preview.command.effect, vertices: [...preview.effectDrawing.fixedVertices, snapped] },
       });
     },
-    commitRainEffect(token) {
+    commitEffect(token) {
       if (!preview || preview.token.id !== token.id || !preview.effectDrawing || preview.command.type !== "effect.insert") {
         return { ok: false, error: "Unknown preview token", revision };
       }
@@ -1484,13 +1484,13 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         ...preview.command,
         effect: { ...preview.command.effect, vertices: dedupeClosingVertex(preview.effectDrawing.fixedVertices) },
       };
-      const error = validateRainEffect(preview.command.effect);
+      const error = validateEffect(preview.command.effect);
       if (error) return { ok: false, error, revision };
       return engine.commitPreview(token);
     },
-    commitActiveRainEffect() {
-      if (!preview?.effectDrawing) return { ok: false, error: "No active rain effect", revision };
-      return engine.commitRainEffect(preview.token);
+    commitActiveEffect() {
+      if (!preview?.effectDrawing) return { ok: false, error: "No active effect", revision };
+      return engine.commitEffect(preview.token);
     },
     beginEffectSelectionInteraction(pointGrid, cssPixelsPerGrid) {
       if (!isFinitePoint(pointGrid) || !Number.isFinite(cssPixelsPerGrid) || cssPixelsPerGrid <= 0) {
@@ -1508,7 +1508,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
             if (preview) preview = {
               ...preview,
               effectVertex: { vertexIndex },
-              rainCursorPoint: Object.freeze({ ...effect.vertices[vertexIndex] }),
+              effectCursorPoint: Object.freeze({ ...effect.vertices[vertexIndex] }),
             };
             publish("editor");
             return { handled: true, token };
@@ -1542,7 +1542,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
         const nextVertices = [...preview.command.effect.vertices];
         nextVertices[preview.effectVertex.vertexIndex] = snapped;
         vertices = nextVertices;
-        preview.rainCursorPoint = Object.freeze({ ...snapped });
+        preview.effectCursorPoint = Object.freeze({ ...snapped });
         preview.gridSnapPoint = snapped === pointGrid ? undefined : Object.freeze({ ...snapped });
       } else if (preview.effectMove) {
         const delta = {
@@ -1557,7 +1557,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
           ? snapFogPolygonTranslation(translated)
           : { vertices: translated, snapPoint: null };
         vertices = snapped.vertices;
-        preview.rainCursorPoint = undefined;
+        preview.effectCursorPoint = undefined;
         preview.gridSnapPoint = snapped.snapPoint ?? undefined;
       } else {
         return;
@@ -2085,7 +2085,7 @@ function findAsset(scene: SceneDocument, assetId: string): ImageAsset | undefine
   return scene.assets.find((asset) => asset.id === assetId);
 }
 
-function findEffect(scene: SceneDocument, effectId: string): RainEffect | undefined {
+function findEffect(scene: SceneDocument, effectId: string): SceneEffect | undefined {
   for (const layer of scene.layers) {
     if (layer.type === "effects") {
       const effect = layer.effects.find((candidate) => candidate.id === effectId);
@@ -2095,7 +2095,7 @@ function findEffect(scene: SceneDocument, effectId: string): RainEffect | undefi
   return undefined;
 }
 
-function effectBySelection(scene: SceneDocument, selection: EffectSelection): RainEffect | undefined {
+function effectBySelection(scene: SceneDocument, selection: EffectSelection): SceneEffect | undefined {
   const layer = scene.layers.find((candidate) => candidate.id === selection.layerId);
   return layer?.type === "effects"
     ? layer.effects.find((effect) => effect.id === selection.effectId)
@@ -2130,7 +2130,7 @@ function applyEffect(
   scene: SceneDocument,
   layerId: string,
   index: number,
-  effect: RainEffect | undefined,
+  effect: SceneEffect | undefined,
   version: number,
   insert = false
 ): SceneDocument {
@@ -2515,7 +2515,7 @@ function lightCollectionById(scene: SceneDocument, layerId: string): readonly Sc
   return layer?.type === "fog" ? layer.lightSources : [];
 }
 
-function effectCollectionById(scene: SceneDocument, layerId: string): readonly RainEffect[] {
+function effectCollectionById(scene: SceneDocument, layerId: string): readonly SceneEffect[] {
   const layer = scene.layers.find((candidate) => candidate.id === layerId);
   return layer?.type === "effects" ? layer.effects : [];
 }
@@ -2645,31 +2645,36 @@ function validateLight(light: SceneLight): string | null {
   return null;
 }
 
-function validateRainEffect(effect: RainEffect, preview = false): string | null {
-  if (!effect || effect.kind !== "rain") return "Effect kind must be rain";
+function validateEffect(effect: SceneEffect, preview = false): string | null {
+  if (!effect || (effect.kind !== "rain" && effect.kind !== "embers")) return "Unsupported effect kind";
   if (typeof effect.id !== "string" || !effect.id.trim()) return "Effect ID is required";
   const name = normalizeName(effect.name, "Effect");
   if ("error" in name) return name.error;
   if (typeof effect.visible !== "boolean") return "Effect visibility must be a boolean";
   if (!Array.isArray(effect.vertices) || !effect.vertices.every(isFinitePoint)) return "Effect vertices must contain finite numbers";
-  if (!preview && dedupeClosingVertex(effect.vertices).length < 3) return "Rain effects require at least three vertices";
-  if (!Number.isSafeInteger(effect.seed)) return "Effect seed must be a safe integer";
+  if (!preview && dedupeClosingVertex(effect.vertices).length < 3) return "Effects require at least three vertices";
+  if (!Number.isInteger(effect.seed) || effect.seed < 0 || effect.seed > 0xffffffff) return "Effect seed must be a uint32";
   if (!effect.color || ![effect.color.r, effect.color.g, effect.color.b].every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) {
     return "Effect color channels must be integers from 0 to 255";
   }
   if (!Number.isFinite(effect.opacity) || effect.opacity < 0 || effect.opacity > 1) return "Effect opacity must be between 0 and 1";
   if (!Number.isFinite(effect.density) || effect.density < 0) return "Effect density must be a non-negative finite number";
   if (!Number.isFinite(effect.speed) || effect.speed <= 0) return "Effect speed must be a positive finite number";
-  if (!Number.isFinite(effect.dropSize) || effect.dropSize <= 0) return "Effect drop size must be a positive finite number";
+  const particleSize = effect.kind === "rain" ? effect.dropSize : effect.particleSize;
+  if (!Number.isFinite(particleSize) || particleSize <= 0) return "Effect particle size must be a positive finite number";
   return null;
 }
 
-function sameRainEffect(left: RainEffect, right: RainEffect): boolean {
-  return left.id === right.id && left.kind === right.kind && left.name === right.name &&
+function sameEffect(left: SceneEffect, right: SceneEffect): boolean {
+  if (left.kind !== right.kind) return false;
+  const sameKindSize = left.kind === "rain"
+    ? left.dropSize === (right as typeof left).dropSize
+    : left.particleSize === (right as typeof left).particleSize;
+  return left.id === right.id && left.name === right.name &&
     left.visible === right.visible && left.seed === right.seed &&
     left.color.r === right.color.r && left.color.g === right.color.g && left.color.b === right.color.b &&
     left.opacity === right.opacity && left.density === right.density && left.speed === right.speed &&
-    left.dropSize === right.dropSize &&
+    sameKindSize &&
     left.vertices.length === right.vertices.length &&
     left.vertices.every((vertex, index) => samePoint(vertex, right.vertices[index]));
 }

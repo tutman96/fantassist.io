@@ -130,6 +130,7 @@ message EffectsLayer {
 message Effect {
   oneof effectType {
     RainEffect rain = 1;
+    EmbersEffect embers = 2;
   }
 }
 
@@ -146,6 +147,25 @@ message RainEffect {
   double density = 8;
   double speed = 9;
   double dropSize = 11;
+
+  message Color {
+    uint32 r = 1;
+    uint32 g = 2;
+    uint32 b = 3;
+  }
+}
+
+message EmbersEffect {
+  string id = 1;
+  string name = 2;
+  bool visible = 3;
+  repeated Vector2d vertices = 4;
+  uint32 seed = 5;
+  Color color = 6;
+  double opacity = 7;
+  double density = 8;
+  double speed = 9;
+  double particleSize = 10;
 
   message Color {
     uint32 r = 1;
