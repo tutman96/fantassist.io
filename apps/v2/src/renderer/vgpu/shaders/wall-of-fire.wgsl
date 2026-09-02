@@ -1,3 +1,5 @@
+import { procedural_fbm3, procedural_gradient_noise } from "./procedural-noise.wgsl";
+
 struct Params {
   target_size: vec2f,
   grid_to_target_offset: vec2f,
@@ -44,41 +46,6 @@ struct VertexOutput {
   return output;
 }
 
-fn hash_u32(input: u32) -> u32 {
-  var value = input;
-  value = (value ^ (value >> 16u)) * 0x7feb352du;
-  value = (value ^ (value >> 15u)) * 0x846ca68bu;
-  return value ^ (value >> 16u);
-}
-
-fn gradient(cell: vec2i, channel: u32) -> vec2f {
-  let mixed = (bitcast<u32>(cell.x) * 0x9e3779b9u) ^ (bitcast<u32>(cell.y) * 0x85ebca6bu) ^ params.seed ^ (channel * 0xc2b2ae35u);
-  let gradients = array<vec2f, 8>(
-    vec2f(1.0, 0.0), vec2f(-1.0, 0.0), vec2f(0.0, 1.0), vec2f(0.0, -1.0),
-    vec2f(0.7071, 0.7071), vec2f(-0.7071, 0.7071), vec2f(0.7071, -0.7071), vec2f(-0.7071, -0.7071),
-  );
-  return gradients[hash_u32(mixed) & 7u];
-}
-
-fn gradient_noise(value: vec2f, channel: u32) -> f32 {
-  let cell = vec2i(floor(value));
-  let local = fract(value);
-  let curve = local * local * local * (local * (local * 6.0 - 15.0) + 10.0);
-  let a = dot(gradient(cell, channel), local);
-  let b = dot(gradient(cell + vec2i(1, 0), channel), local - vec2f(1.0, 0.0));
-  let c = dot(gradient(cell + vec2i(0, 1), channel), local - vec2f(0.0, 1.0));
-  let d = dot(gradient(cell + vec2i(1, 1), channel), local - vec2f(1.0, 1.0));
-  return mix(mix(a, b, curve.x), mix(c, d, curve.x), curve.y) * 1.4142;
-}
-
-fn flame_fbm(point: vec2f, channel: u32) -> f32 {
-  let octave_1 = mat2x2f(1.62, -1.18, 1.18, 1.62) * point + vec2f(7.1, 13.7);
-  let octave_2 = mat2x2f(1.34, 1.67, -1.67, 1.34) * octave_1 + vec2f(19.3, 3.8);
-  return gradient_noise(point, channel) * 0.55
-    + gradient_noise(octave_1, channel + 31u) * 0.28
-    + gradient_noise(octave_2, channel + 67u) * 0.17;
-}
-
 @fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
   if (params.intensity <= 0.0 || params.transition <= 0.0) { discard; }
   let signed_side = select(-1.0, 1.0, input.lateral >= 0.0);
@@ -86,12 +53,12 @@ fn flame_fbm(point: vec2f, channel: u32) -> f32 {
   let phase = params.time * params.speed;
   let base = vec2f(input.path_distance * 0.68 + signed_side * 11.7, radius * 2.55 - phase * 1.18);
   let warp = vec2f(
-    gradient_noise(base * 0.43 + vec2f(4.3, phase * 0.21), 19u),
-    gradient_noise(base * 0.43 + vec2f(17.1, -phase * 0.24), 47u),
+    procedural_gradient_noise(base * 0.43 + vec2f(4.3, phase * 0.21), params.seed, 19u),
+    procedural_gradient_noise(base * 0.43 + vec2f(17.1, -phase * 0.24), params.seed, 47u),
   );
   let warped = base + warp * params.turbulence * vec2f(0.52, 0.76);
-  let flame_noise = flame_fbm(warped, 79u);
-  let detail = gradient_noise(warped * 3.17 + vec2f(0.0, -phase * 1.7), 157u);
+  let flame_noise = procedural_fbm3(warped, params.seed, 79u);
+  let detail = procedural_gradient_noise(warped * 3.17 + vec2f(0.0, -phase * 1.7), params.seed, 157u);
   let erosion = 0.61 - radius + flame_noise * mix(0.1, 0.3, params.turbulence) + detail * 0.08 * params.turbulence;
   let support = 1.0 - smoothstep(0.88, 0.99, radius);
   let aa = max(fwidth(erosion) * 1.2, 0.008);

@@ -15,6 +15,14 @@ import { renderHeadlessScene } from "../scripts/render-scene";
 
 const digest = (pixels: Uint8Array) => createHash("sha256").update(pixels).digest("hex");
 
+test("cloud shader uses the shared low-cost warped value-noise generator", async () => {
+  const shader = (await loadSceneShaders()).cloud as string;
+  assert.match(shader, /procedural_value_fbm3/);
+  assert.match(shader, /procedural_value_noise/);
+  assert.match(shader, /warp_domain/);
+  assert.doesNotMatch(shader, /procedural_gradient_noise\(domain/);
+});
+
 function cloudScene(color = { r: 96, g: 101, b: 110 }) {
   const base = createSampleSceneDocument();
   return freezeSceneDocument({
@@ -139,7 +147,7 @@ test("procedural clouds update live parameters and fade resources in and out", {
     assert.equal(executor.effectResourceCount, 1);
     assert.deepEqual(await executor.effectEmissionDiagnostics(), []);
 
-    const changed = { ...cloud, color: { r: 70, g: 190, b: 75 }, coverage: 0.75, scale: 4 };
+    const changed = { ...cloud, color: { r: 70, g: 190, b: 75 }, coverage: 0.75, scale: 4, speed: 0.4, turbulence: 0.25 };
     assert.equal(engine.dispatch({ type: "effect.update", layerId: cloudLayer.id, effectId: cloud.id, effect: changed }).ok, true);
     executor.setSnapshot(engine.getSnapshot());
     await executor.render(0.24);

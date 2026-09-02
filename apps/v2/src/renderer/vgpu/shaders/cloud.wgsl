@@ -1,3 +1,5 @@
+import { procedural_hash_u32, procedural_value_fbm3, procedural_value_noise } from "./procedural-noise.wgsl";
+
 struct Params {
   target_size: vec2f,
   grid_to_target_offset: vec2f,
@@ -35,36 +37,6 @@ struct VertexOutput {
   return output;
 }
 
-fn hash_u32(input: u32) -> u32 {
-  var value = input;
-  value = (value ^ (value >> 16u)) * 0x7feb352du;
-  value = (value ^ (value >> 15u)) * 0x846ca68bu;
-  return value ^ (value >> 16u);
-}
-
-fn random_2d(point: vec2i) -> f32 {
-  let mixed = (bitcast<u32>(point.x) * 0x9e3779b9u) ^ (bitcast<u32>(point.y) * 0x85ebca6bu) ^ params.seed;
-  return f32(hash_u32(mixed)) / 4294967295.0;
-}
-
-fn value_noise(point: vec2f) -> f32 {
-  let cell = vec2i(floor(point));
-  let local = fract(point);
-  let curve = local * local * (3.0 - 2.0 * local);
-  let a = random_2d(cell);
-  let b = random_2d(cell + vec2i(1, 0));
-  let c = random_2d(cell + vec2i(0, 1));
-  let d = random_2d(cell + vec2i(1, 1));
-  return mix(mix(a, b, curve.x), mix(c, d, curve.x), curve.y);
-}
-
-fn cloud_noise(point: vec2f) -> f32 {
-  var value = value_noise(point) * 0.58;
-  value += value_noise(point * 2.03 + vec2f(17.2, 4.8)) * 0.29;
-  value += value_noise(point * 4.11 + vec2f(3.1, 29.7)) * 0.13;
-  return value;
-}
-
 fn polygon_edge_distance(point: vec2f) -> f32 {
   var closest = 1e20;
   var previous = params.polygon_vertex_count - 1u;
@@ -79,26 +51,55 @@ fn polygon_edge_distance(point: vec2f) -> f32 {
   return closest;
 }
 
+fn rgb_to_hsv(color: vec3f) -> vec3f {
+  let maximum = max(max(color.r, color.g), color.b);
+  let minimum = min(min(color.r, color.g), color.b);
+  let delta = maximum - minimum;
+  var hue = 0.0;
+  if (delta > 0.0001) {
+    if (maximum == color.r) {
+      hue = (color.g - color.b) / delta;
+    } else if (maximum == color.g) {
+      hue = (color.b - color.r) / delta + 2.0;
+    } else {
+      hue = (color.r - color.g) / delta + 4.0;
+    }
+    hue = fract(hue / 6.0);
+  }
+  return vec3f(hue, select(0.0, delta / max(maximum, 0.0001), maximum > 0.0001), maximum);
+}
+
+fn hsv_to_rgb(color: vec3f) -> vec3f {
+  let channels = clamp(abs(fract(color.xxx + vec3f(0.0, 0.6666667, 0.3333333)) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));
+  return color.z * mix(vec3f(1.0), channels, color.y);
+}
+
 @fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
   if (params.coverage <= 0.0 || params.transition <= 0.0) { discard; }
   let scale = max(params.cloud_scale, 0.05);
-  let seed_angle = f32(hash_u32(params.seed)) / 4294967295.0 * 6.28318530718;
+  let seed_angle = f32(procedural_hash_u32(params.seed)) / 4294967295.0 * 6.28318530718;
   let drift = vec2f(cos(seed_angle), sin(seed_angle)) * params.time * params.speed / scale;
   let base = input.point_grid / scale;
+  let warp_domain = base * 0.48 + drift * 0.24;
   let warp = vec2f(
-    value_noise(base * 0.63 + drift * 0.37 + vec2f(7.3, 19.1)),
-    value_noise(base * 0.63 - drift * 0.29 + vec2f(31.7, 5.9)),
+    procedural_value_noise(warp_domain + vec2f(7.3, 19.1), params.seed, 17u),
+    procedural_value_noise(warp_domain + vec2f(31.7, 5.9), params.seed, 47u),
   ) - vec2f(0.5);
-  let domain = base + drift + warp * params.turbulence * 1.65;
-  let broad = cloud_noise(domain);
-  let billow = cloud_noise(domain * 1.37 - drift * 0.42 + vec2f(13.8, 2.4));
-  let field = mix(broad, broad * 0.72 + billow * 0.28, params.turbulence);
-  let threshold = 1.0 - params.coverage;
-  let body = smoothstep(threshold - 0.16, threshold + 0.12, field);
+  let domain = base + drift + warp * params.turbulence * 0.9;
+  let broad = procedural_value_fbm3(domain * 0.78, params.seed, 79u);
+  let billow = procedural_value_noise(domain * 1.61 - drift * 0.38 + vec2f(13.8, 2.4), params.seed, 151u);
+  let field = clamp(broad * mix(0.88, 0.72, params.turbulence) + billow * mix(0.12, 0.28, params.turbulence), 0.0, 1.0);
+  let threshold = 0.72 - params.coverage * 0.55;
+  let body = smoothstep(threshold - 0.13, threshold + 0.11, field);
   let edge_width = clamp(scale * 0.3, 0.2, 1.1);
   let edge = smoothstep(0.0, edge_width, polygon_edge_distance(input.point_grid));
   let alpha = clamp(params.opacity * params.transition * body * edge, 0.0, 1.0);
-  let shade = mix(0.74, 1.16, billow);
-  let cloud_color = clamp(params.color * shade, vec3f(0.0), vec3f(1.0));
+  let color_phase = clamp(field * 0.62 + billow * 0.38, 0.0, 1.0);
+  let authored_hsv = rgb_to_hsv(params.color);
+  let cloud_color = hsv_to_rgb(vec3f(
+    fract(authored_hsv.x + mix(-0.035, 0.045, color_phase)),
+    clamp(authored_hsv.y * mix(1.08, 0.88, color_phase), 0.0, 1.0),
+    clamp(authored_hsv.z * mix(0.68, 1.2, color_phase), 0.0, 1.0),
+  ));
   return vec4f(cloud_color * alpha, alpha);
 }
