@@ -3,13 +3,15 @@ import type { SceneEngineSnapshot } from "@/engine/scene-engine";
 import type { TableSessionSnapshot } from "@/engine/table-session";
 import type { RendererStatus } from "@/features/editor/use-scene-viewport";
 import type { EditorTool } from "@/features/editor/editor-tool";
+import type { EffectTool } from "@/features/editor/editor-tool";
+import { editorEffectDefinition } from "@/features/editor/effect-definitions";
 
-export function EditorGestureHints({ tool }: { readonly tool: EditorTool }) {
+export function EditorGestureHints({ effectTool, tool }: { readonly effectTool: EffectTool; readonly tool: EditorTool }) {
   const polygon = tool === "fog" || tool === "fog-clear" || tool === "wall" || tool === "effects";
   return (
     <div className="pointer-events-none absolute bottom-3 left-4 hidden items-center gap-2.5 text-[10px] font-medium tracking-[0.08em] text-amber-50/55 uppercase md:flex">
       <span className="text-amber-200/70">✦</span>
-      <span>{tool === "table" ? "Drag display to position" : polygon ? `Click to place ${tool === "effects" ? "effect area" : "points"}` : tool === "light" ? "Click to place a light" : "Drag map to move"}</span>
+      <span>{tool === "table" ? "Drag display to position" : polygon ? `Click to place ${tool === "effects" ? `effect ${editorEffectDefinition(effectTool).geometryNoun}` : "points"}` : tool === "light" ? "Click to place a light" : "Drag map to move"}</span>
       <span className="h-3 w-px bg-violet-300/15" />
       <span>{tool === "table" ? "Drag corners to zoom" : polygon ? "Double-click or Enter to finish" : "Space + drag to roam"}</span>
       <span className="h-3 w-px bg-violet-300/15" />

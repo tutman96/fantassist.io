@@ -47,6 +47,23 @@ const cloud = {
   turbulence: 0.65,
 };
 
+const wallOfFire = {
+  id: "wall-of-fire",
+  kind: "wall-of-fire" as const,
+  name: "Wall of Fire",
+  visible: true,
+  vertices: [{ x: 0, y: 2 }, { x: 4, y: 2 }],
+  seed: 31,
+  color: { r: 255, g: 91, b: 24 },
+  opacity: 0.9,
+  width: 1.2,
+  intensity: 0.86,
+  speed: 1.3,
+  turbulence: 0.7,
+  sparkDensity: 1.2,
+  sparkSize: 0.1,
+};
+
 const effectsLayer = (visible = true) => ({ id: "weather", name: "Weather", type: "effects" as const, visible, effects: [rain] });
 
 test("new effects enter over 240ms smoothstep and keep animation demand", () => {
@@ -123,16 +140,17 @@ test("an effect deletion retains its exact position inside a surviving layer", (
 
 test("mixed effect kinds preserve one ordered transition lifecycle", () => {
   const base = createSampleSceneDocument();
-  const layer = { ...effectsLayer(), effects: [rain, cloud, embers] };
+  const layer = { ...effectsLayer(), effects: [rain, cloud, wallOfFire, embers] };
   const scene = freezeSceneDocument({ ...base, layers: [...base.layers, layer] });
   let model = createInitialEffectTransitions(scene);
-  assert.deepEqual(model.entries.map((entry) => entry.effect.kind), ["rain", "cloud", "embers"]);
+  assert.deepEqual(model.entries.map((entry) => entry.effect.kind), ["rain", "cloud", "wall-of-fire", "embers"]);
   model = reconcileEffectTransitions(model, freezeSceneDocument({
     ...scene,
-    layers: scene.layers.map((candidate) => candidate.id === layer.id ? { ...layer, effects: [cloud, embers] } : candidate),
+    layers: scene.layers.map((candidate) => candidate.id === layer.id ? { ...layer, effects: [cloud, wallOfFire, embers] } : candidate),
   }));
-  assert.deepEqual(model.effectOrder.get(layer.id), [rain.id, cloud.id, embers.id]);
+  assert.deepEqual(model.effectOrder.get(layer.id), [rain.id, cloud.id, wallOfFire.id, embers.id]);
   assert.equal(model.entries.find((entry) => entry.effect.id === rain.id)?.present, false);
   assert.equal(model.entries.find((entry) => entry.effect.id === embers.id)?.target, 1);
   assert.equal(model.entries.find((entry) => entry.effect.id === cloud.id)?.target, 1);
+  assert.equal(model.entries.find((entry) => entry.effect.id === wallOfFire.id)?.target, 1);
 });

@@ -72,7 +72,17 @@ export interface CloudEffect extends SceneEffectBase {
   readonly turbulence: number;
 }
 
-export type SceneEffect = RainEffect | EmbersEffect | CloudEffect;
+export interface WallOfFireEffect extends SceneEffectBase {
+  readonly kind: "wall-of-fire";
+  readonly width: number;
+  readonly intensity: number;
+  readonly speed: number;
+  readonly turbulence: number;
+  readonly sparkDensity: number;
+  readonly sparkSize: number;
+}
+
+export type SceneEffect = RainEffect | EmbersEffect | CloudEffect | WallOfFireEffect;
 
 interface SceneLayerBase {
   readonly id: string;

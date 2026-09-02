@@ -55,6 +55,7 @@ message Effect {
     RainEffect rain = 1;
     EmbersEffect embers = 2;
     CloudEffect cloud = 3;
+    WallOfFireEffect wallOfFire = 4;
   }
 }
 
@@ -97,6 +98,22 @@ message CloudEffect {
   double speed = 9;
   double scale = 10;
   double turbulence = 11;
+}
+
+message WallOfFireEffect {
+  string id = 1;
+  string name = 2;
+  bool visible = 3;
+  repeated Vector2d vertices = 4;
+  uint32 seed = 5;
+  Color color = 6;
+  double opacity = 7;
+  double width = 8;
+  double intensity = 9;
+  double speed = 10;
+  double sparkDensity = 11;
+  double sparkSize = 12;
+  double turbulence = 13;
 }
 ```
 
@@ -169,7 +186,7 @@ All effect color blending occurs in the existing `rgba16float` linear-light scen
 
 ## GPU Geometry And Shaders
 
-Polygon fills reuse a renderer-owned concave tessellation utility generalized from fog geometry. Polygon boundaries and open paths use segment geometry with cumulative path distance. Finished path effects do not depend on implementation-defined wide line primitives. They use instanced conservative quads, shader extrusion, analytic edge antialiasing, and explicit joins or caps.
+Polygon fills reuse a renderer-owned concave tessellation utility generalized from fog geometry. Polygon boundaries and open paths use segment geometry with cumulative path distance. Finished path effects do not depend on implementation-defined wide line primitives. They use connected stroke meshes, shader extrusion, analytic edge antialiasing, and explicit joins or caps.
 
 Animated particle effects use the reusable in-scope renderer library under `src/renderer/particles`. Its vgpu compute passes own current and target emission rates, fractional accumulation, monotonic emission sequence, parallel burst spawning, and a fixed particle ring in GPU storage. Particle records contain spawn time, lifetime, initialization seed, and allocation state. WGSL derives spawn position, projected motion, geometry, and opacity from each initialization seed and local renderer time. CPU responsibilities are setting target rate, advancing the local clock, and scheduling the compute dispatches. Cloud effects derive animation from procedural world-space fields. Additional stateful simulation is deferred until a concrete effect cannot be expressed with emitted records, deterministic shader initialization, or procedural fields.
 
@@ -198,7 +215,7 @@ local elapsed seconds * authored speed + stable seeded offset
 
 The editor and table may therefore display different instantaneous rain drops, snowflakes, flames, or noise. They preserve the same authored geometry and appearance.
 
-Effect insertion, removal, effect visibility, and effects-layer visibility use renderer-local transitions. Rain ramps its emission rate over 240 milliseconds. Existing drops retain their authored opacity envelope and finish their individual lifetime after emission stops. Removed effects and layers retain their prior GPU resources and layer-order position until the emitter reaches zero and its final particle expires, then release those resources. Restoring the same effect while particles drain raises its emission rate again and preserves the live particles. Initial scene hydration deterministically prewarms a steady-state particle population.
+Effect insertion, removal, effect visibility, and effects-layer visibility use renderer-local transitions. Particle emission rates ramp over 240 milliseconds. Existing particles retain their authored opacity envelope and finish their individual lifetime after emission stops. Removed effects and layers retain their prior GPU resources and layer-order position until the emitter reaches zero and its final particle expires, then release those resources. Restoring the same effect while particles drain raises its emission rate again and preserves the live particles. Initial scene hydration deterministically prewarms a steady-state particle population.
 
 A scene ID change is a hard effects boundary. It bypasses removal transitions, disposes every emitter and particle context from the previous scene, and initializes only the new scene's effects before its first frame. Effect edits within one scene retain the normal ramp and drain behavior.
 
@@ -259,6 +276,8 @@ Rain position advances linearly in grid space. The vanishing point is the midpoi
 Embers are also viewed from above. Their polygon is a source region: seeded particles spawn only inside it, then vertical lift toward the camera is represented by subtle growth while randomized planar convection and curl keep movement independent of screen north. Particles use additive warm-core and soft-halo composition, seeded size and flicker variation, and a smooth lifetime envelope. `density` is emissions per grid area per second, `speed` controls lift lifetime, and `particleSize` is authored in grid units. Embers are decorative emissive pixels and do not implicitly become scene lights.
 
 Clouds are top-down procedural density fields clipped to an authored polygon with a soft inward boundary. Seeded world-space noise drifts coherently and uses domain warping for billowing without tying the pattern to editor pan, zoom, or output resolution. `coverage` controls occupied density, `speed` controls planar drift in grid units per second, `scale` controls billow size in grid units, and `turbulence` controls distortion. Smoke, poison gas, mist, and dust are presets of this one effect rather than separate persisted variants; all parameters remain directly editable. Clouds are visual alpha effects and do not reveal fog, create lights, or alter obstruction.
+
+Wall of Fire is a top-down open-path effect with no implicit final-to-first segment. A connected, width-independent stroke mesh carries cumulative path distance and is extruded in the vertex shader, allowing width edits without rebuilding geometry. The premultiplied flame body flows continuously along the path with seeded edge turbulence, a hot core, square caps, and bounded miter joins. A shared particle emitter produces additive sparks at a rate measured per grid unit of path length; a context compute pass resolves each new spark to a length-weighted path position once instead of scanning segments every frame. Sparks drain and reactivate through the same lifecycle as Rain and Embers. Wall of Fire is decorative and does not create gameplay light or obstruction.
 
 ## Performance And Caching
 

@@ -116,12 +116,14 @@ test("canonical effects fields do not reuse frozen stable-v1 marker identities",
   const rain = currentSchema.lookupType("RainEffect");
   const embers = currentSchema.lookupType("EmbersEffect");
   const cloud = currentSchema.lookupType("CloudEffect");
+  const wallOfFire = currentSchema.lookupType("WallOfFireEffect");
   assert.equal(layer.fields.effectsLayer.id, 4);
   assert.equal(layer.fields["markerLayer"], undefined);
   assert.equal(layer.lookupEnum("LayerType").values.EFFECTS, 3);
   assert.equal(effect.fields.rain.id, 1);
   assert.equal(effect.fields.embers.id, 2);
   assert.equal(effect.fields.cloud.id, 3);
+  assert.equal(effect.fields.wallOfFire.id, 4);
   assert.equal(rain.fields["angle"], undefined);
   assert.ok(rain.reserved?.some((entry) => Array.isArray(entry) && entry[0] === 10 && entry[1] === 10));
   assert.deepEqual(
@@ -148,8 +150,31 @@ test("canonical effects fields do not reuse frozen stable-v1 marker identities",
     Object.fromEntries(Object.entries(currentSchema.lookupType("CloudEffect.Color").fields).map(([name, field]) => [name, field.id])),
     { r: 1, g: 2, b: 3 }
   );
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(wallOfFire.fields).map(([name, field]) => [name, field.id])),
+    {
+      id: 1,
+      name: 2,
+      visible: 3,
+      vertices: 4,
+      seed: 5,
+      color: 6,
+      opacity: 7,
+      width: 8,
+      intensity: 9,
+      speed: 10,
+      sparkDensity: 11,
+      sparkSize: 12,
+      turbulence: 13,
+    }
+  );
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(currentSchema.lookupType("WallOfFireEffect.Color").fields).map(([name, field]) => [name, field.id])),
+    { r: 1, g: 2, b: 3 }
+  );
   assert.equal(v1Schema.lookup("Effect"), null);
   assert.equal(v1Schema.lookup("CloudEffect"), null);
+  assert.equal(v1Schema.lookup("WallOfFireEffect"), null);
 
   const experimentalBytes = protobuf.Writer.create()
     .uint32(10 * 8 + 1).double(-0.2)
@@ -204,6 +229,20 @@ test("frozen stable-v1 decode and re-encode drops effects while preserving known
             coverage: 0.55,
             speed: 1.5,
             scale: 3,
+            turbulence: 0.7,
+          } }, { wallOfFire: {
+            id: "wall-of-fire-1",
+            name: "Flame barrier",
+            visible: true,
+            vertices: [{ x: 3, y: 4 }, { x: 3, y: 10 }],
+            seed: 168,
+            color: { r: 255, g: 72, b: 12 },
+            opacity: 0.9,
+            width: 1.75,
+            intensity: 0.85,
+            speed: 2.5,
+            sparkDensity: 0.45,
+            sparkSize: 0.3,
             turbulence: 0.7,
           } }],
         },

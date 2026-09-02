@@ -96,6 +96,21 @@ const effectsLayer: V1Layer = {
         scale: 3.25,
         turbulence: 0.65,
       } },
+      { wallOfFire: {
+        id: "wall-of-fire-1",
+        name: "Flame barrier",
+        visible: true,
+        vertices: [{ x: 2, y: 3 }, { x: 2, y: 12 }, { x: 3.5, y: 12 }, { x: 3.5, y: 3 }],
+        seed: 1618033,
+        color: { r: 255, g: 72, b: 12 },
+        opacity: 0.9,
+        width: 1.75,
+        intensity: 0.85,
+        speed: 2.5,
+        sparkDensity: 0.45,
+        sparkSize: 0.3,
+        turbulence: 0.7,
+      } },
       { embers: {
         id: "embers-1",
         name: "Campfire embers",
@@ -299,7 +314,7 @@ test("scene adapter patches image transforms without losing unrelated v1 data", 
   assert.deepEqual(patched.layers[1], fullScene.layers[1]);
 });
 
-test("scene adapter projects and patches ordered rain, cloud, and embers effects", () => {
+test("scene adapter projects and patches ordered rain, cloud, wall of fire, and embers effects", () => {
   const document = projectV1Scene(effectsScene);
   assert.deepEqual(document.layers.map((layer) => layer.type), ["assets", "effects", "fog"]);
   const effects = document.layers[1];
@@ -313,10 +328,14 @@ test("scene adapter projects and patches ordered rain, cloud, and embers effects
     kind: "cloud",
   });
   assert.deepEqual(effects.effects[2], {
-    ...effectsLayer.effectsLayer?.effects[2].embers,
+    ...effectsLayer.effectsLayer?.effects[2].wallOfFire,
+    kind: "wall-of-fire",
+  });
+  assert.deepEqual(effects.effects[3], {
+    ...effectsLayer.effectsLayer?.effects[3].embers,
     kind: "embers",
   });
-  assert.deepEqual(effects.effects.map((effect) => effect.kind), ["rain", "cloud", "embers"]);
+  assert.deepEqual(effects.effects.map((effect) => effect.kind), ["rain", "cloud", "wall-of-fire", "embers"]);
 
   const patched = patchV1SceneTransforms(effectsScene, {
     ...document,
@@ -325,6 +344,8 @@ test("scene adapter projects and patches ordered rain, cloud, and embers effects
       name: "Storm",
       effects: layer.effects.map((effect) => effect.kind === "cloud"
         ? { ...effect, coverage: 0.9, turbulence: 0.95, visible: false }
+        : (effect as { kind: string }).kind === "wall-of-fire"
+          ? { ...effect, width: 2.5, sparkDensity: 0.88, visible: false }
         : { ...effect, density: 0.9, visible: false }),
     } : layer),
   }, 8);
@@ -337,11 +358,20 @@ test("scene adapter projects and patches ordered rain, cloud, and embers effects
     turbulence: 0.95,
     visible: false,
   });
-  assert.equal(patched.layers[1].effectsLayer?.effects[2].embers?.density, 0.9);
-  assert.equal(patched.layers[1].effectsLayer?.effects[2].embers?.visible, false);
-  assert.deepEqual(patched.layers[1].effectsLayer?.effects.map((effect) => effect.rain?.id ?? effect.cloud?.id ?? effect.embers?.id), [
+  assert.deepEqual(patched.layers[1].effectsLayer?.effects[2].wallOfFire, {
+    ...effectsLayer.effectsLayer?.effects[2].wallOfFire,
+    width: 2.5,
+    sparkDensity: 0.88,
+    visible: false,
+  });
+  assert.equal(patched.layers[1].effectsLayer?.effects[3].embers?.density, 0.9);
+  assert.equal(patched.layers[1].effectsLayer?.effects[3].embers?.visible, false);
+  assert.deepEqual(patched.layers[1].effectsLayer?.effects.map((effect) =>
+    effect.rain?.id ?? effect.cloud?.id ?? effect.wallOfFire?.id ?? effect.embers?.id
+  ), [
     "rain-1",
     "cloud-1",
+    "wall-of-fire-1",
     "embers-1",
   ]);
   assert.deepEqual(patched.layers.map((layer) =>

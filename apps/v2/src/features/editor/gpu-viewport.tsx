@@ -128,7 +128,7 @@ export function GpuViewport({ profile, engine: providedEngine, imageLoader: prov
             engine={engine}
             sceneSnapshot={sceneSnapshot}
           />
-          <EditorGestureHints tool={tool} />
+           <EditorGestureHints effectTool={effectTool} tool={tool} />
           {status === "ready" ? (
             <CameraStatus sceneSnapshot={sceneSnapshot} tableSnapshot={tableSnapshot} />
           ) : null}

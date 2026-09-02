@@ -7,6 +7,7 @@ import type { SceneShaders } from "@/renderer/vgpu/scene-shaders";
 
 export type ParticleSceneEffect = Extract<SceneEffect, { readonly kind: "rain" | "embers" }>;
 export type CloudSceneEffect = Extract<SceneEffect, { readonly kind: "cloud" }>;
+export type WallOfFireSceneEffect = Extract<SceneEffect, { readonly kind: "wall-of-fire" }>;
 
 interface EffectRendererDefinitionBase {
   readonly kind: SceneEffect["kind"];
@@ -34,7 +35,19 @@ export interface CloudEffectDefinition extends EffectRendererDefinitionBase {
   readonly kind: "cloud";
 }
 
-export type EffectRendererDefinition = ParticleEffectDefinition | CloudEffectDefinition;
+export interface PathEffectDefinition extends EffectRendererDefinitionBase {
+  readonly family: "procedural-path";
+  readonly kind: "wall-of-fire";
+  readonly maxSparkDensity: number;
+  readonly flameDensity: number;
+  readonly maxSparkLifetime: number;
+  sparkLifetime(speed: number): number;
+  sparkShader(shaders: SceneShaders): string | ShaderSource;
+  flameShader(shaders: SceneShaders): string | ShaderSource;
+  sparkContextShader(shaders: SceneShaders): string | ShaderSource;
+}
+
+export type EffectRendererDefinition = ParticleEffectDefinition | CloudEffectDefinition | PathEffectDefinition;
 
 interface ParticleEffectContextDefinition {
   readonly bytesPerParticle: number;
@@ -94,6 +107,24 @@ const DEFINITIONS: Readonly<Record<SceneEffect["kind"], EffectRendererDefinition
     handleColor: [0.66, 0.7, 0.78, 1],
     drawingHandleColor: [0.9, 0.92, 0.98, 1],
     shader: (shaders) => shaders.cloud,
+  },
+  "wall-of-fire": {
+    family: "procedural-path",
+    kind: "wall-of-fire",
+    blend: "premultiplied",
+    maxSparkDensity: 8,
+    flameDensity: 40,
+    maxSparkLifetime: 2.4 / 0.5,
+    guideColor: [0.48, 0.15, 0.025, 0.55],
+    selectedGuideColor: [1, 0.42, 0.08, 0.95],
+    drawingGuideColor: [1, 0.72, 0.16, 1],
+    handleColor: [1, 0.34, 0.06, 1],
+    drawingHandleColor: [1, 0.78, 0.2, 1],
+    shader: (shaders) => shaders.wallOfFire,
+    sparkShader: (shaders) => shaders.wallOfFireSparks,
+    flameShader: (shaders) => shaders.wallOfFireFlames,
+    sparkContextShader: (shaders) => shaders.wallOfFireContext,
+    sparkLifetime: (speed) => 2.4 / Math.max(speed, 0.5),
   },
 });
 

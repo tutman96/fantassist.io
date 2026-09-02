@@ -189,7 +189,7 @@ export function useEditorInteractions({
   return {
     cursor: tool === "table"
       ? cursorForTableHandle(tableHandle)
-      : isPolygonTool(tool) || tool === "light"
+      : isGeometryDrawingTool(tool) || tool === "light"
         ? "crosshair"
         : cursorForHandle(hoveredHandle, assetRotation),
     onContextMenu(event: React.MouseEvent<HTMLCanvasElement>) {
@@ -220,7 +220,7 @@ export function useEditorInteractions({
           touchGesture.current = readTouchGesture(touchPoints.current);
           return;
         }
-        if (isPolygonTool(tool)) {
+        if (isGeometryDrawingTool(tool)) {
           const pointGrid = pointerGrid(event, session);
           if (tool === "effects") {
             if (effectDraft.current) engine.appendEffectVertex(effectDraft.current, pointGrid);
@@ -275,7 +275,7 @@ export function useEditorInteractions({
         event.button === 2 ||
         (event.button === 0 && spacePressed.current);
       if (!forcePan && event.button === 0) {
-        if (isPolygonTool(tool)) {
+        if (isGeometryDrawingTool(tool)) {
           const pointGrid = pointerGrid(event, session);
           if (tool === "effects") {
             if (effectDraft.current) engine.appendEffectVertex(effectDraft.current, pointGrid);
@@ -348,7 +348,7 @@ export function useEditorInteractions({
       }
     },
     onPointerMove(event: React.PointerEvent<HTMLCanvasElement>) {
-      if (isPolygonTool(tool)) {
+      if (isGeometryDrawingTool(tool)) {
         const point = pointerGrid(event, session);
         if (tool === "effects") {
           if (effectDraft.current) engine.updateEffectCursor(effectDraft.current, point);
@@ -461,7 +461,7 @@ export function useEditorInteractions({
       drag.current = null;
     },
     onDoubleClick(event: React.MouseEvent<HTMLCanvasElement>) {
-      if (!isPolygonTool(tool)) return;
+      if (!isGeometryDrawingTool(tool)) return;
       event.preventDefault();
       if (tool === "effects" && effectDraft.current) {
         const result = engine.commitEffect(effectDraft.current);
@@ -487,7 +487,7 @@ function pointerGrid(
   );
 }
 
-function isPolygonTool(tool: EditorTool): tool is "fog" | "fog-clear" | "wall" | "effects" {
+function isGeometryDrawingTool(tool: EditorTool): tool is "fog" | "fog-clear" | "wall" | "effects" {
   return isFogPolygonTool(tool) || tool === "effects";
 }
 

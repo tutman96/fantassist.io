@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createSampleSceneDocument, freezeSceneDocument } from "../src/engine/scene-document";
-import type { CloudEffect, EmbersEffect, RainEffect, SceneDocument, SceneEffect } from "../src/engine/scene-document";
+import type { CloudEffect, EmbersEffect, RainEffect, SceneDocument, SceneEffect, WallOfFireEffect } from "../src/engine/scene-document";
 import { createSceneEngine } from "../src/engine/scene-engine";
 import type { SceneCommand } from "../src/engine/scene-engine";
 
@@ -47,6 +47,23 @@ const CLOUD: CloudEffect = {
   speed: 0.18,
   scale: 3,
   turbulence: 0.65,
+};
+
+const WALL_OF_FIRE: WallOfFireEffect = {
+  id: "wall-of-fire/one",
+  kind: "wall-of-fire",
+  name: "Wall of Fire",
+  visible: true,
+  vertices: [{ x: 1, y: 1 }, { x: 9, y: 1 }, { x: 9, y: 7 }],
+  seed: 313,
+  color: { r: 255, g: 91, b: 24 },
+  opacity: 0.9,
+  width: 1.2,
+  intensity: 0.86,
+  speed: 1.3,
+  turbulence: 0.7,
+  sparkDensity: 1.2,
+  sparkSize: 0.1,
 };
 
 function effectsScene(effects: readonly SceneEffect[] = []): SceneDocument {
@@ -144,6 +161,49 @@ test("cloud effects share ordered CRUD and validate procedural parameters", () =
   ]) {
     assert.equal(engine.dispatch({ type: "effect.update", layerId: "weather", effectId: CLOUD.id, effect }).ok, false);
   }
+});
+
+test("Wall of Fire validates open-path parameters and commits a two-point path", () => {
+  const engine = createSceneEngine(effectsScene());
+  for (const effect of [
+    { ...WALL_OF_FIRE, vertices: [WALL_OF_FIRE.vertices[0]] },
+    { ...WALL_OF_FIRE, vertices: [{ x: 1, y: 1 }, { x: 1, y: 1 }] },
+    { ...WALL_OF_FIRE, width: 0 },
+    { ...WALL_OF_FIRE, intensity: 1.1 },
+    { ...WALL_OF_FIRE, speed: 6.1 },
+    { ...WALL_OF_FIRE, speed: 0.49 },
+    { ...WALL_OF_FIRE, turbulence: -0.1 },
+    { ...WALL_OF_FIRE, sparkDensity: 8.1 },
+    { ...WALL_OF_FIRE, sparkSize: 0 },
+  ]) {
+    assert.equal(engine.dispatch({ type: "effect.insert", layerId: "weather", effect }).ok, false);
+  }
+  const token = engine.beginEffect("weather", { ...WALL_OF_FIRE, vertices: [] }, { x: 1, y: 1 });
+  engine.appendEffectVertex(token, { x: 9, y: 1 });
+  assert.deepEqual(engine.commitEffect(token), { ok: true, changed: true, revision: 1 });
+  assert.deepEqual(effects(engine)[0].vertices, [{ x: 1, y: 1 }, { x: 9, y: 1 }]);
+  engine.undo();
+  assert.deepEqual(effects(engine), []);
+});
+
+test("Wall of Fire selection follows open segments without an implicit closing edge", () => {
+  const wideFire = { ...WALL_OF_FIRE, width: 6 };
+  const engine = createSceneEngine(effectsScene([wideFire]));
+  assert.deepEqual(engine.beginEffectSelectionInteraction({ x: 5, y: 3.8 }, 20), { handled: true });
+  assert.deepEqual(engine.getSnapshot().selectedEffect, { layerId: "weather", effectId: WALL_OF_FIRE.id });
+  engine.dispatch({ type: "effect.selection.set", selection: null });
+  assert.deepEqual(engine.beginEffectSelectionInteraction({ x: 4, y: 6 }, 20), { handled: false });
+  assert.equal(engine.getSnapshot().selectedEffect, null);
+
+  engine.dispatch({ type: "effect.selection.set", selection: { layerId: "weather", effectId: WALL_OF_FIRE.id } });
+  const interaction = engine.beginEffectSelectionInteraction({ x: 5, y: 1.2 }, 20);
+  assert.equal(interaction.handled, true);
+  assert.ok(interaction.token);
+  engine.updateEffectSelectionInteraction(interaction.token, { x: 7, y: 3.2 });
+  assert.deepEqual(effects(engine)[0].vertices, [{ x: 3, y: 3 }, { x: 11, y: 3 }, { x: 11, y: 9 }]);
+  assert.equal(engine.commitPreview(interaction.token).ok, true);
+  engine.undo();
+  assert.deepEqual(effects(engine)[0], wideFire);
 });
 
 test("embers validation and generic polygon authoring reject malformed values and commit once", () => {

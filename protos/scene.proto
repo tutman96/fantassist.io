@@ -132,6 +132,7 @@ message Effect {
     RainEffect rain = 1;
     EmbersEffect embers = 2;
     CloudEffect cloud = 3;
+    WallOfFireEffect wallOfFire = 4;
   }
 }
 
@@ -187,6 +188,28 @@ message CloudEffect {
   double speed = 9;
   double scale = 10;
   double turbulence = 11;
+
+  message Color {
+    uint32 r = 1;
+    uint32 g = 2;
+    uint32 b = 3;
+  }
+}
+
+message WallOfFireEffect {
+  string id = 1;
+  string name = 2;
+  bool visible = 3;
+  repeated Vector2d vertices = 4;
+  uint32 seed = 5;
+  Color color = 6;
+  double opacity = 7;
+  double width = 8;
+  double intensity = 9;
+  double speed = 10;
+  double sparkDensity = 11;
+  double sparkSize = 12;
+  double turbulence = 13;
 
   message Color {
     uint32 r = 1;

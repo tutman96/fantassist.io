@@ -15,6 +15,8 @@ export interface EditorEffectDefinition {
   readonly kind: EffectTool;
   readonly label: string;
   readonly iconClassName: string;
+  readonly geometry: "polygon" | "open-path";
+  readonly geometryNoun: "area" | "path";
   readonly controls: readonly EditorEffectControl[];
   create(id: string, seed: number): SceneEffect;
 }
@@ -24,6 +26,8 @@ export const EDITOR_EFFECT_DEFINITIONS: Readonly<Record<EffectTool, EditorEffect
     kind: "rain",
     label: "Rain",
     iconClassName: "size-3 text-cyan-100/70",
+    geometry: "polygon",
+    geometryNoun: "area",
     controls: [
       effectControl("Emission density", 0.1, 8, 0.1, 1, " / grid² / s", (effect) => effect.kind === "rain" ? effect.density : 0, (effect, density) => effect.kind === "rain" ? { ...effect, density } : effect),
       effectControl("Fall speed", 0.5, 24, 0.5, 1, "", (effect) => effect.kind === "rain" ? effect.speed : 0, (effect, speed) => effect.kind === "rain" ? { ...effect, speed } : effect),
@@ -38,6 +42,8 @@ export const EDITOR_EFFECT_DEFINITIONS: Readonly<Record<EffectTool, EditorEffect
     kind: "embers",
     label: "Embers",
     iconClassName: "size-3 text-orange-300/80",
+    geometry: "polygon",
+    geometryNoun: "area",
     controls: [
       effectControl("Emission density", 0.1, 6, 0.1, 1, " / grid² / s", (effect) => effect.kind === "embers" ? effect.density : 0, (effect, density) => effect.kind === "embers" ? { ...effect, density } : effect),
       effectControl("Lift speed", 0.25, 4, 0.05, 2, "", (effect) => effect.kind === "embers" ? effect.speed : 0, (effect, speed) => effect.kind === "embers" ? { ...effect, speed } : effect),
@@ -52,6 +58,8 @@ export const EDITOR_EFFECT_DEFINITIONS: Readonly<Record<EffectTool, EditorEffect
     kind: "cloud",
     label: "Cloud",
     iconClassName: "size-3 text-slate-200/75",
+    geometry: "polygon",
+    geometryNoun: "area",
     controls: [
       effectControl("Coverage", 0, 100, 1, 0, "%", (effect) => effect.kind === "cloud" ? effect.coverage * 100 : 0, (effect, coverage) => effect.kind === "cloud" ? { ...effect, coverage: coverage / 100 } : effect),
       effectControl("Drift speed", 0.02, 2.5, 0.02, 2, " grid / s", (effect) => effect.kind === "cloud" ? effect.speed : 0, (effect, speed) => effect.kind === "cloud" ? { ...effect, speed } : effect),
@@ -61,6 +69,26 @@ export const EDITOR_EFFECT_DEFINITIONS: Readonly<Record<EffectTool, EditorEffect
     create: (id, seed) => ({
       id, seed, kind: "cloud", name: "Cloud", visible: true, vertices: [],
       color: { r: 96, g: 101, b: 110 }, opacity: 0.64, coverage: 0.58, speed: 0.18, scale: 3, turbulence: 0.65,
+    }),
+  },
+  "wall-of-fire": {
+    kind: "wall-of-fire",
+    label: "Wall of Fire",
+    iconClassName: "size-3 text-amber-300/85",
+    geometry: "open-path",
+    geometryNoun: "path",
+    controls: [
+      effectControl("Width", 0.1, 6, 0.1, 1, " grid", (effect) => effect.kind === "wall-of-fire" ? effect.width : 0, (effect, width) => effect.kind === "wall-of-fire" ? { ...effect, width } : effect),
+      effectControl("Intensity", 0, 100, 1, 0, "%", (effect) => effect.kind === "wall-of-fire" ? effect.intensity * 100 : 0, (effect, intensity) => effect.kind === "wall-of-fire" ? { ...effect, intensity: intensity / 100 } : effect),
+      effectControl("Flame speed", 0.5, 6, 0.1, 1, "", (effect) => effect.kind === "wall-of-fire" ? effect.speed : 0, (effect, speed) => effect.kind === "wall-of-fire" ? { ...effect, speed } : effect),
+      effectControl("Turbulence", 0, 100, 1, 0, "%", (effect) => effect.kind === "wall-of-fire" ? effect.turbulence * 100 : 0, (effect, turbulence) => effect.kind === "wall-of-fire" ? { ...effect, turbulence: turbulence / 100 } : effect),
+      effectControl("Spark density", 0, 8, 0.1, 1, " / grid / s", (effect) => effect.kind === "wall-of-fire" ? effect.sparkDensity : 0, (effect, sparkDensity) => effect.kind === "wall-of-fire" ? { ...effect, sparkDensity } : effect),
+      effectControl("Spark size", 0.02, 1, 0.02, 2, " grid", (effect) => effect.kind === "wall-of-fire" ? effect.sparkSize : 0, (effect, sparkSize) => effect.kind === "wall-of-fire" ? { ...effect, sparkSize } : effect),
+    ],
+    create: (id, seed) => ({
+      id, seed, kind: "wall-of-fire", name: "Wall of Fire", visible: true, vertices: [],
+      color: { r: 255, g: 91, b: 24 }, opacity: 0.9, width: 1.2, intensity: 0.86, speed: 1.3,
+      turbulence: 0.78, sparkDensity: 2.5, sparkSize: 0.05,
     }),
   },
 });

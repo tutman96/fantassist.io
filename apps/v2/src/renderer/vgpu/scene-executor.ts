@@ -12,7 +12,8 @@ import type { ImageTextureUpload } from "../image-texture";
 import { compileSceneLayerOperations, FOG_EDGE_SPREAD_GRID } from "../render-plan";
 import type { RenderPlan, SceneLayerOperation } from "../render-plan";
 import { effectRendererDefinition, isParticleEffect } from "../effect-renderer-definitions";
-import type { CloudEffectDefinition, CloudSceneEffect, EffectRendererDefinition, ParticleEffectDefinition, ParticleSceneEffect } from "../effect-renderer-definitions";
+import type { CloudEffectDefinition, CloudSceneEffect, EffectRendererDefinition, ParticleEffectDefinition, ParticleSceneEffect, PathEffectDefinition, WallOfFireSceneEffect } from "../effect-renderer-definitions";
+import { buildOpenPathMesh, openPathLength, outlineOpenPath, packOpenPathSegments } from "../path-geometry";
 import { compileProjection, projectionUniforms } from "../projection";
 import type { RenderView } from "../projection";
 import type { SceneShaders } from "./scene-shaders";
@@ -53,6 +54,7 @@ export interface EffectEmissionDiagnostic {
     readonly spawnTime: number;
     readonly lifetime: number;
     readonly contextInitializationSeed: number;
+    readonly contextPoint: readonly [number, number];
     readonly vanishingPoint: readonly [number, number];
   }[];
   readonly particleContextRecords: readonly {
@@ -60,6 +62,7 @@ export interface EffectEmissionDiagnostic {
     readonly particleInitializationSeed: number;
     readonly initialized: boolean;
     readonly contextInitializationSeed: number;
+    readonly contextPoint: readonly [number, number];
     readonly vanishingPoint: readonly [number, number];
   }[];
 }
@@ -117,19 +120,51 @@ interface CloudEffectDrawEntry extends EffectDrawEntryBase {
   readonly definition: CloudEffectDefinition;
 }
 
-type EffectDrawEntry = ParticleEffectDrawEntry | CloudEffectDrawEntry;
+interface PathEffectDrawEntry extends EffectDrawEntryBase {
+  readonly family: "procedural-path";
+  readonly definition: PathEffectDefinition;
+  readonly flameDrawable?: Draw;
+  readonly sparkDrawable?: Draw;
+  readonly segmentStorage: StorageBuffer & { destroy(): void };
+  readonly contextStorage: StorageBuffer & { destroy(): void };
+  readonly contextInitializer: Compute;
+  readonly contextBytes: number;
+  readonly emitter: ParticleEmitter;
+  emissionRate: number;
+  targetEmissionRate: number;
+  particleLifetime: number;
+  steadyStatePending: boolean;
+  readonly pathLength: number;
+  readonly segmentCount: number;
+}
+
+type EffectDrawEntry = ParticleEffectDrawEntry | CloudEffectDrawEntry | PathEffectDrawEntry;
 
 function isParticleEntry(entry: EffectDrawEntry): entry is ParticleEffectDrawEntry {
   return entry.family === "particle";
 }
 
+function isEmitterEntry(entry: EffectDrawEntry): entry is ParticleEffectDrawEntry | PathEffectDrawEntry {
+  return entry.family === "particle" || entry.family === "procedural-path";
+}
+
 function disposeEffectEntry(entry: EffectDrawEntry): void {
   entry.geometries.forEach((item) => item.destroy());
   entry.polygonStorage.destroy();
-  if (isParticleEntry(entry)) {
+  if (isEmitterEntry(entry)) {
     entry.contextStorage?.destroy();
     entry.emitter.dispose();
   }
+  if (entry.family === "procedural-path") entry.segmentStorage.destroy();
+}
+
+function effectDrawables(entry: EffectDrawEntry): readonly Draw[] {
+  return [
+    entry.drawable,
+    entry.family === "procedural-path" ? entry.flameDrawable : undefined,
+    entry.family === "procedural-path" ? entry.sparkDrawable : undefined,
+  ]
+    .filter((item): item is Draw => item !== undefined);
 }
 
 const EDITOR_RADIANCE_SCALE = 8;
@@ -286,6 +321,38 @@ export function createSceneExecutor(
     turbulence: sceneEffect.turbulence,
     transition,
     polygon_vertex_count: polygonVertexCount,
+  });
+  const wallOfFireParams = (sceneEffect: WallOfFireSceneEffect, time: number, transition: number) => ({
+    ...spatialParams(),
+    time,
+    seed: sceneEffect.seed,
+    color: [sceneEffect.color.r / 255, sceneEffect.color.g / 255, sceneEffect.color.b / 255],
+    opacity: sceneEffect.opacity,
+    width: sceneEffect.width,
+    intensity: sceneEffect.intensity,
+    speed: sceneEffect.speed,
+    turbulence: sceneEffect.turbulence,
+    transition,
+  });
+  const fireSparkParams = (sceneEffect: WallOfFireSceneEffect, time: number, flameDensity: number) => ({
+    ...spatialParams(),
+    time,
+    color: [sceneEffect.color.r / 255, sceneEffect.color.g / 255, sceneEffect.color.b / 255],
+    opacity: sceneEffect.opacity,
+    width: sceneEffect.width,
+    intensity: sceneEffect.intensity,
+    spark_size: sceneEffect.sparkSize,
+    spark_probability: sceneEffect.sparkDensity / flameDensity,
+    turbulence: sceneEffect.turbulence,
+  });
+  const fireFlameParams = (sceneEffect: WallOfFireSceneEffect, time: number) => ({
+    ...spatialParams(),
+    time,
+    color: [sceneEffect.color.r / 255, sceneEffect.color.g / 255, sceneEffect.color.b / 255],
+    opacity: sceneEffect.opacity,
+    width: sceneEffect.width,
+    intensity: sceneEffect.intensity,
+    turbulence: sceneEffect.turbulence,
   });
   const signature = (output: Target): TargetSignature => ({
     colors: output.colors.map((color) => color.format),
@@ -508,7 +575,9 @@ export function createSceneExecutor(
     const polygonData = new Float32Array(sceneEffect.vertices.flatMap((vertex) => [vertex.x, vertex.y]));
     const polygonStorage = storage(gpu, Math.max(8, polygonData.byteLength)) as StorageBuffer & { destroy(): void };
     if (polygonData.byteLength > 0) polygonStorage.write(polygonData);
-    const guideVertices = plan.showEditorGrid ? outlinePolygon(sceneEffect.vertices) : null;
+    const guideVertices = plan.showEditorGrid
+      ? definition.family === "procedural-path" ? outlineOpenPath(sceneEffect.vertices) : outlinePolygon(sceneEffect.vertices)
+      : null;
     const guideGeometry = guideVertices ? geometry(gpu, {
       buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: guideVertices }],
       topology: "line-list",
@@ -535,7 +604,7 @@ export function createSceneExecutor(
       emitterMin: emitterGeometry.min,
       emitterMax: emitterGeometry.max,
       polygonVertexCount: sceneEffect.vertices.length,
-      geometryKey: JSON.stringify([sceneEffect.kind, sceneEffect.vertices, sceneEffect.seed]),
+      geometryKey: JSON.stringify([sceneEffect.kind, sceneEffect.vertices, sceneEffect.seed, sceneEffect.kind === "wall-of-fire" ? sceneEffect.sparkDensity > 0 : null]),
       guide: guideGeometry ? draw(gpu, {
         shader: shaders.fogGuide,
         geometry: guideGeometry,
@@ -551,6 +620,88 @@ export function createSceneExecutor(
         set: { params: { ...spatialParams(), color: definition.handleColor } },
       }) : undefined,
     };
+    if (definition.family === "procedural-path") {
+      if (sceneEffect.kind !== "wall-of-fire") throw new Error(`Effect '${sceneEffect.kind}' does not match its renderer definition`);
+      const pathMesh = buildOpenPathMesh(sceneEffect.vertices);
+      const bodyGeometry = pathMesh ? geometry(gpu, {
+        buffers: [{
+          attributes: {
+            center_grid: { format: "float32x2", location: 0, offset: 0 },
+            extrusion: { format: "float32x2", location: 1, offset: 8 },
+            path_distance: { format: "float32", location: 2, offset: 16 },
+            lateral: { format: "float32", location: 3, offset: 20 },
+          },
+          stride: 24,
+          data: pathMesh.vertices,
+        }],
+        indices: pathMesh.indices,
+        topology: "triangle-list",
+        label: `wall-of-fire:${sceneEffect.id}`,
+      }) : undefined;
+      const segmentData = packOpenPathSegments(sceneEffect.vertices);
+      const segmentStorage = storage(gpu, Math.max(24, segmentData.byteLength)) as StorageBuffer & { destroy(): void };
+      if (segmentData.byteLength > 0) segmentStorage.write(segmentData);
+      const pathLength = openPathLength(sceneEffect.vertices);
+      const densityScale = plan.particleDensityScale;
+      const emissionRate = definition.flameDensity * pathLength * densityScale;
+      const capacityEmissionRate = definition.flameDensity * pathLength * densityScale;
+      const particleLifetime = definition.sparkLifetime(sceneEffect.speed);
+      const emitter = createParticleEmitter(gpu, {
+        seed: sceneEffect.seed,
+        capacity: effectPoolCapacity(capacityEmissionRate, definition.maxSparkLifetime),
+        maxLifetime: definition.maxSparkLifetime,
+        initialParticleLifetime: particleLifetime,
+        rateRampSeconds: 0.24,
+        label: `wall-of-fire-emitter:${sceneEffect.id}`,
+      }, shaders.particleEmitter);
+      const contextBytes = 32;
+      const contextStorage = storage(gpu, emitter.capacity * contextBytes) as StorageBuffer & { destroy(): void };
+      contextStorage.write(new Uint8Array(emitter.capacity * contextBytes));
+      const contextInitializer = compute(gpu, definition.sparkContextShader(shaders), {
+        label: `wall-of-fire-context:${sceneEffect.id}`,
+        set: { particles: emitter.particleStorage, segments: segmentStorage, contexts: contextStorage },
+      });
+      return {
+        ...common,
+        family: "procedural-path",
+        definition,
+        geometries: [...common.geometries, ...(bodyGeometry ? [bodyGeometry] : [])],
+        segmentStorage,
+        contextStorage,
+        contextInitializer,
+        contextBytes,
+        emitter,
+        emissionRate,
+        targetEmissionRate: 0,
+        particleLifetime,
+        steadyStatePending: steadyState,
+        pathLength,
+        segmentCount: segmentData.length / 6,
+        drawable: bodyGeometry ? draw(gpu, {
+          shader: definition.shader(shaders),
+          geometry: bodyGeometry,
+          blend: definition.blend,
+          label: `wall-of-fire:${sceneEffect.id}`,
+          set: { params: wallOfFireParams(sceneEffect, 0, 1) },
+        }) : undefined,
+        flameDrawable: pathLength > 0 ? draw(gpu, {
+          shader: definition.flameShader(shaders),
+          vertices: 6,
+          instances: emitter.capacity,
+          blend: "premultiplied",
+          label: `wall-of-fire-flames:${sceneEffect.id}`,
+          set: { particles: emitter.particleStorage, contexts: contextStorage, params: fireFlameParams(sceneEffect, 0) },
+        }) : undefined,
+        sparkDrawable: sceneEffect.sparkDensity > 0 ? draw(gpu, {
+          shader: definition.sparkShader(shaders),
+          vertices: 6,
+          instances: emitter.capacity,
+          blend: "additive",
+          label: `wall-of-fire-sparks:${sceneEffect.id}`,
+          set: { particles: emitter.particleStorage, contexts: contextStorage, params: fireSparkParams(sceneEffect, 0, definition.flameDensity) },
+        }) : undefined,
+      };
+    }
     if (definition.family === "procedural-cloud") {
       if (sceneEffect.kind !== "cloud") throw new Error(`Effect '${sceneEffect.kind}' does not match its renderer definition`);
       const mesh = tessellatePolygon(sceneEffect.vertices);
@@ -745,7 +896,7 @@ export function createSceneExecutor(
       return effectEntries.reduce((count, entry) => count + entry.geometries.length, 0);
     },
     async effectEmissionDiagnostics(time = lastTransitionTime ?? 0) {
-      return Promise.all(effectEntries.filter(isParticleEntry).map(async (entry) => {
+      return Promise.all(effectEntries.filter(isEmitterEntry).map(async (entry) => {
         const [diagnostic, contextData] = await Promise.all([
           entry.emitter.readDiagnostics(time),
           entry.contextStorage?.read(),
@@ -770,6 +921,10 @@ export function createSceneExecutor(
               spawnTime: particle.spawnTime,
               lifetime: particle.lifetime,
               contextInitializationSeed: contexts?.getUint32(index * entry.contextBytes, true) ?? 0,
+              contextPoint: contexts ? [
+                contexts.getFloat32(index * entry.contextBytes + 8, true),
+                contexts.getFloat32(index * entry.contextBytes + 12, true),
+              ] as const : [0, 0] as const,
               vanishingPoint: contexts ? [
                 contexts.getFloat32(index * entry.contextBytes + 8, true),
                 contexts.getFloat32(index * entry.contextBytes + 12, true),
@@ -780,6 +935,10 @@ export function createSceneExecutor(
             particleInitializationSeed: particle.initializationSeed,
             initialized: contexts.getUint32(index * entry.contextBytes + 4, true) !== 0,
             contextInitializationSeed: contexts.getUint32(index * entry.contextBytes, true),
+            contextPoint: [
+              contexts.getFloat32(index * entry.contextBytes + 8, true),
+              contexts.getFloat32(index * entry.contextBytes + 12, true),
+            ] as const,
             vanishingPoint: [
               contexts.getFloat32(index * entry.contextBytes + 8, true),
               contexts.getFloat32(index * entry.contextBytes + 12, true),
@@ -790,7 +949,7 @@ export function createSceneExecutor(
     },
     hasAnimationDemand() {
       return hasEffectAnimationDemand(effectTransitions)
-        || effectEntries.some((entry) => isParticleEntry(entry) && entry.emitter.hasAnimationDemand(lastTransitionTime ?? 0));
+        || effectEntries.some((entry) => isEmitterEntry(entry) && entry.emitter.hasAnimationDemand(lastTransitionTime ?? 0));
     },
     async prewarm() {
       await Promise.all([
@@ -800,7 +959,7 @@ export function createSceneExecutor(
         ...fogEntries.flatMap((entry) => entry.lightEffects).map((drawable) => drawable.compile(signature(lightTarget))),
         ...fogEntries.flatMap((entry) => entry.radianceCascadeEffects.flat()).map((drawable) => drawable.compile(signature(radianceCascades[0]))),
         ...fogEntries.flatMap((entry) => entry.radianceResolveEffects).map((drawable) => drawable.compile(signature(emptyIndirectLightTarget))),
-        ...effectEntries.flatMap((entry) => entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
+        ...effectEntries.flatMap((entry) => effectDrawables(entry).map((drawable) => drawable.compile(signature(sceneA)))),
         ...(plan.showEditorGrid
           ? [
               ...fogEntries.flatMap((entry) => [entry.fogGuide, entry.clearGuide, entry.wallGuide, entry.handles].filter((item): item is Draw => item !== undefined)),
@@ -857,7 +1016,7 @@ export function createSceneExecutor(
         });
         try {
           await Promise.all(nextEntries.flatMap((entry) => [
-            ...(entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
+            ...effectDrawables(entry).map((drawable) => drawable.compile(signature(sceneA))),
             ...(plan.showEditorGrid ? [entry.guide, entry.handles]
               .filter((item): item is Draw => item !== undefined)
               .map((item) => item.compile(signature(compositeTarget))) : []),
@@ -878,7 +1037,7 @@ export function createSceneExecutor(
       const nextTransitions = reconcileEffectTransitions(effectTransitions, nextSnapshot.scene);
       const replacedEntries: EffectDrawEntry[] = [];
       const nextEntries = nextTransitions.entries.flatMap((transition) => {
-        const geometryKey = JSON.stringify([transition.effect.kind, transition.effect.vertices, transition.effect.seed]);
+        const geometryKey = JSON.stringify([transition.effect.kind, transition.effect.vertices, transition.effect.seed, transition.effect.kind === "wall-of-fire" ? transition.effect.sparkDensity > 0 : null]);
         const existing = effectEntries.find((entry) =>
           entry.layerId === transition.layerId && entry.effectId === transition.effect.id && entry.geometryKey === geometryKey
         );
@@ -891,6 +1050,11 @@ export function createSceneExecutor(
             const visibleFraction = emitterGeometry.boundsArea > 0 ? emitterGeometry.polygonArea / emitterGeometry.boundsArea : 0;
             existing.emissionRate = visibleFraction > 0 ? density * emitterGeometry.polygonArea / visibleFraction : 0;
             existing.particleLifetime = definition.particleLifetime(transition.effect.speed);
+          } else if (existing.family === "procedural-path" && transition.effect.kind === "wall-of-fire") {
+            const definition = effectRendererDefinition(transition.effect);
+            if (definition.family !== "procedural-path") throw new Error(`Effect '${transition.effect.kind}' does not match its renderer definition`);
+            existing.emissionRate = definition.flameDensity * existing.pathLength * plan.particleDensityScale;
+            existing.particleLifetime = definition.sparkLifetime(transition.effect.speed);
           }
           return [existing];
         }
@@ -902,7 +1066,7 @@ export function createSceneExecutor(
       });
       try {
         await Promise.all(replacedEntries.flatMap((entry) => [
-          ...(entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
+          ...effectDrawables(entry).map((drawable) => drawable.compile(signature(sceneA))),
           ...(plan.showEditorGrid ? [entry.guide, entry.handles]
             .filter((item): item is Draw => item !== undefined)
             .map((item) => item.compile(signature(compositeTarget))) : []),
@@ -923,7 +1087,7 @@ export function createSceneExecutor(
       const previousTransitions = effectTransitions;
       const delta = lastTransitionTime === undefined ? 0 : Math.max(0, time - lastTransitionTime);
       lastTransitionTime = time;
-      for (const entry of effectEntries.filter(isParticleEntry)) {
+      for (const entry of effectEntries.filter(isEmitterEntry)) {
         const transition = effectTransitions.entries.find((candidate) => candidate.layerId === entry.layerId && candidate.effect.id === entry.effectId);
         const targetRate = transition?.target === 1 ? entry.emissionRate : 0;
         if (entry.steadyStatePending) {
@@ -943,20 +1107,28 @@ export function createSceneExecutor(
           }
           entry.emitter.advance(time);
         }
-        const context = entry.definition.context;
-        if (entry.contextInitializer && context) {
-          entry.contextInitializer.set({ params: context.params(view.table, view.display, entry.emitter.capacity) })
-            .dispatch(Math.ceil(entry.emitter.capacity / 64));
+        if (entry.family === "particle") {
+          const context = entry.definition.context;
+          if (entry.contextInitializer && context) {
+            entry.contextInitializer.set({ params: context.params(view.table, view.display, entry.emitter.capacity) })
+              .dispatch(Math.ceil(entry.emitter.capacity / 64));
+          }
+        } else if (entry.segmentCount > 0) {
+          entry.contextInitializer.set({ params: {
+            total_length: entry.pathLength,
+            segment_count: entry.segmentCount,
+            capacity: entry.emitter.capacity,
+          } }).dispatch(Math.ceil(entry.emitter.capacity / 64));
         }
       }
       const retainedEmitterKeys = new Set(effectEntries
-        .filter((entry): entry is ParticleEffectDrawEntry => isParticleEntry(entry) && entry.emitter.hasAnimationDemand(time))
+        .filter((entry): entry is ParticleEffectDrawEntry | PathEffectDrawEntry => isEmitterEntry(entry) && entry.emitter.hasAnimationDemand(time))
         .map((entry) => `${entry.layerId}\0${entry.effectId}`));
       effectTransitions = advanceEffectTransitions(effectTransitions, delta, retainedEmitterKeys);
       const activeTransitionKeys = new Set(effectTransitions.entries
         .filter((transition) => {
           const entry = effectEntries.find((candidate) => candidate.layerId === transition.layerId && candidate.effectId === transition.effect.id);
-          return transition.target > 0 || transition.progress > 0 || Boolean(entry && isParticleEntry(entry) && entry.emitter.hasAnimationDemand(time));
+          return transition.target > 0 || transition.progress > 0 || Boolean(entry && isEmitterEntry(entry) && entry.emitter.hasAnimationDemand(time));
         })
         .map((entry) => `${entry.layerId}\0${entry.effect.id}`));
       const retiringEntries = effectEntries.filter((entry) => !activeTransitionKeys.has(`${entry.layerId}\0${entry.effectId}`));
@@ -1018,7 +1190,7 @@ export function createSceneExecutor(
         const transitions = effectTransitions.entries.filter((transition) => {
           if (transition.layerId !== layerId) return false;
           const entry = effectEntries.find((candidate) => candidate.layerId === layerId && candidate.effectId === transition.effect.id);
-          return transition.target > 0 || transition.progress > 0 || Boolean(entry && isParticleEntry(entry) && entry.emitter.hasAnimationDemand(time));
+          return transition.target > 0 || transition.progress > 0 || Boolean(entry && isEmitterEntry(entry) && entry.emitter.hasAnimationDemand(time));
         });
         if (current?.type !== "effects" && current) {
           operations.push(current);
@@ -1071,6 +1243,18 @@ export function createSceneExecutor(
                     effectTransitionIntensity(transition.progress),
                     entry.polygonVertexCount,
                   ) });
+                } else if (entry.family === "procedural-path" && transition.effect.kind === "wall-of-fire") {
+                  entry.drawable.set({ params: wallOfFireParams(
+                    transition.effect,
+                    time,
+                    effectTransitionIntensity(transition.progress),
+                  ) });
+                  entry.sparkDrawable?.set({ params: fireSparkParams(transition.effect, time, entry.definition.flameDensity) });
+                  entry.flameDrawable?.set({ params: fireFlameParams(transition.effect, time) });
+                  pass.draw(entry.drawable);
+                  if (entry.flameDrawable) pass.draw(entry.flameDrawable);
+                  if (entry.sparkDrawable) pass.draw(entry.sparkDrawable);
+                  continue;
                 } else {
                   continue;
                 }

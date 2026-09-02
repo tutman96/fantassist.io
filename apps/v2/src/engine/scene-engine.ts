@@ -1482,7 +1482,12 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
       }
       preview.command = {
         ...preview.command,
-        effect: { ...preview.command.effect, vertices: dedupeClosingVertex(preview.effectDrawing.fixedVertices) },
+        effect: {
+          ...preview.command.effect,
+          vertices: effectGeometryKind(preview.command.effect) === "open-path"
+            ? preview.effectDrawing.fixedVertices
+            : dedupeClosingVertex(preview.effectDrawing.fixedVertices),
+        },
       };
       const error = validateEffect(preview.command.effect);
       if (error) return { ok: false, error, revision };
@@ -1513,7 +1518,10 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
             publish("editor");
             return { handled: true, token };
           }
-          if (pointInPolygon(pointGrid, effect.vertices)) {
+          const moveHit = effectGeometryKind(effect) === "open-path"
+            ? pointNearPolyline(pointGrid, effect.vertices, Math.max(8 / cssPixelsPerGrid, effect.kind === "wall-of-fire" ? effect.width / 2 : 0))
+            : pointInPolygon(pointGrid, effect.vertices);
+          if (moveHit) {
             const token = engine.beginPreview({ type: "effect.update", ...selectedEffect, effect });
             if (preview) preview = {
               ...preview,
@@ -1526,7 +1534,7 @@ export function createSceneEngine(initialScene = createSampleSceneDocument()): S
           }
         }
       }
-      const selection = pickEffectPolygonEdge(committedScene, pointGrid, cssPixelsPerGrid);
+      const selection = pickEffectEdge(committedScene, pointGrid, cssPixelsPerGrid);
       if (selection) {
         engine.dispatch({ type: "effect.selection.set", selection });
         return { handled: true };
@@ -2534,7 +2542,7 @@ function pickClosedPolygonVertex(vertices: readonly GridPoint[], pointGrid: Grid
   return vertices.findIndex((vertex) => Math.hypot(vertex.x - pointGrid.x, vertex.y - pointGrid.y) <= tolerance);
 }
 
-function pickEffectPolygonEdge(
+function pickEffectEdge(
   scene: SceneDocument,
   pointGrid: GridPoint,
   cssPixelsPerGrid: number
@@ -2546,9 +2554,11 @@ function pickEffectPolygonEdge(
     for (let effectIndex = layer.effects.length - 1; effectIndex >= 0; effectIndex--) {
       const effect = layer.effects[effectIndex];
       if (!effect.visible) continue;
-      for (let vertexIndex = 0; vertexIndex < effect.vertices.length; vertexIndex++) {
+      const effectTolerance = effect.kind === "wall-of-fire" ? Math.max(tolerance, effect.width / 2) : tolerance;
+      const segmentCount = effectGeometryKind(effect) === "open-path" ? Math.max(0, effect.vertices.length - 1) : effect.vertices.length;
+      for (let vertexIndex = 0; vertexIndex < segmentCount; vertexIndex++) {
         const next = effect.vertices[(vertexIndex + 1) % effect.vertices.length];
-        if (distanceToSegment(pointGrid, effect.vertices[vertexIndex], next) <= tolerance) {
+        if (distanceToSegment(pointGrid, effect.vertices[vertexIndex], next) <= effectTolerance) {
           return { layerId: layer.id, effectId: effect.id };
         }
       }
@@ -2646,13 +2656,19 @@ function validateLight(light: SceneLight): string | null {
 }
 
 function validateEffect(effect: SceneEffect, preview = false): string | null {
-  if (!effect || (effect.kind !== "rain" && effect.kind !== "embers" && effect.kind !== "cloud")) return "Unsupported effect kind";
+  if (!effect || (effect.kind !== "rain" && effect.kind !== "embers" && effect.kind !== "cloud" && effect.kind !== "wall-of-fire")) return "Unsupported effect kind";
   if (typeof effect.id !== "string" || !effect.id.trim()) return "Effect ID is required";
   const name = normalizeName(effect.name, "Effect");
   if ("error" in name) return name.error;
   if (typeof effect.visible !== "boolean") return "Effect visibility must be a boolean";
   if (!Array.isArray(effect.vertices) || !effect.vertices.every(isFinitePoint)) return "Effect vertices must contain finite numbers";
-  if (!preview && dedupeClosingVertex(effect.vertices).length < 3) return "Effects require at least three vertices";
+  const vertices = effectGeometryKind(effect) === "open-path" ? effect.vertices : dedupeClosingVertex(effect.vertices);
+  if (!preview && vertices.length < (effectGeometryKind(effect) === "open-path" ? 2 : 3)) {
+    return effectGeometryKind(effect) === "open-path" ? "Effect paths require at least two vertices" : "Effects require at least three vertices";
+  }
+  if (!preview && effectGeometryKind(effect) === "open-path" && !vertices.slice(1).some((vertex, index) => !samePoint(vertex, vertices[index]))) {
+    return "Effect paths require at least one nonzero segment";
+  }
   if (!Number.isInteger(effect.seed) || effect.seed < 0 || effect.seed > 0xffffffff) return "Effect seed must be a uint32";
   if (!effect.color || ![effect.color.r, effect.color.g, effect.color.b].every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) {
     return "Effect color channels must be integers from 0 to 255";
@@ -2664,6 +2680,15 @@ function validateEffect(effect: SceneEffect, preview = false): string | null {
     if (effect.speed > 2.5) return "Cloud speed must not exceed 2.5 grid units per second";
     if (!Number.isFinite(effect.scale) || effect.scale < 0.25 || effect.scale > 12) return "Cloud scale must be between 0.25 and 12 grid units";
     if (!Number.isFinite(effect.turbulence) || effect.turbulence < 0 || effect.turbulence > 1) return "Cloud turbulence must be between 0 and 1";
+    return null;
+  }
+  if (effect.kind === "wall-of-fire") {
+    if (!Number.isFinite(effect.width) || effect.width < 0.1 || effect.width > 6) return "Wall of Fire width must be between 0.1 and 6 grid units";
+    if (!Number.isFinite(effect.intensity) || effect.intensity < 0 || effect.intensity > 1) return "Wall of Fire intensity must be between 0 and 1";
+    if (effect.speed < 0.5 || effect.speed > 6) return "Wall of Fire speed must be between 0.5 and 6";
+    if (!Number.isFinite(effect.turbulence) || effect.turbulence < 0 || effect.turbulence > 1) return "Wall of Fire turbulence must be between 0 and 1";
+    if (!Number.isFinite(effect.sparkDensity) || effect.sparkDensity < 0 || effect.sparkDensity > 8) return "Wall of Fire spark density must be between 0 and 8";
+    if (!Number.isFinite(effect.sparkSize) || effect.sparkSize < 0.02 || effect.sparkSize > 1) return "Wall of Fire spark size must be between 0.02 and 1 grid units";
     return null;
   }
   if (!Number.isFinite(effect.density) || effect.density < 0) return "Effect density must be a non-negative finite number";
@@ -2679,13 +2704,19 @@ function sameEffect(left: SceneEffect, right: SceneEffect): boolean {
     ? left.density === (right as typeof left).density && left.speed === (right as typeof left).speed && left.dropSize === (right as typeof left).dropSize
     : left.kind === "embers"
       ? left.density === (right as typeof left).density && left.speed === (right as typeof left).speed && left.particleSize === (right as typeof left).particleSize
-      : left.coverage === (right as typeof left).coverage && left.speed === (right as typeof left).speed && left.scale === (right as typeof left).scale && left.turbulence === (right as typeof left).turbulence;
+      : left.kind === "cloud"
+        ? left.coverage === (right as typeof left).coverage && left.speed === (right as typeof left).speed && left.scale === (right as typeof left).scale && left.turbulence === (right as typeof left).turbulence
+        : left.width === (right as typeof left).width && left.intensity === (right as typeof left).intensity && left.speed === (right as typeof left).speed && left.turbulence === (right as typeof left).turbulence && left.sparkDensity === (right as typeof left).sparkDensity && left.sparkSize === (right as typeof left).sparkSize;
   return left.id === right.id && left.name === right.name &&
     left.visible === right.visible && left.seed === right.seed &&
     left.color.r === right.color.r && left.color.g === right.color.g && left.color.b === right.color.b &&
     left.opacity === right.opacity && sameKindParameters &&
     left.vertices.length === right.vertices.length &&
     left.vertices.every((vertex, index) => samePoint(vertex, right.vertices[index]));
+}
+
+function effectGeometryKind(effect: SceneEffect): "polygon" | "open-path" {
+  return effect.kind === "wall-of-fire" ? "open-path" : "polygon";
 }
 
 function isLayerEmpty(layer: SceneLayer): boolean {

@@ -3,7 +3,14 @@ import type { SceneDocument, SceneEffect } from "@/engine/scene-document";
 import { normalizeTableCamera } from "@/engine/table-camera";
 
 import { decodeV1Scene, encodeV1Scene } from "./scene-codec";
-import type { V1Scene } from "./types";
+import type { V1Scene, V1WallOfFireEffect } from "./types";
+
+type WallOfFireSceneEffect = Omit<V1WallOfFireEffect, "color"> & {
+  readonly kind: "wall-of-fire";
+  readonly color: NonNullable<V1WallOfFireEffect["color"]>;
+};
+
+type PersistableSceneEffect = SceneEffect | WallOfFireSceneEffect;
 
 export function projectV1Scene(scene: V1Scene): SceneDocument {
   const layers = scene.layers.map((layer) => {
@@ -60,6 +67,12 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
             kind: "cloud" as const,
             vertices: effect.cloud.vertices.map((vertex) => ({ ...vertex })),
             color: { ...(effect.cloud.color ?? { r: 255, g: 255, b: 255 }) },
+          }];
+          if (effect.wallOfFire) return [{
+            ...effect.wallOfFire,
+            kind: "wall-of-fire" as const,
+            vertices: effect.wallOfFire.vertices.map((vertex) => ({ ...vertex })),
+            color: { ...(effect.wallOfFire.color ?? { r: 255, g: 255, b: 255 }) },
           }];
           return [];
         }),
@@ -227,7 +240,7 @@ export function patchV1SceneTransforms(
   };
 }
 
-function persistEffects(effects: readonly SceneEffect[]) {
+function persistEffects(effects: readonly PersistableSceneEffect[]) {
   return effects.map((effect) => {
     const common = {
       id: effect.id,
@@ -249,6 +262,16 @@ function persistEffects(effects: readonly SceneEffect[]) {
           coverage: effect.coverage,
           speed: effect.speed,
           scale: effect.scale,
+          turbulence: effect.turbulence,
+        } };
+      case "wall-of-fire":
+        return { wallOfFire: {
+          ...common,
+          width: effect.width,
+          intensity: effect.intensity,
+          speed: effect.speed,
+          sparkDensity: effect.sparkDensity,
+          sparkSize: effect.sparkSize,
           turbulence: effect.turbulence,
         } };
       default:

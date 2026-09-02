@@ -15,6 +15,7 @@ import { getTableBounds, zoomTableCameraAt } from "@/engine/table-camera";
 import type { EditorTool, EffectTool } from "@/features/editor/editor-tool";
 import { ensureAssetLayer } from "@/features/editor/editor-tool";
 import { EffectPicker } from "@/features/editor/effect-picker";
+import { editorEffectDefinition } from "@/features/editor/effect-definitions";
 import { useEditorScene } from "@/features/scenes/editor-scene-context";
 
 export function EditorToolbar({
@@ -114,8 +115,8 @@ export function EditorToolbar({
         <>
           <ToolbarSeparator />
           <ButtonGroup className="sm:flex-col sm:[&>*:not(:first-child)]:border-l [&_[data-slot=tooltip-trigger]]:rounded-none!">
-            <ToolButton label={tool === "effects" ? "Finish effect area" : tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => tool === "effects" ? engine.commitActiveEffect() : engine.commitActiveFogPolygon()}><Check /></ToolButton>
-            <ToolButton label={tool === "effects" ? "Cancel effect area" : tool === "wall" ? "Cancel wall" : "Cancel fog polygon"} onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
+            <ToolButton label={tool === "effects" ? `Finish effect ${editorEffectDefinition(effectTool).geometryNoun}` : tool === "wall" ? "Finish wall" : "Finish fog polygon"} onClick={() => tool === "effects" ? engine.commitActiveEffect() : engine.commitActiveFogPolygon()}><Check /></ToolButton>
+            <ToolButton label={tool === "effects" ? `Cancel effect ${editorEffectDefinition(effectTool).geometryNoun}` : tool === "wall" ? "Cancel wall" : "Cancel fog polygon"} onClick={() => engine.cancelActivePreview()}><X /></ToolButton>
           </ButtonGroup>
         </>
       ) : null}

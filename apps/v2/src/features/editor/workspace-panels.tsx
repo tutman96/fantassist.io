@@ -82,7 +82,7 @@ export function WorkspacePanels({
         onOpenChange={setInspectorOpen}
         eyebrow="Inspector"
         title={assetSelected ? asset.name : selectedEffect ? selectedEffect.name : selectedLight && lightSelection ? `Light ${lightSelection.lightIndex + 1}` : selectedFogPolygon && fogSelection ? `${fogSelection.collection === "fog" ? "Fog" : fogSelection.collection === "clear" ? "Clear" : "Wall"} ${fogSelection.collection === "wall" ? "" : "polygon "}${fogSelection.polygonIndex + 1}` : sceneSnapshot.scene.name}
-        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedEffect && selectedEffectDefinition ? `${selectedEffectDefinition.label} area · ${selectedEffect.vertices.length} points · revision ${sceneSnapshot.revision}` : selectedLight ? `Colored light · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
+        detail={assetSelected ? `Image · revision ${sceneSnapshot.revision}` : selectedEffect && selectedEffectDefinition ? `${selectedEffectDefinition.label} ${selectedEffectDefinition.geometryNoun} · ${selectedEffect.vertices.length} points · revision ${sceneSnapshot.revision}` : selectedLight ? `Colored light · revision ${sceneSnapshot.revision}` : selectedFogPolygon ? `${selectedFogPolygon.vertices.length} points · revision ${sceneSnapshot.revision}` : `${sceneSnapshot.scene.assets.length} image${sceneSnapshot.scene.assets.length === 1 ? "" : "s"} · ${sceneSnapshot.scene.layers.length} layer${sceneSnapshot.scene.layers.length === 1 ? "" : "s"}`}
         icon={assetSelected ? <ImageIcon /> : selectedEffect ? <EffectIcon effect={selectedEffect.kind} /> : selectedLight ? <Lightbulb /> : selectedFogPolygon ? fogSelection?.collection === "wall" ? <BrickWall /> : <CloudFog /> : <MousePointer2 />}
         className="top-20 right-3 left-3 max-h-[55%] sm:pointer-events-auto sm:relative sm:top-auto sm:right-auto sm:left-auto sm:flex sm:max-h-[55%] sm:w-full sm:shrink-0 sm:flex-col"
         contentClassName="max-h-[calc(55svh-5rem)] sm:h-full sm:max-h-none"
@@ -586,9 +586,9 @@ function EffectInspector({ effect, engine, selection }: {
           onClick={() => engine.dispatch({ type: "effect.update", layerId: selection.layerId, effectId: selection.effectId, effect: { ...effect, visible: !effect.visible } })}
           className="h-8 rounded-none border-cyan-300/18 bg-cyan-400/5 text-[10px] text-cyan-50/75"
         >
-          {effect.visible ? <EyeOff /> : <Eye />} {effect.visible ? `Stop ${effect.kind}` : `Start ${effect.kind}`}
+          {effect.visible ? <EyeOff /> : <Eye />} {effect.visible ? `Stop ${definition.label}` : `Start ${definition.label}`}
         </Button>
-        <Button type="button" variant="destructive" onClick={() => engine.dispatch({ type: "effect.remove", layerId: selection.layerId, effectId: selection.effectId })} className="h-8 rounded-none text-[10px]"><Trash2 /> Delete {effect.kind}</Button>
+        <Button type="button" variant="destructive" onClick={() => engine.dispatch({ type: "effect.remove", layerId: selection.layerId, effectId: selection.effectId })} className="h-8 rounded-none text-[10px]"><Trash2 /> Delete {definition.label}</Button>
       </div>
     </div>
   );

@@ -113,10 +113,20 @@ export interface V1CloudEffect extends V1EffectBase {
   readonly turbulence: number;
 }
 
+export interface V1WallOfFireEffect extends V1EffectBase {
+  readonly width: number;
+  readonly intensity: number;
+  readonly speed: number;
+  readonly sparkDensity: number;
+  readonly sparkSize: number;
+  readonly turbulence: number;
+}
+
 export interface V1Effect {
   readonly rain?: V1RainEffect;
   readonly embers?: V1EmbersEffect;
   readonly cloud?: V1CloudEffect;
+  readonly wallOfFire?: V1WallOfFireEffect;
 }
 
 export interface V1EffectsLayer {

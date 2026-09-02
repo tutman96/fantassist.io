@@ -7,6 +7,7 @@ export function EffectIcon({ effect, ...props }: { readonly effect: EffectTool }
     case "rain": return <CloudRain {...props} />;
     case "embers": return <Flame {...props} />;
     case "cloud": return <Cloud {...props} />;
+    case "wall-of-fire": return <Flame {...props} />;
     default: return assertNever(effect);
   }
 }

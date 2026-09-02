@@ -41,7 +41,7 @@ message FogLayer {
 message EffectsLayer {
   string id = 1; string name = 3; bool visible = 4; Layer.LayerType type = 5; repeated Effect effects = 6;
 }
-message Effect { oneof effectType { RainEffect rain = 1; EmbersEffect embers = 2; CloudEffect cloud = 3; } }
+message Effect { oneof effectType { RainEffect rain = 1; EmbersEffect embers = 2; CloudEffect cloud = 3; WallOfFireEffect wallOfFire = 4; } }
 message RainEffect {
   reserved 10;
   string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
@@ -56,6 +56,12 @@ message EmbersEffect {
 message CloudEffect {
   string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
   double opacity = 7; double coverage = 8; double speed = 9; double scale = 10; double turbulence = 11;
+  message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
+}
+message WallOfFireEffect {
+  string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
+  double opacity = 7; double width = 8; double intensity = 9; double speed = 10; double sparkDensity = 11;
+  double sparkSize = 12; double turbulence = 13;
   message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
 }
 message SceneExport {
@@ -254,6 +260,16 @@ function normalizeLayer(value: Record<string, unknown>) {
           speed: number(cloud.speed),
           scale: number(cloud.scale),
           turbulence: number(cloud.turbulence),
+        } }];
+        const wallOfFire = record(effect?.wallOfFire);
+        if (wallOfFire) return [{ wallOfFire: {
+          ...normalizeEffect(wallOfFire),
+          width: number(wallOfFire.width),
+          intensity: number(wallOfFire.intensity),
+          speed: number(wallOfFire.speed),
+          sparkDensity: number(wallOfFire.sparkDensity),
+          sparkSize: number(wallOfFire.sparkSize),
+          turbulence: number(wallOfFire.turbulence),
         } }];
         return [];
       }),
