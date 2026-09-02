@@ -107,8 +107,6 @@ const effectsLayer: V1Layer = {
         width: 1.75,
         intensity: 0.85,
         speed: 2.5,
-        sparkDensity: 0.45,
-        sparkSize: 0.3,
         turbulence: 0.7,
       } },
       { embers: {
@@ -345,7 +343,7 @@ test("scene adapter projects and patches ordered rain, cloud, wall of fire, and 
       effects: layer.effects.map((effect) => effect.kind === "cloud"
         ? { ...effect, coverage: 0.9, turbulence: 0.95, visible: false }
         : (effect as { kind: string }).kind === "wall-of-fire"
-          ? { ...effect, width: 2.5, sparkDensity: 0.88, visible: false }
+          ? { ...effect, width: 2.5, turbulence: 0.88, visible: false }
         : { ...effect, density: 0.9, visible: false }),
     } : layer),
   }, 8);
@@ -361,7 +359,7 @@ test("scene adapter projects and patches ordered rain, cloud, wall of fire, and 
   assert.deepEqual(patched.layers[1].effectsLayer?.effects[2].wallOfFire, {
     ...effectsLayer.effectsLayer?.effects[2].wallOfFire,
     width: 2.5,
-    sparkDensity: 0.88,
+    turbulence: 0.88,
     visible: false,
   });
   assert.equal(patched.layers[1].effectsLayer?.effects[3].embers?.density, 0.9);

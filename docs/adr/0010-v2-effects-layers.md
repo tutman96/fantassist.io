@@ -101,6 +101,7 @@ message CloudEffect {
 }
 
 message WallOfFireEffect {
+  reserved 11, 12;
   string id = 1;
   string name = 2;
   bool visible = 3;
@@ -111,8 +112,6 @@ message WallOfFireEffect {
   double width = 8;
   double intensity = 9;
   double speed = 10;
-  double sparkDensity = 11;
-  double sparkSize = 12;
   double turbulence = 13;
 }
 ```
@@ -277,7 +276,7 @@ Embers are also viewed from above. Their polygon is a source region: seeded part
 
 Clouds are top-down procedural density fields clipped to an authored polygon with a soft inward boundary. Seeded world-space noise drifts coherently and uses domain warping for billowing without tying the pattern to editor pan, zoom, or output resolution. `coverage` controls occupied density, `speed` controls planar drift in grid units per second, `scale` controls billow size in grid units, and `turbulence` controls distortion. Smoke, poison gas, mist, and dust are presets of this one effect rather than separate persisted variants; all parameters remain directly editable. Clouds are visual alpha effects and do not reveal fog, create lights, or alter obstruction.
 
-Wall of Fire is a top-down open-path effect with no implicit final-to-first segment. A connected, width-independent stroke mesh carries cumulative path distance and is extruded in the vertex shader, allowing width edits without rebuilding geometry. The premultiplied flame body flows continuously along the path with seeded edge turbulence, a hot core, square caps, and bounded miter joins. A shared particle emitter produces additive sparks at a rate measured per grid unit of path length; a context compute pass resolves each new spark to a length-weighted path position once instead of scanning segments every frame. Sparks drain and reactivate through the same lifecycle as Rain and Embers. Wall of Fire is decorative and does not create gameplay light or obstruction.
+Wall of Fire is a top-down open-path effect with no implicit final-to-first segment. A connected, width-independent stroke mesh carries cumulative path distance and is extruded in the vertex shader, allowing width edits without rebuilding geometry. One path-local procedural field combines fixed-octave gradient-noise fBM, low-frequency domain warping, outward-normal advection, a guaranteed ignition root, and derivative-aware erosion. Nested thresholds from the same coherent field form sharp overlapping outer, body, hot, and core layers without fluid state, flipbooks, particle silhouettes, or effect-sized textures. Each effect owns independent geometry, draw state, seed, color, and animation uniforms; shader pipelines may be shared, but authored state is never shared between walls. The complete palette is derived from the authored color. Wall visibility follows the normal 240-millisecond effect transition and requires no emitter drain. Wall of Fire intentionally has no separate spark pass. It is decorative and does not create gameplay light or obstruction.
 
 ## Performance And Caching
 

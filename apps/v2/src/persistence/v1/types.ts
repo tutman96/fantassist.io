@@ -117,8 +117,6 @@ export interface V1WallOfFireEffect extends V1EffectBase {
   readonly width: number;
   readonly intensity: number;
   readonly speed: number;
-  readonly sparkDensity: number;
-  readonly sparkSize: number;
   readonly turbulence: number;
 }
 

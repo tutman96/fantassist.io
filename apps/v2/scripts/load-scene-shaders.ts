@@ -11,7 +11,7 @@ export async function loadSceneShaders(): Promise<SceneShaders> {
     (await resolveShader({ entry: resolve(directory, name), validate: "off" })).wgsl;
   const loadScene = (name: string) => load(shaderDirectory, name);
   const loadParticle = (name: string) => load(particleShaderDirectory, name);
-  const [assets, fogMask, fogComposite, fogFeather, fogGuide, fogHandle, lightAccumulation, lightGuide, composite, present, radianceCascade, radianceResolve, rain, rainContext, embers, cloud, wallOfFire, wallOfFireContext, wallOfFireFlames, wallOfFireSparks, sceneCopy, particleStateUpdate, particleSpawn, particleSteadyStateUpdate, particleSteadyStateFill, particleRetimeLifetime] =
+  const [assets, fogMask, fogComposite, fogFeather, fogGuide, fogHandle, lightAccumulation, lightGuide, composite, present, radianceCascade, radianceResolve, rain, rainContext, embers, cloud, wallOfFire, wallOfFireGlow, sceneCopy, particleStateUpdate, particleSpawn, particleSteadyStateUpdate, particleSteadyStateFill, particleRetimeLifetime] =
     await Promise.all([
       loadScene("assets.wgsl"),
       loadScene("fog-mask.wgsl"),
@@ -30,9 +30,7 @@ export async function loadSceneShaders(): Promise<SceneShaders> {
       loadScene("embers.wgsl"),
       loadScene("cloud.wgsl"),
       loadScene("wall-of-fire.wgsl"),
-      loadScene("wall-of-fire-context.wgsl"),
-      loadScene("wall-of-fire-flames.wgsl"),
-      loadScene("wall-of-fire-sparks.wgsl"),
+      loadScene("wall-of-fire-glow.wgsl"),
       loadScene("scene-copy.wgsl"),
       loadParticle("state-update.wgsl"),
       loadParticle("spawn.wgsl"),
@@ -49,6 +47,6 @@ export async function loadSceneShaders(): Promise<SceneShaders> {
       retimeLifetime: particleRetimeLifetime,
     },
     assets, fogMask, fogComposite, fogFeather, fogGuide, fogHandle, lightAccumulation, lightGuide,
-    composite, present, radianceCascade, radianceResolve, rain, rainContext, embers, cloud, wallOfFire, wallOfFireContext, wallOfFireFlames, wallOfFireSparks, sceneCopy,
+    composite, present, radianceCascade, radianceResolve, rain, rainContext, embers, cloud, wallOfFire, wallOfFireGlow, sceneCopy,
   };
 }

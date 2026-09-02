@@ -62,8 +62,6 @@ const WALL_OF_FIRE: WallOfFireEffect = {
   intensity: 0.86,
   speed: 1.3,
   turbulence: 0.7,
-  sparkDensity: 1.2,
-  sparkSize: 0.1,
 };
 
 function effectsScene(effects: readonly SceneEffect[] = []): SceneDocument {
@@ -173,8 +171,6 @@ test("Wall of Fire validates open-path parameters and commits a two-point path",
     { ...WALL_OF_FIRE, speed: 6.1 },
     { ...WALL_OF_FIRE, speed: 0.49 },
     { ...WALL_OF_FIRE, turbulence: -0.1 },
-    { ...WALL_OF_FIRE, sparkDensity: 8.1 },
-    { ...WALL_OF_FIRE, sparkSize: 0 },
   ]) {
     assert.equal(engine.dispatch({ type: "effect.insert", layerId: "weather", effect }).ok, false);
   }

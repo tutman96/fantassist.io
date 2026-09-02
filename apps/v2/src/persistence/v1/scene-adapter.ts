@@ -270,8 +270,6 @@ function persistEffects(effects: readonly PersistableSceneEffect[]) {
           width: effect.width,
           intensity: effect.intensity,
           speed: effect.speed,
-          sparkDensity: effect.sparkDensity,
-          sparkSize: effect.sparkSize,
           turbulence: effect.turbulence,
         } };
       default:

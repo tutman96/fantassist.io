@@ -30,8 +30,6 @@ function fireScene(update: Partial<WallOfFireEffect> = {}) {
     intensity: 0.86,
     speed: 1.3,
     turbulence: 0.7,
-    sparkDensity: 1.2,
-    sparkSize: 0.1,
     ...update,
   };
   return freezeSceneDocument({
@@ -72,14 +70,59 @@ test("Wall of Fire is deterministic, animated, and never closes its open path", 
   assert.equal(unintendedClosingPixels, 0);
 });
 
-test("Wall of Fire width controls body thickness independently of sparks", { timeout: 60_000 }, async () => {
+test("Wall of Fire width controls resolved body thickness", { timeout: 60_000 }, async () => {
   const options = { adapter: "auto", profile: "output", size: [384, 216], time: 2.5 } as const;
-  const narrow = await renderHeadlessScene({ ...options, scene: fireScene({ width: 0.4, sparkDensity: 0 }) });
-  const wide = await renderHeadlessScene({ ...options, scene: fireScene({ width: 2.4, sparkDensity: 0 }) });
+  const narrow = await renderHeadlessScene({ ...options, scene: fireScene({ width: 0.4 }) });
+  const wide = await renderHeadlessScene({ ...options, scene: fireScene({ width: 2.4 }) });
   assert.ok(visiblePixels(wide.pixels) > visiblePixels(narrow.pixels) * 2);
 });
 
-test("Wall of Fire emits path-length sparks and drains after its body fades", { timeout: 60_000 }, async () => {
+test("Wall of Fire applies authored color across the continuous flame palette", { timeout: 60_000 }, async () => {
+  const options = { adapter: "auto", profile: "output", size: [384, 216], time: 2.5 } as const;
+  const orange = await renderHeadlessScene({ ...options, scene: fireScene() });
+  const blue = await renderHeadlessScene({ ...options, scene: fireScene({ color: { r: 35, g: 95, b: 255 } }) });
+  assert.notEqual(digest(orange.pixels), digest(blue.pixels));
+  let blueDominant = 0;
+  for (let offset = 0; offset < blue.pixels.length; offset += 4) {
+    if (blue.pixels[offset + 2] > blue.pixels[offset] + 8) blueDominant++;
+  }
+  assert.ok(blueDominant > 100, `${blueDominant} pixels should reflect the authored blue fire color`);
+});
+
+test("multiple Walls of Fire retain independent colors and draw state", { timeout: 60_000 }, async () => {
+  const source = fireScene();
+  const layer = source.layers[0];
+  assert.equal(layer.type, "effects");
+  const fire = layer.effects[0];
+  assert.equal(fire.kind, "wall-of-fire");
+  const scene = freezeSceneDocument({
+    ...source,
+    layers: [{
+      ...layer,
+      effects: [
+        { ...fire, vertices: [{ x: 8, y: 7 }, { x: 31, y: 7 }], color: { r: 255, g: 70, b: 15 } },
+        { ...fire, id: "wall-of-fire/blue", vertices: [{ x: 8, y: 18 }, { x: 31, y: 18 }], color: { r: 35, g: 95, b: 255 } },
+      ],
+    }],
+  });
+  const size = [512, 288] as const;
+  const rendered = await renderHeadlessScene({ adapter: "auto", profile: "output", size, time: 2.5, scene });
+  const bounds = getTableBounds(scene.table, DEFAULT_DISPLAY);
+  let redDominant = 0;
+  let blueDominant = 0;
+  for (let y = 0; y < size[1]; y++) for (let x = 0; x < size[0]; x++) {
+    const gridY = bounds.top + (y + 0.5) / size[1] * bounds.height;
+    const offset = (y * size[0] + x) * 4;
+    const red = rendered.pixels[offset];
+    const blue = rendered.pixels[offset + 2];
+    if (Math.abs(gridY - 7) < 2 && red > blue + 8) redDominant++;
+    if (Math.abs(gridY - 18) < 2 && blue > red + 8) blueDominant++;
+  }
+  assert.ok(redDominant > 100, `${redDominant} pixels should retain the first wall's red color`);
+  assert.ok(blueDominant > 100, `${blueDominant} pixels should retain the second wall's blue color`);
+});
+
+test("procedural Wall of Fire reverses visibility transitions and retires without emitter resources", { timeout: 60_000 }, async () => {
   const scene = fireScene();
   const engine = createSceneEngine(scene);
   const gpu = await init({ adapter: "auto", label: "wall-of-fire-lifecycle" });
@@ -91,12 +134,7 @@ test("Wall of Fire emits path-length sparks and drains after its body fades", { 
     );
     await executor.prewarm();
     await executor.render(0);
-    const active = (await executor.effectEmissionDiagnostics())[0];
-    assert.ok(active.targetRate > 0);
-    assert.ok(active.liveParticles > 0);
-    const sparkOrigins = active.particleContextRecords.filter((record) => record.initialized).map((record) => record.contextPoint);
-    assert.ok(sparkOrigins.some(([x, y]) => y > 6.99 && y < 7.01 && x < 30));
-    assert.ok(sparkOrigins.some(([x, y]) => x > 30.99 && x < 31.01 && y > 8));
+    assert.deepEqual(await executor.effectEmissionDiagnostics(), []);
     assert.equal(executor.effectResourceCount, 1);
 
     const layer = engine.getSnapshot().scene.layers[0];
@@ -106,21 +144,18 @@ test("Wall of Fire emits path-length sparks and drains after its body fades", { 
     assert.equal(engine.dispatch({ type: "effect.update", layerId: layer.id, effectId: fire.id, effect: { ...fire, visible: false } }).ok, true);
     await executor.replaceEffects(engine.getSnapshot());
     executor.setSnapshot(engine.getSnapshot());
-    await executor.render(0.24);
+    await executor.render(0.12);
     assert.equal(executor.effectResourceCount, 1);
-    assert.ok((await executor.effectEmissionDiagnostics())[0].liveParticles > 0);
     assert.equal(engine.dispatch({ type: "effect.update", layerId: layer.id, effectId: fire.id, effect: fire }).ok, true);
     await executor.replaceEffects(engine.getSnapshot());
     executor.setSnapshot(engine.getSnapshot());
-    await executor.render(0.36);
+    await executor.render(0.18);
     assert.equal(executor.effectResourceCount, 1);
-    assert.ok((await executor.effectEmissionDiagnostics())[0].targetRate > 0);
     assert.equal(engine.dispatch({ type: "effect.update", layerId: layer.id, effectId: fire.id, effect: { ...fire, visible: false } }).ok, true);
     await executor.replaceEffects(engine.getSnapshot());
     executor.setSnapshot(engine.getSnapshot());
-    await executor.render(0.6);
-    await executor.render(5);
-    await executor.render(7);
+    await executor.render(0.3);
+    await executor.render(0.54);
     assert.equal(executor.effectResourceCount, 0);
     assert.equal(executor.hasAnimationDemand(), false);
   } finally {

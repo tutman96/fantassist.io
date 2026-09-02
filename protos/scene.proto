@@ -197,6 +197,8 @@ message CloudEffect {
 }
 
 message WallOfFireEffect {
+  reserved 11, 12;
+
   string id = 1;
   string name = 2;
   bool visible = 3;
@@ -207,8 +209,6 @@ message WallOfFireEffect {
   double width = 8;
   double intensity = 9;
   double speed = 10;
-  double sparkDensity = 11;
-  double sparkSize = 12;
   double turbulence = 13;
 
   message Color {

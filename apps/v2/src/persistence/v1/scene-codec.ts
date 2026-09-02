@@ -59,9 +59,9 @@ message CloudEffect {
   message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
 }
 message WallOfFireEffect {
+  reserved 11, 12;
   string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
-  double opacity = 7; double width = 8; double intensity = 9; double speed = 10; double sparkDensity = 11;
-  double sparkSize = 12; double turbulence = 13;
+  double opacity = 7; double width = 8; double intensity = 9; double speed = 10; double turbulence = 13;
   message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
 }
 message SceneExport {
@@ -267,8 +267,6 @@ function normalizeLayer(value: Record<string, unknown>) {
           width: number(wallOfFire.width),
           intensity: number(wallOfFire.intensity),
           speed: number(wallOfFire.speed),
-          sparkDensity: number(wallOfFire.sparkDensity),
-          sparkSize: number(wallOfFire.sparkSize),
           turbulence: number(wallOfFire.turbulence),
         } }];
         return [];

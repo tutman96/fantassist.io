@@ -8,6 +8,5 @@ export function effectGeometryKey(snapshot: SceneEngineSnapshot): string {
 
 function effectEmitterKey(effect: import("../engine/scene-document").SceneEffect): readonly number[] {
   if (effect.kind === "rain" || effect.kind === "embers") return [effect.density, effect.speed];
-  if (effect.kind === "wall-of-fire") return [effect.sparkDensity, effect.speed];
   return [];
 }

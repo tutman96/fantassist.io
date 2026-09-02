@@ -82,13 +82,11 @@ export const EDITOR_EFFECT_DEFINITIONS: Readonly<Record<EffectTool, EditorEffect
       effectControl("Intensity", 0, 100, 1, 0, "%", (effect) => effect.kind === "wall-of-fire" ? effect.intensity * 100 : 0, (effect, intensity) => effect.kind === "wall-of-fire" ? { ...effect, intensity: intensity / 100 } : effect),
       effectControl("Flame speed", 0.5, 6, 0.1, 1, "", (effect) => effect.kind === "wall-of-fire" ? effect.speed : 0, (effect, speed) => effect.kind === "wall-of-fire" ? { ...effect, speed } : effect),
       effectControl("Turbulence", 0, 100, 1, 0, "%", (effect) => effect.kind === "wall-of-fire" ? effect.turbulence * 100 : 0, (effect, turbulence) => effect.kind === "wall-of-fire" ? { ...effect, turbulence: turbulence / 100 } : effect),
-      effectControl("Spark density", 0, 8, 0.1, 1, " / grid / s", (effect) => effect.kind === "wall-of-fire" ? effect.sparkDensity : 0, (effect, sparkDensity) => effect.kind === "wall-of-fire" ? { ...effect, sparkDensity } : effect),
-      effectControl("Spark size", 0.02, 1, 0.02, 2, " grid", (effect) => effect.kind === "wall-of-fire" ? effect.sparkSize : 0, (effect, sparkSize) => effect.kind === "wall-of-fire" ? { ...effect, sparkSize } : effect),
     ],
     create: (id, seed) => ({
       id, seed, kind: "wall-of-fire", name: "Wall of Fire", visible: true, vertices: [],
       color: { r: 255, g: 91, b: 24 }, opacity: 0.9, width: 1.2, intensity: 0.86, speed: 1.3,
-      turbulence: 0.78, sparkDensity: 2.5, sparkSize: 0.05,
+      turbulence: 0.78,
     }),
   },
 });

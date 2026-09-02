@@ -20,9 +20,7 @@ import rainContext from "./shaders/rain-context.wgsl";
 import embers from "./shaders/embers.wgsl";
 import cloud from "./shaders/cloud.wgsl";
 import wallOfFire from "./shaders/wall-of-fire.wgsl";
-import wallOfFireContext from "./shaders/wall-of-fire-context.wgsl";
-import wallOfFireFlames from "./shaders/wall-of-fire-flames.wgsl";
-import wallOfFireSparks from "./shaders/wall-of-fire-sparks.wgsl";
+import wallOfFireGlow from "./shaders/wall-of-fire-glow.wgsl";
 import sceneCopy from "./shaders/scene-copy.wgsl";
 
 export const browserSceneShaders = {
@@ -50,8 +48,6 @@ export const browserSceneShaders = {
   embers,
   cloud,
   wallOfFire,
-  wallOfFireContext,
-  wallOfFireFlames,
-  wallOfFireSparks,
+  wallOfFireGlow,
   sceneCopy,
 };

@@ -163,11 +163,11 @@ test("canonical effects fields do not reuse frozen stable-v1 marker identities",
       width: 8,
       intensity: 9,
       speed: 10,
-      sparkDensity: 11,
-      sparkSize: 12,
       turbulence: 13,
     }
   );
+  assert.ok(wallOfFire.reserved?.some((entry) => Array.isArray(entry) && entry[0] === 11 && entry[1] === 11));
+  assert.ok(wallOfFire.reserved?.some((entry) => Array.isArray(entry) && entry[0] === 12 && entry[1] === 12));
   assert.deepEqual(
     Object.fromEntries(Object.entries(currentSchema.lookupType("WallOfFireEffect.Color").fields).map(([name, field]) => [name, field.id])),
     { r: 1, g: 2, b: 3 }
@@ -241,8 +241,6 @@ test("frozen stable-v1 decode and re-encode drops effects while preserving known
             width: 1.75,
             intensity: 0.85,
             speed: 2.5,
-            sparkDensity: 0.45,
-            sparkSize: 0.3,
             turbulence: 0.7,
           } }],
         },

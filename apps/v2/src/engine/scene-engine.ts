@@ -2687,8 +2687,6 @@ function validateEffect(effect: SceneEffect, preview = false): string | null {
     if (!Number.isFinite(effect.intensity) || effect.intensity < 0 || effect.intensity > 1) return "Wall of Fire intensity must be between 0 and 1";
     if (effect.speed < 0.5 || effect.speed > 6) return "Wall of Fire speed must be between 0.5 and 6";
     if (!Number.isFinite(effect.turbulence) || effect.turbulence < 0 || effect.turbulence > 1) return "Wall of Fire turbulence must be between 0 and 1";
-    if (!Number.isFinite(effect.sparkDensity) || effect.sparkDensity < 0 || effect.sparkDensity > 8) return "Wall of Fire spark density must be between 0 and 8";
-    if (!Number.isFinite(effect.sparkSize) || effect.sparkSize < 0.02 || effect.sparkSize > 1) return "Wall of Fire spark size must be between 0.02 and 1 grid units";
     return null;
   }
   if (!Number.isFinite(effect.density) || effect.density < 0) return "Effect density must be a non-negative finite number";
@@ -2706,7 +2704,7 @@ function sameEffect(left: SceneEffect, right: SceneEffect): boolean {
       ? left.density === (right as typeof left).density && left.speed === (right as typeof left).speed && left.particleSize === (right as typeof left).particleSize
       : left.kind === "cloud"
         ? left.coverage === (right as typeof left).coverage && left.speed === (right as typeof left).speed && left.scale === (right as typeof left).scale && left.turbulence === (right as typeof left).turbulence
-        : left.width === (right as typeof left).width && left.intensity === (right as typeof left).intensity && left.speed === (right as typeof left).speed && left.turbulence === (right as typeof left).turbulence && left.sparkDensity === (right as typeof left).sparkDensity && left.sparkSize === (right as typeof left).sparkSize;
+        : left.width === (right as typeof left).width && left.intensity === (right as typeof left).intensity && left.speed === (right as typeof left).speed && left.turbulence === (right as typeof left).turbulence;
   return left.id === right.id && left.name === right.name &&
     left.visible === right.visible && left.seed === right.seed &&
     left.color.r === right.color.r && left.color.g === right.color.g && left.color.b === right.color.b &&

@@ -60,8 +60,6 @@ const wallOfFire = {
   intensity: 0.86,
   speed: 1.3,
   turbulence: 0.7,
-  sparkDensity: 1.2,
-  sparkSize: 0.1,
 };
 
 const effectsLayer = (visible = true) => ({ id: "weather", name: "Weather", type: "effects" as const, visible, effects: [rain] });
