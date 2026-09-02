@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createSampleSceneDocument, freezeSceneDocument } from "../src/engine/scene-document";
-import type { EmbersEffect, RainEffect, SceneDocument, SceneEffect } from "../src/engine/scene-document";
+import type { CloudEffect, EmbersEffect, RainEffect, SceneDocument, SceneEffect } from "../src/engine/scene-document";
 import { createSceneEngine } from "../src/engine/scene-engine";
 import type { SceneCommand } from "../src/engine/scene-engine";
 
@@ -32,6 +32,21 @@ const EMBERS: EmbersEffect = {
   density: 1.6,
   speed: 1.2,
   particleSize: 0.12,
+};
+
+const CLOUD: CloudEffect = {
+  id: "cloud/one",
+  kind: "cloud",
+  name: "Smoke",
+  visible: true,
+  vertices: [{ x: 2, y: 2 }, { x: 10, y: 2 }, { x: 10, y: 8 }, { x: 2, y: 8 }],
+  seed: 191,
+  color: { r: 96, g: 101, b: 110 },
+  opacity: 0.64,
+  coverage: 0.58,
+  speed: 0.18,
+  scale: 3,
+  turbulence: 0.65,
 };
 
 function effectsScene(effects: readonly SceneEffect[] = []): SceneDocument {
@@ -105,6 +120,30 @@ test("mixed effect kinds share CRUD, immutable snapshots, and ordered history", 
   assert.deepEqual(effects(engine)[1], EMBERS);
   engine.undo();
   assert.deepEqual(effects(engine), [RAIN]);
+});
+
+test("cloud effects share ordered CRUD and validate procedural parameters", () => {
+  const engine = createSceneEngine(effectsScene([RAIN, EMBERS]));
+  assert.equal(engine.dispatch({ type: "effect.insert", layerId: "weather", effect: CLOUD }).ok, true);
+  assert.deepEqual(effects(engine).map((effect) => effect.kind), ["rain", "embers", "cloud"]);
+  const updated = { ...CLOUD, coverage: 0.72, scale: 4.5, turbulence: 0.35 };
+  assert.equal(engine.dispatch({ type: "effect.update", layerId: "weather", effectId: CLOUD.id, effect: updated }).ok, true);
+  assert.deepEqual(effects(engine)[2], updated);
+  engine.undo();
+  assert.deepEqual(effects(engine)[2], CLOUD);
+
+  for (const effect of [
+    { ...CLOUD, coverage: -0.1 },
+    { ...CLOUD, coverage: 1.1 },
+    { ...CLOUD, speed: 0 },
+    { ...CLOUD, speed: 2.51 },
+    { ...CLOUD, scale: 0 },
+    { ...CLOUD, scale: 12.1 },
+    { ...CLOUD, turbulence: -0.1 },
+    { ...CLOUD, turbulence: 1.1 },
+  ]) {
+    assert.equal(engine.dispatch({ type: "effect.update", layerId: "weather", effectId: CLOUD.id, effect }).ok, false);
+  }
 });
 
 test("embers validation and generic polygon authoring reject malformed values and commit once", () => {

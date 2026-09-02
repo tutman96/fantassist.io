@@ -5,21 +5,36 @@ import { getTableBounds } from "@/engine/table-camera";
 import type { DisplayConfiguration, TableCamera } from "@/engine/table-camera";
 import type { SceneShaders } from "@/renderer/vgpu/scene-shaders";
 
-export interface ParticleEffectDefinition {
+export type ParticleSceneEffect = Extract<SceneEffect, { readonly kind: "rain" | "embers" }>;
+export type CloudSceneEffect = Extract<SceneEffect, { readonly kind: "cloud" }>;
+
+interface EffectRendererDefinitionBase {
   readonly kind: SceneEffect["kind"];
   readonly blend: "additive" | "premultiplied";
-  readonly context: ParticleEffectContextDefinition | null;
-  readonly maxParticleLifetime: number;
-  readonly maxDensity: number;
   readonly guideColor: readonly [number, number, number, number];
   readonly selectedGuideColor: readonly [number, number, number, number];
   readonly drawingGuideColor: readonly [number, number, number, number];
   readonly handleColor: readonly [number, number, number, number];
   readonly drawingHandleColor: readonly [number, number, number, number];
   shader(shaders: SceneShaders): string | ShaderSource;
-  particleLifetime(speed: number): number;
-  liveUniforms(effect: SceneEffect): Readonly<Record<string, number | readonly number[]>>;
 }
+
+export interface ParticleEffectDefinition extends EffectRendererDefinitionBase {
+  readonly family: "particle";
+  readonly kind: ParticleSceneEffect["kind"];
+  readonly context: ParticleEffectContextDefinition | null;
+  readonly maxParticleLifetime: number;
+  readonly maxDensity: number;
+  particleLifetime(speed: number): number;
+  liveUniforms(effect: ParticleSceneEffect): Readonly<Record<string, number | readonly number[]>>;
+}
+
+export interface CloudEffectDefinition extends EffectRendererDefinitionBase {
+  readonly family: "procedural-cloud";
+  readonly kind: "cloud";
+}
+
+export type EffectRendererDefinition = ParticleEffectDefinition | CloudEffectDefinition;
 
 interface ParticleEffectContextDefinition {
   readonly bytesPerParticle: number;
@@ -32,8 +47,9 @@ export function rainVanishingPoint(table: TableCamera, display: DisplayConfigura
   return [(bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2];
 }
 
-const DEFINITIONS: Readonly<Record<SceneEffect["kind"], ParticleEffectDefinition>> = Object.freeze({
+const DEFINITIONS: Readonly<Record<SceneEffect["kind"], EffectRendererDefinition>> = Object.freeze({
   rain: {
+    family: "particle",
     kind: "rain",
     blend: "premultiplied",
     context: {
@@ -53,6 +69,7 @@ const DEFINITIONS: Readonly<Record<SceneEffect["kind"], ParticleEffectDefinition
     liveUniforms: (effect) => ({ drop_size: effect.kind === "rain" ? Math.max(effect.dropSize, 0) : 0 }),
   },
   embers: {
+    family: "particle",
     kind: "embers",
     blend: "additive",
     context: null,
@@ -67,8 +84,23 @@ const DEFINITIONS: Readonly<Record<SceneEffect["kind"], ParticleEffectDefinition
     particleLifetime: (speed) => 3.6 / Math.max(speed, 0.25),
     liveUniforms: (effect) => ({ particle_size: effect.kind === "embers" ? Math.max(effect.particleSize, 0) : 0 }),
   },
+  cloud: {
+    family: "procedural-cloud",
+    kind: "cloud",
+    blend: "premultiplied",
+    guideColor: [0.24, 0.25, 0.29, 0.5],
+    selectedGuideColor: [0.72, 0.76, 0.84, 0.95],
+    drawingGuideColor: [0.88, 0.9, 0.96, 1],
+    handleColor: [0.66, 0.7, 0.78, 1],
+    drawingHandleColor: [0.9, 0.92, 0.98, 1],
+    shader: (shaders) => shaders.cloud,
+  },
 });
 
-export function particleEffectDefinition(effect: SceneEffect): ParticleEffectDefinition {
+export function effectRendererDefinition(effect: SceneEffect): EffectRendererDefinition {
   return DEFINITIONS[effect.kind];
+}
+
+export function isParticleEffect(effect: SceneEffect): effect is ParticleSceneEffect {
+  return effect.kind === "rain" || effect.kind === "embers";
 }

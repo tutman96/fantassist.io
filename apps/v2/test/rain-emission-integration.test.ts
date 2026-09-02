@@ -9,7 +9,7 @@ import { createSampleSceneDocument, freezeSceneDocument } from "../src/engine/sc
 import { DEFAULT_DISPLAY } from "../src/engine/table-camera";
 import { compileProjection, targetPxToGrid } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
-import { rainVanishingPoint } from "../src/renderer/particle-effect-definitions";
+import { rainVanishingPoint } from "../src/renderer/effect-renderer-definitions";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
 import { loadSceneShaders } from "../scripts/load-scene-shaders";
 

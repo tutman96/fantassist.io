@@ -48,21 +48,31 @@ interface SceneEffectBase {
   readonly seed: number;
   readonly color: { readonly r: number; readonly g: number; readonly b: number };
   readonly opacity: number;
-  readonly density: number;
-  readonly speed: number;
 }
 
 export interface RainEffect extends SceneEffectBase {
   readonly kind: "rain";
+  readonly density: number;
+  readonly speed: number;
   readonly dropSize: number;
 }
 
 export interface EmbersEffect extends SceneEffectBase {
   readonly kind: "embers";
+  readonly density: number;
+  readonly speed: number;
   readonly particleSize: number;
 }
 
-export type SceneEffect = RainEffect | EmbersEffect;
+export interface CloudEffect extends SceneEffectBase {
+  readonly kind: "cloud";
+  readonly coverage: number;
+  readonly speed: number;
+  readonly scale: number;
+  readonly turbulence: number;
+}
+
+export type SceneEffect = RainEffect | EmbersEffect | CloudEffect;
 
 interface SceneLayerBase {
   readonly id: string;

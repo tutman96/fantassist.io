@@ -2646,7 +2646,7 @@ function validateLight(light: SceneLight): string | null {
 }
 
 function validateEffect(effect: SceneEffect, preview = false): string | null {
-  if (!effect || (effect.kind !== "rain" && effect.kind !== "embers")) return "Unsupported effect kind";
+  if (!effect || (effect.kind !== "rain" && effect.kind !== "embers" && effect.kind !== "cloud")) return "Unsupported effect kind";
   if (typeof effect.id !== "string" || !effect.id.trim()) return "Effect ID is required";
   const name = normalizeName(effect.name, "Effect");
   if ("error" in name) return name.error;
@@ -2658,23 +2658,32 @@ function validateEffect(effect: SceneEffect, preview = false): string | null {
     return "Effect color channels must be integers from 0 to 255";
   }
   if (!Number.isFinite(effect.opacity) || effect.opacity < 0 || effect.opacity > 1) return "Effect opacity must be between 0 and 1";
-  if (!Number.isFinite(effect.density) || effect.density < 0) return "Effect density must be a non-negative finite number";
   if (!Number.isFinite(effect.speed) || effect.speed <= 0) return "Effect speed must be a positive finite number";
+  if (effect.kind === "cloud") {
+    if (!Number.isFinite(effect.coverage) || effect.coverage < 0 || effect.coverage > 1) return "Cloud coverage must be between 0 and 1";
+    if (effect.speed > 2.5) return "Cloud speed must not exceed 2.5 grid units per second";
+    if (!Number.isFinite(effect.scale) || effect.scale < 0.25 || effect.scale > 12) return "Cloud scale must be between 0.25 and 12 grid units";
+    if (!Number.isFinite(effect.turbulence) || effect.turbulence < 0 || effect.turbulence > 1) return "Cloud turbulence must be between 0 and 1";
+    return null;
+  }
+  if (!Number.isFinite(effect.density) || effect.density < 0) return "Effect density must be a non-negative finite number";
   const particleSize = effect.kind === "rain" ? effect.dropSize : effect.particleSize;
-  if (!Number.isFinite(particleSize) || particleSize <= 0) return "Effect particle size must be a positive finite number";
-  return null;
+  return !Number.isFinite(particleSize) || particleSize <= 0
+    ? "Effect particle size must be a positive finite number"
+    : null;
 }
 
 function sameEffect(left: SceneEffect, right: SceneEffect): boolean {
   if (left.kind !== right.kind) return false;
-  const sameKindSize = left.kind === "rain"
-    ? left.dropSize === (right as typeof left).dropSize
-    : left.particleSize === (right as typeof left).particleSize;
+  const sameKindParameters = left.kind === "rain"
+    ? left.density === (right as typeof left).density && left.speed === (right as typeof left).speed && left.dropSize === (right as typeof left).dropSize
+    : left.kind === "embers"
+      ? left.density === (right as typeof left).density && left.speed === (right as typeof left).speed && left.particleSize === (right as typeof left).particleSize
+      : left.coverage === (right as typeof left).coverage && left.speed === (right as typeof left).speed && left.scale === (right as typeof left).scale && left.turbulence === (right as typeof left).turbulence;
   return left.id === right.id && left.name === right.name &&
     left.visible === right.visible && left.seed === right.seed &&
     left.color.r === right.color.r && left.color.g === right.color.g && left.color.b === right.color.b &&
-    left.opacity === right.opacity && left.density === right.density && left.speed === right.speed &&
-    sameKindSize &&
+    left.opacity === right.opacity && sameKindParameters &&
     left.vertices.length === right.vertices.length &&
     left.vertices.every((vertex, index) => samePoint(vertex, right.vertices[index]));
 }

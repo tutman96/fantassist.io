@@ -18,6 +18,7 @@ import radianceResolve from "./shaders/radiance-resolve.wgsl";
 import rain from "./shaders/rain.wgsl";
 import rainContext from "./shaders/rain-context.wgsl";
 import embers from "./shaders/embers.wgsl";
+import cloud from "./shaders/cloud.wgsl";
 import sceneCopy from "./shaders/scene-copy.wgsl";
 
 export const browserSceneShaders = {
@@ -43,5 +44,6 @@ export const browserSceneShaders = {
   rain,
   rainContext,
   embers,
+  cloud,
   sceneCopy,
 };

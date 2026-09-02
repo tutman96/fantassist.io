@@ -55,6 +55,12 @@ export function projectV1Scene(scene: V1Scene): SceneDocument {
             vertices: effect.embers.vertices.map((vertex) => ({ ...vertex })),
             color: { ...(effect.embers.color ?? { r: 255, g: 255, b: 255 }) },
           }];
+          if (effect.cloud) return [{
+            ...effect.cloud,
+            kind: "cloud" as const,
+            vertices: effect.cloud.vertices.map((vertex) => ({ ...vertex })),
+            color: { ...(effect.cloud.color ?? { r: 255, g: 255, b: 255 }) },
+          }];
           return [];
         }),
       };
@@ -221,7 +227,7 @@ export function patchV1SceneTransforms(
   };
 }
 
-function persistEffects(effects: readonly import("@/engine/scene-document").SceneEffect[]) {
+function persistEffects(effects: readonly SceneEffect[]) {
   return effects.map((effect) => {
     const common = {
       id: effect.id,
@@ -231,14 +237,20 @@ function persistEffects(effects: readonly import("@/engine/scene-document").Scen
       seed: effect.seed,
       color: { ...effect.color },
       opacity: effect.opacity,
-      density: effect.density,
-      speed: effect.speed,
     };
     switch (effect.kind) {
       case "rain":
-        return { rain: { ...common, dropSize: effect.dropSize } };
+        return { rain: { ...common, density: effect.density, speed: effect.speed, dropSize: effect.dropSize } };
       case "embers":
-        return { embers: { ...common, particleSize: effect.particleSize } };
+        return { embers: { ...common, density: effect.density, speed: effect.speed, particleSize: effect.particleSize } };
+      case "cloud":
+        return { cloud: {
+          ...common,
+          coverage: effect.coverage,
+          speed: effect.speed,
+          scale: effect.scale,
+          turbulence: effect.turbulence,
+        } };
       default:
         return assertNever(effect);
     }

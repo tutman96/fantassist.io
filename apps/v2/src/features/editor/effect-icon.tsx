@@ -1,4 +1,4 @@
-import { CloudRain, Flame } from "lucide-react";
+import { Cloud, CloudRain, Flame } from "lucide-react";
 
 import type { EffectTool } from "@/features/editor/editor-tool";
 
@@ -6,6 +6,7 @@ export function EffectIcon({ effect, ...props }: { readonly effect: EffectTool }
   switch (effect) {
     case "rain": return <CloudRain {...props} />;
     case "embers": return <Flame {...props} />;
+    case "cloud": return <Cloud {...props} />;
     default: return assertNever(effect);
   }
 }

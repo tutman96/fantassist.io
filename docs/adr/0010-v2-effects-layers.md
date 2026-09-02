@@ -54,6 +54,7 @@ message Effect {
   oneof effectType {
     RainEffect rain = 1;
     EmbersEffect embers = 2;
+    CloudEffect cloud = 3;
   }
 }
 
@@ -82,6 +83,20 @@ message EmbersEffect {
   double density = 8;
   double speed = 9;
   double particleSize = 10;
+}
+
+message CloudEffect {
+  string id = 1;
+  string name = 2;
+  bool visible = 3;
+  repeated Vector2d vertices = 4;
+  uint32 seed = 5;
+  Color color = 6;
+  double opacity = 7;
+  double coverage = 8;
+  double speed = 9;
+  double scale = 10;
+  double turbulence = 11;
 }
 ```
 
@@ -158,7 +173,7 @@ Polygon fills reuse a renderer-owned concave tessellation utility generalized fr
 
 Animated particle effects use the reusable in-scope renderer library under `src/renderer/particles`. Its vgpu compute passes own current and target emission rates, fractional accumulation, monotonic emission sequence, parallel burst spawning, and a fixed particle ring in GPU storage. Particle records contain spawn time, lifetime, initialization seed, and allocation state. WGSL derives spawn position, projected motion, geometry, and opacity from each initialization seed and local renderer time. CPU responsibilities are setting target rate, advancing the local clock, and scheduling the compute dispatches. Cloud effects derive animation from procedural world-space fields. Additional stateful simulation is deferred until a concrete effect cannot be expressed with emitted records, deterministic shader initialization, or procedural fields.
 
-Particle effect lifecycle is shared. Each supported kind registers a renderer definition containing its shader, blend mode, quality-scaled density limit, lifetime policy, live uniforms, editor guide palette, and optional per-particle spawn context. The executor owns allocation, prewarming, rate changes, retiming, transitions, ordered drawing, draining, and disposal once for all registered particle effects. Editor definitions similarly own defaults and inspector range metadata, while effect icons and engine polygon authoring use exhaustive kind-aware entry points. Adding a particle effect must extend these exhaustive registries instead of copying the Rain lifecycle.
+Effect rendering is family-based. Each supported kind registers a renderer definition containing its family, shader, blend mode, live parameters, and editor guide palette. Particle definitions additionally provide quality-scaled density limits, lifetime policy, and optional per-particle spawn context. The heterogeneous executor owns ordered drawing, transitions, geometry replacement, and disposal for every family while particle entries share allocation, prewarming, rate changes, retiming, and draining. Editor definitions similarly own defaults and declarative inspector controls, while effect icons and engine polygon authoring use exhaustive kind-aware entry points. Adding an effect extends these registries instead of copying the Rain lifecycle.
 
 Effect resources follow the existing renderer lifecycle:
 
@@ -230,7 +245,7 @@ Magical darkness is an obscuring effect rather than a translucent black cloud. I
 The first implementation establishes reusable shader families rather than one unrelated shader per named spell:
 
 - Precipitation family: rain and snow within a polygon or across the full scene.
-- Cloud family: smoke, poison cloud, ground mist, and insect swarm within a polygon.
+- Cloud family: one configurable procedural cloud supports smoke, poison gas, ground mist, and dust presets within a polygon.
 - Barrier family: wall of fire, wall of force, and wall of ice along an open path.
 - Obscuring family: magical darkness within a polygon.
 - Point family: portal, vortex, aura, and ritual glyph within a radius.
@@ -242,6 +257,8 @@ Rain is viewed from above. Authored density maps to emissions per grid area per 
 Rain position advances linearly in grid space. The vanishing point is the midpoint of the physical table bounds after applying table origin, scale, display resolution, and display size. Editor camera pan and zoom do not change it. A rain-specific GPU context stores the current vanishing point beside each newly initialized package particle slot; existing particles retain their original point when the table configuration changes. Perspective travel is proportional to distance from that snapshotted point, so drops near the center have less apparent lateral movement over the same interval while retaining the same depth speed. Streak length represents motion blur and scales with the square root of each particle's recorded fall speed. The shader evaluates an anisotropic Gaussian in grid units: `dropSize` controls only cross-streak sigma, while fall speed controls the longer longitudinal sigma. Both axes contract toward the vanishing point to match their lower apparent camera motion. Center opacity falls to 7.5 percent of authored strength and reaches full strength over six grid units. Per-emission seed variation keeps width within 90 to 110 percent and opacity within 82 to 100 percent of authored values. Streak dimensions remain stable during one drop's lifetime. The opacity envelope completes at 88 percent of the path, leaving the final 12 percent invisible before the particle record expires.
 
 Embers are also viewed from above. Their polygon is a source region: seeded particles spawn only inside it, then vertical lift toward the camera is represented by subtle growth while randomized planar convection and curl keep movement independent of screen north. Particles use additive warm-core and soft-halo composition, seeded size and flicker variation, and a smooth lifetime envelope. `density` is emissions per grid area per second, `speed` controls lift lifetime, and `particleSize` is authored in grid units. Embers are decorative emissive pixels and do not implicitly become scene lights.
+
+Clouds are top-down procedural density fields clipped to an authored polygon with a soft inward boundary. Seeded world-space noise drifts coherently and uses domain warping for billowing without tying the pattern to editor pan, zoom, or output resolution. `coverage` controls occupied density, `speed` controls planar drift in grid units per second, `scale` controls billow size in grid units, and `turbulence` controls distortion. Smoke, poison gas, mist, and dust are presets of this one effect rather than separate persisted variants; all parameters remain directly editable. Clouds are visual alpha effects and do not reveal fog, create lights, or alter obstruction.
 
 ## Performance And Caching
 

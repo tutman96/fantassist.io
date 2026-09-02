@@ -9,7 +9,7 @@ import { DEFAULT_DISPLAY, DEFAULT_TABLE_CAMERA, fitTableCamera, getTableBounds }
 import { hasVisibleAnimatedEffects } from "../src/renderer/animation-demand";
 import { compileProjection, gridToTargetPx, targetPxToGrid } from "../src/renderer/projection";
 import { createRenderPlan } from "../src/renderer/render-plan";
-import { rainVanishingPoint } from "../src/renderer/particle-effect-definitions";
+import { rainVanishingPoint } from "../src/renderer/effect-renderer-definitions";
 import { createSceneExecutor } from "../src/renderer/vgpu/scene-executor";
 import { renderHeadlessScene } from "../scripts/render-scene";
 import { loadSceneShaders } from "../scripts/load-scene-shaders";

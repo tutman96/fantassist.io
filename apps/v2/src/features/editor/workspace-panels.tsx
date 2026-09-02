@@ -14,7 +14,7 @@ import type { PreviewToken, SceneEngine, SceneEngineSnapshot } from "@/engine/sc
 import type { LightSelection } from "@/engine/scene-engine";
 import type { SceneEffect, SceneLayer, SceneLight } from "@/engine/scene-document";
 import { EditorPanel, Metric } from "@/features/editor/editor-panel";
-import { editorEffectDefinition } from "@/features/editor/effect-definitions";
+import { CLOUD_PRESETS, editorEffectDefinition } from "@/features/editor/effect-definitions";
 import { EffectIcon } from "@/features/editor/effect-icon";
 import { AssetThumbnail } from "@/features/editor/asset-thumbnail";
 import { AssetCalibrationDialog } from "@/features/editor/asset-calibration-dialog";
@@ -222,7 +222,7 @@ export function WorkspacePanels({
                       const selected = sceneSnapshot.selectedEffect?.layerId === layer.id && sceneSnapshot.selectedEffect.effectId === effect.id;
                       return (
                         <div key={effect.id} className={`flex min-h-8 items-center gap-1 border border-transparent pr-4 pl-7 text-[9px] transition-colors ${selected ? "border-cyan-300/20 bg-gradient-to-r from-cyan-500/14 to-blue-500/8" : "hover:border-cyan-300/10 hover:bg-cyan-400/5"}`}>
-                           <EffectIcon effect={effect.kind} className={effect.kind === "rain" ? "size-3 text-cyan-100/70" : "size-3 text-orange-300/80"} aria-hidden="true" />
+                           <EffectIcon effect={effect.kind} className={editorEffectDefinition(effect).iconClassName} aria-hidden="true" />
                           <Button
                             type="button"
                             variant="ghost"
@@ -555,9 +555,10 @@ function EffectInspector({ effect, engine, selection }: {
     <div className="space-y-3 p-2.5">
       <fieldset className="space-y-2 border border-cyan-300/12 bg-cyan-950/10 p-2">
         <legend className="px-1 font-mono text-[9px] tracking-[0.12em] text-cyan-100/60 uppercase">{definition.label}</legend>
-        <EffectSlider label="Emission density" value={draft.density} min={0.1} max={definition.densityMax} step={0.1} display={`${draft.density.toFixed(1)} / grid² / s`} onStart={beginPreview} onCommit={commit} onChange={(density) => update({ ...draft, density })} />
-        <EffectSlider label={definition.speed.label} value={draft.speed} min={definition.speed.min} max={definition.speed.max} step={definition.speed.step} display={draft.speed.toFixed(definition.speed.fractionDigits)} onStart={beginPreview} onCommit={commit} onChange={(speed) => update({ ...draft, speed })} />
-        <EffectSlider label={definition.size.label} value={definition.readSize(draft)} min={definition.size.min} max={definition.size.max} step={definition.size.step} display={`${definition.readSize(draft).toFixed(definition.size.fractionDigits)} grid`} onStart={beginPreview} onCommit={commit} onChange={(size) => update(definition.writeSize(draft, size))} />
+        {definition.controls.map((control) => {
+          const value = control.read(draft);
+          return <EffectSlider key={control.label} label={control.label} value={value} min={control.min} max={control.max} step={control.step} display={control.display(value)} onStart={beginPreview} onCommit={commit} onChange={(next) => update(control.write(draft, next))} />;
+        })}
         <EffectSlider label="Opacity" value={draft.opacity * 100} min={1} max={100} step={1} display={`${Math.round(draft.opacity * 100)}%`} onStart={beginPreview} onCommit={commit} onChange={(opacity) => update({ ...draft, opacity: opacity / 100 })} />
       </fieldset>
       <fieldset className="space-y-2 border border-violet-300/12 bg-black/15 p-2">
@@ -566,6 +567,18 @@ function EffectInspector({ effect, engine, selection }: {
         <ColorSlider label="Saturation" value={hsl.s} min={0} max={100} background={`linear-gradient(to right,hsl(${hsl.h} 0% ${hsl.l}%),hsl(${hsl.h} 100% ${hsl.l}%))`} onStart={beginPreview} onCommit={commit} onChange={(s) => updateHsl({ s })} />
         <ColorSlider label="Lightness" value={hsl.l} min={0} max={100} background={`linear-gradient(to right,#000,hsl(${hsl.h} ${hsl.s}% 50%),#fff)`} onStart={beginPreview} onCommit={commit} onChange={(l) => updateHsl({ l })} />
       </fieldset>
+      {draft.kind === "cloud" ? (
+        <div className="grid grid-cols-4 gap-1">
+          {CLOUD_PRESETS.map((preset) => (
+            <Button key={preset.name} type="button" variant="outline" onClick={() => {
+              update({ ...draft, ...preset.effect });
+              queueMicrotask(commit);
+            }} className="h-8 rounded-none border-violet-300/12 bg-violet-400/5 px-1 text-[9px] text-violet-100/60">
+              {preset.name}
+            </Button>
+          ))}
+        </div>
+      ) : null}
       <div className="grid gap-1.5">
         <Button
           type="button"

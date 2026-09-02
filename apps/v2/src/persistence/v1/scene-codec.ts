@@ -41,7 +41,7 @@ message FogLayer {
 message EffectsLayer {
   string id = 1; string name = 3; bool visible = 4; Layer.LayerType type = 5; repeated Effect effects = 6;
 }
-message Effect { oneof effectType { RainEffect rain = 1; EmbersEffect embers = 2; } }
+message Effect { oneof effectType { RainEffect rain = 1; EmbersEffect embers = 2; CloudEffect cloud = 3; } }
 message RainEffect {
   reserved 10;
   string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
@@ -51,6 +51,11 @@ message RainEffect {
 message EmbersEffect {
   string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
   double opacity = 7; double density = 8; double speed = 9; double particleSize = 10;
+  message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
+}
+message CloudEffect {
+  string id = 1; string name = 2; bool visible = 3; repeated Vector2d vertices = 4; uint32 seed = 5; Color color = 6;
+  double opacity = 7; double coverage = 8; double speed = 9; double scale = 10; double turbulence = 11;
   message Color { uint32 r = 1; uint32 g = 2; uint32 b = 3; }
 }
 message SceneExport {
@@ -229,9 +234,27 @@ function normalizeLayer(value: Record<string, unknown>) {
       effects: array(effectsLayer.effects).flatMap<import("./types").V1Effect>((item) => {
         const effect = record(item);
         const rain = record(effect?.rain);
-        if (rain) return [{ rain: { ...normalizeEffect(rain), dropSize: number(rain.dropSize) } }];
+        if (rain) return [{ rain: {
+          ...normalizeEffect(rain),
+          density: number(rain.density),
+          speed: number(rain.speed),
+          dropSize: number(rain.dropSize),
+        } }];
         const embers = record(effect?.embers);
-        if (embers) return [{ embers: { ...normalizeEffect(embers), particleSize: number(embers.particleSize) } }];
+        if (embers) return [{ embers: {
+          ...normalizeEffect(embers),
+          density: number(embers.density),
+          speed: number(embers.speed),
+          particleSize: number(embers.particleSize),
+        } }];
+        const cloud = record(effect?.cloud);
+        if (cloud) return [{ cloud: {
+          ...normalizeEffect(cloud),
+          coverage: number(cloud.coverage),
+          speed: number(cloud.speed),
+          scale: number(cloud.scale),
+          turbulence: number(cloud.turbulence),
+        } }];
         return [];
       }),
     } } : {}),
@@ -248,8 +271,6 @@ function normalizeEffect(value: Record<string, unknown>) {
     seed: number(value.seed),
     ...(color ? { color: { r: number(color.r), g: number(color.g), b: number(color.b) } } : {}),
     opacity: number(value.opacity),
-    density: number(value.density),
-    speed: number(value.speed),
   };
 }
 

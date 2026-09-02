@@ -18,5 +18,6 @@ export interface SceneShaders {
   readonly rain: string | ShaderSource;
   readonly rainContext: string | ShaderSource;
   readonly embers: string | ShaderSource;
+  readonly cloud: string | ShaderSource;
   readonly sceneCopy: string | ShaderSource;
 }

@@ -77,29 +77,46 @@ export interface V1FogLayer {
   readonly fogClearPolygons: readonly V1Polygon[];
 }
 
-interface V1EffectBase {
+export interface V1EffectColor {
+  readonly r: number;
+  readonly g: number;
+  readonly b: number;
+}
+
+export interface V1EffectBase {
   readonly id: string;
   readonly name: string;
   readonly visible: boolean;
   readonly vertices: readonly V1Vector[];
   readonly seed: number;
-  readonly color?: { readonly r: number; readonly g: number; readonly b: number };
+  readonly color?: V1EffectColor;
   readonly opacity: number;
+}
+
+interface V1ParticleEffectBase extends V1EffectBase {
   readonly density: number;
   readonly speed: number;
 }
 
-export interface V1RainEffect extends V1EffectBase {
+export interface V1RainEffect extends V1ParticleEffectBase {
   readonly dropSize: number;
 }
 
-export interface V1EmbersEffect extends V1EffectBase {
+export interface V1EmbersEffect extends V1ParticleEffectBase {
   readonly particleSize: number;
+}
+
+export interface V1CloudEffect extends V1EffectBase {
+  readonly coverage: number;
+  readonly speed: number;
+  readonly scale: number;
+  readonly turbulence: number;
 }
 
 export interface V1Effect {
   readonly rain?: V1RainEffect;
   readonly embers?: V1EmbersEffect;
+  readonly cloud?: V1CloudEffect;
 }
 
 export interface V1EffectsLayer {

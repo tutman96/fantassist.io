@@ -5,14 +5,14 @@ import type { ParticleEmitter } from "../particles/particle-emitter";
 
 import type { SceneEngineSnapshot } from "../../engine/scene-engine";
 import type { SceneEffect, SceneLight } from "../../engine/scene-document";
-import { advanceEffectTransitions, createInitialEffectTransitions, hasEffectAnimationDemand, reconcileEffectTransitions } from "../effect-transitions";
-import { fogHandleVertices, outlineFogPolygons, outlinePolygon, outlineWallPolygons, polygonHandleVertices, tessellateFogPolygons, wallSegmentVertices } from "../fog-geometry";
+import { advanceEffectTransitions, createInitialEffectTransitions, effectTransitionIntensity, hasEffectAnimationDemand, reconcileEffectTransitions } from "../effect-transitions";
+import { fogHandleVertices, outlineFogPolygons, outlinePolygon, outlineWallPolygons, polygonHandleVertices, tessellateFogPolygons, tessellatePolygon, wallSegmentVertices } from "../fog-geometry";
 import { createFallbackImageUpload } from "../image-texture";
 import type { ImageTextureUpload } from "../image-texture";
 import { compileSceneLayerOperations, FOG_EDGE_SPREAD_GRID } from "../render-plan";
 import type { RenderPlan, SceneLayerOperation } from "../render-plan";
-import { particleEffectDefinition } from "../particle-effect-definitions";
-import type { ParticleEffectDefinition } from "../particle-effect-definitions";
+import { effectRendererDefinition, isParticleEffect } from "../effect-renderer-definitions";
+import type { CloudEffectDefinition, CloudSceneEffect, EffectRendererDefinition, ParticleEffectDefinition, ParticleSceneEffect } from "../effect-renderer-definitions";
 import { compileProjection, projectionUniforms } from "../projection";
 import type { RenderView } from "../projection";
 import type { SceneShaders } from "./scene-shaders";
@@ -84,15 +84,24 @@ interface FogDrawEntry {
   readonly geometries: readonly Geometry[];
 }
 
-interface EffectDrawEntry {
+interface EffectDrawEntryBase {
   readonly layerId: string;
   readonly effectId: string;
-  readonly definition: ParticleEffectDefinition;
+  readonly definition: EffectRendererDefinition;
   readonly drawable?: Draw;
   readonly guide?: Draw;
   readonly handles?: Draw;
   readonly geometries: readonly Geometry[];
   readonly polygonStorage: StorageBuffer & { destroy(): void };
+  readonly emitterMin: readonly [number, number];
+  readonly emitterMax: readonly [number, number];
+  readonly polygonVertexCount: number;
+  readonly geometryKey: string;
+}
+
+interface ParticleEffectDrawEntry extends EffectDrawEntryBase {
+  readonly family: "particle";
+  readonly definition: ParticleEffectDefinition;
   readonly contextStorage?: StorageBuffer & { destroy(): void };
   readonly contextInitializer?: Compute;
   readonly contextBytes: number;
@@ -101,10 +110,26 @@ interface EffectDrawEntry {
   targetEmissionRate: number;
   particleLifetime: number;
   steadyStatePending: boolean;
-  readonly emitterMin: readonly [number, number];
-  readonly emitterMax: readonly [number, number];
-  readonly polygonVertexCount: number;
-  readonly geometryKey: string;
+}
+
+interface CloudEffectDrawEntry extends EffectDrawEntryBase {
+  readonly family: "procedural-cloud";
+  readonly definition: CloudEffectDefinition;
+}
+
+type EffectDrawEntry = ParticleEffectDrawEntry | CloudEffectDrawEntry;
+
+function isParticleEntry(entry: EffectDrawEntry): entry is ParticleEffectDrawEntry {
+  return entry.family === "particle";
+}
+
+function disposeEffectEntry(entry: EffectDrawEntry): void {
+  entry.geometries.forEach((item) => item.destroy());
+  entry.polygonStorage.destroy();
+  if (isParticleEntry(entry)) {
+    entry.contextStorage?.destroy();
+    entry.emitter.dispose();
+  }
 }
 
 const EDITOR_RADIANCE_SCALE = 8;
@@ -224,10 +249,30 @@ export function createSceneExecutor(
     };
   };
   const particleEffectParams = (
-    sceneEffect: SceneEffect,
+    sceneEffect: ParticleSceneEffect,
     time: number,
     emitterMin: readonly [number, number] = [0, 0],
     emitterMax: readonly [number, number] = [0, 0],
+    polygonVertexCount = sceneEffect.vertices.length,
+  ) => {
+    const definition = effectRendererDefinition(sceneEffect);
+    if (definition.family !== "particle") throw new Error(`Effect '${sceneEffect.kind}' is not a particle effect`);
+    return {
+      ...spatialParams(),
+      time,
+      seed: sceneEffect.seed,
+      color: [sceneEffect.color.r / 255, sceneEffect.color.g / 255, sceneEffect.color.b / 255],
+      opacity: sceneEffect.opacity,
+      ...definition.liveUniforms(sceneEffect),
+      emitter_min: emitterMin,
+      emitter_max: emitterMax,
+      polygon_vertex_count: polygonVertexCount,
+    };
+  };
+  const cloudEffectParams = (
+    sceneEffect: CloudSceneEffect,
+    time: number,
+    transition: number,
     polygonVertexCount = sceneEffect.vertices.length,
   ) => ({
     ...spatialParams(),
@@ -235,9 +280,11 @@ export function createSceneExecutor(
     seed: sceneEffect.seed,
     color: [sceneEffect.color.r / 255, sceneEffect.color.g / 255, sceneEffect.color.b / 255],
     opacity: sceneEffect.opacity,
-    ...particleEffectDefinition(sceneEffect).liveUniforms(sceneEffect),
-    emitter_min: emitterMin,
-    emitter_max: emitterMax,
+    coverage: sceneEffect.coverage,
+    cloud_scale: sceneEffect.scale,
+    speed: sceneEffect.speed,
+    turbulence: sceneEffect.turbulence,
+    transition,
     polygon_vertex_count: polygonVertexCount,
   });
   const signature = (output: Target): TargetSignature => ({
@@ -456,8 +503,81 @@ export function createSceneExecutor(
     });
 
   const createEffectEntry = (layerId: string, sceneEffect: SceneEffect, steadyState = false): EffectDrawEntry | undefined => {
-    const definition = particleEffectDefinition(sceneEffect);
+    const definition = effectRendererDefinition(sceneEffect);
     const emitterGeometry = effectEmitterGeometry(sceneEffect);
+    const polygonData = new Float32Array(sceneEffect.vertices.flatMap((vertex) => [vertex.x, vertex.y]));
+    const polygonStorage = storage(gpu, Math.max(8, polygonData.byteLength)) as StorageBuffer & { destroy(): void };
+    if (polygonData.byteLength > 0) polygonStorage.write(polygonData);
+    const guideVertices = plan.showEditorGrid ? outlinePolygon(sceneEffect.vertices) : null;
+    const guideGeometry = guideVertices ? geometry(gpu, {
+      buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: guideVertices }],
+      topology: "line-list",
+      label: `${sceneEffect.kind}-guide:${sceneEffect.id}`,
+    }) : undefined;
+    const handleGeometry = plan.showEditorGrid && sceneEffect.vertices.length > 0 ? geometry(gpu, {
+      buffers: [{
+        attributes: {
+          point_grid: { format: "float32x2", location: 0, offset: 0 },
+          corner: { format: "float32x2", location: 1, offset: 8 },
+        },
+        stride: 16,
+        data: polygonHandleVertices(sceneEffect.vertices),
+      }],
+      topology: "triangle-list",
+      label: `${sceneEffect.kind}-handles:${sceneEffect.id}`,
+    }) : undefined;
+    const common = {
+      layerId,
+      effectId: sceneEffect.id,
+      definition,
+      geometries: [guideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
+      polygonStorage,
+      emitterMin: emitterGeometry.min,
+      emitterMax: emitterGeometry.max,
+      polygonVertexCount: sceneEffect.vertices.length,
+      geometryKey: JSON.stringify([sceneEffect.kind, sceneEffect.vertices, sceneEffect.seed]),
+      guide: guideGeometry ? draw(gpu, {
+        shader: shaders.fogGuide,
+        geometry: guideGeometry,
+        blend: "premultiplied" as const,
+        label: `${sceneEffect.kind}-guide:${sceneEffect.id}`,
+        set: { params: { ...spatialParams(), color: definition.guideColor } },
+      }) : undefined,
+      handles: handleGeometry ? draw(gpu, {
+        shader: shaders.fogHandle,
+        geometry: handleGeometry,
+        blend: "premultiplied" as const,
+        label: `${sceneEffect.kind}-handles:${sceneEffect.id}`,
+        set: { params: { ...spatialParams(), color: definition.handleColor } },
+      }) : undefined,
+    };
+    if (definition.family === "procedural-cloud") {
+      if (sceneEffect.kind !== "cloud") throw new Error(`Effect '${sceneEffect.kind}' does not match its renderer definition`);
+      const mesh = tessellatePolygon(sceneEffect.vertices);
+      const cloudGeometry = mesh ? geometry(gpu, {
+        buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: mesh.vertices }],
+        indices: mesh.indices,
+        topology: "triangle-list",
+        label: `cloud:${sceneEffect.id}`,
+      }) : undefined;
+      return {
+        ...common,
+        family: "procedural-cloud",
+        definition,
+        geometries: [...common.geometries, ...(cloudGeometry ? [cloudGeometry] : [])],
+        drawable: cloudGeometry ? draw(gpu, {
+          shader: definition.shader(shaders),
+          geometry: cloudGeometry,
+          blend: definition.blend,
+          label: `cloud:${sceneEffect.id}`,
+          set: {
+            polygon_vertices: polygonStorage,
+            params: cloudEffectParams(sceneEffect, 0, 1, sceneEffect.vertices.length),
+          },
+        }) : undefined,
+      };
+    }
+    if (!isParticleEffect(sceneEffect)) throw new Error(`Effect '${sceneEffect.kind}' does not match its renderer definition`);
     const maximumDensity = definition.maxDensity;
     const densityScale = plan.particleDensityScale;
     const density = Math.min(Math.max(sceneEffect.density, 0), maximumDensity) * densityScale;
@@ -484,27 +604,6 @@ export function createSceneExecutor(
       label: `${sceneEffect.kind}-context:${sceneEffect.id}`,
       set: { particles: emitter.particleStorage, contexts: contextStorage },
     }) : undefined;
-    const polygonData = new Float32Array(sceneEffect.vertices.flatMap((vertex) => [vertex.x, vertex.y]));
-    const polygonStorage = storage(gpu, Math.max(8, polygonData.byteLength)) as StorageBuffer & { destroy(): void };
-    if (polygonData.byteLength > 0) polygonStorage.write(polygonData);
-    const guideVertices = plan.showEditorGrid ? outlinePolygon(sceneEffect.vertices) : null;
-    const guideGeometry = guideVertices ? geometry(gpu, {
-      buffers: [{ attributes: { point_grid: { format: "float32x2", location: 0 } }, data: guideVertices }],
-      topology: "line-list",
-      label: `${sceneEffect.kind}-guide:${sceneEffect.id}`,
-    }) : undefined;
-    const handleGeometry = plan.showEditorGrid && sceneEffect.vertices.length > 0 ? geometry(gpu, {
-      buffers: [{
-        attributes: {
-          point_grid: { format: "float32x2", location: 0, offset: 0 },
-          corner: { format: "float32x2", location: 1, offset: 8 },
-        },
-        stride: 16,
-        data: polygonHandleVertices(sceneEffect.vertices),
-      }],
-      topology: "triangle-list",
-      label: `${sceneEffect.kind}-handles:${sceneEffect.id}`,
-    }) : undefined;
     if (capacityEmissionRate <= 0 && !guideGeometry && !handleGeometry) {
       polygonStorage.destroy();
       contextStorage?.destroy();
@@ -512,11 +611,9 @@ export function createSceneExecutor(
       return undefined;
     }
     return {
-      layerId,
-      effectId: sceneEffect.id,
+      ...common,
+      family: "particle",
       definition,
-      geometries: [guideGeometry, handleGeometry].filter((item): item is Geometry => item !== undefined),
-      polygonStorage,
       contextStorage,
       contextInitializer,
       contextBytes,
@@ -525,10 +622,6 @@ export function createSceneExecutor(
       targetEmissionRate: 0,
       particleLifetime,
       steadyStatePending: steadyState,
-      emitterMin: emitterGeometry.min,
-      emitterMax: emitterGeometry.max,
-      polygonVertexCount: sceneEffect.vertices.length,
-      geometryKey: JSON.stringify([sceneEffect.kind, sceneEffect.vertices, sceneEffect.seed]),
       drawable: capacityEmissionRate > 0 ? draw(gpu, {
         shader: definition.shader(shaders),
         vertices: 6,
@@ -541,20 +634,6 @@ export function createSceneExecutor(
           ...(contextStorage ? { contexts: contextStorage } : {}),
           params: particleEffectParams(sceneEffect, 0, emitterGeometry.min, emitterGeometry.max, sceneEffect.vertices.length),
         },
-      }) : undefined,
-      guide: guideGeometry ? draw(gpu, {
-        shader: shaders.fogGuide,
-        geometry: guideGeometry,
-        blend: "premultiplied",
-        label: `${sceneEffect.kind}-guide:${sceneEffect.id}`,
-        set: { params: { ...spatialParams(), color: definition.guideColor } },
-      }) : undefined,
-      handles: handleGeometry ? draw(gpu, {
-        shader: shaders.fogHandle,
-        geometry: handleGeometry,
-        blend: "premultiplied",
-        label: `${sceneEffect.kind}-handles:${sceneEffect.id}`,
-        set: { params: { ...spatialParams(), color: definition.handleColor } },
       }) : undefined,
     };
   };
@@ -666,7 +745,7 @@ export function createSceneExecutor(
       return effectEntries.reduce((count, entry) => count + entry.geometries.length, 0);
     },
     async effectEmissionDiagnostics(time = lastTransitionTime ?? 0) {
-      return Promise.all(effectEntries.map(async (entry) => {
+      return Promise.all(effectEntries.filter(isParticleEntry).map(async (entry) => {
         const [diagnostic, contextData] = await Promise.all([
           entry.emitter.readDiagnostics(time),
           entry.contextStorage?.read(),
@@ -711,7 +790,7 @@ export function createSceneExecutor(
     },
     hasAnimationDemand() {
       return hasEffectAnimationDemand(effectTransitions)
-        || effectEntries.some((entry) => entry.emitter.hasAnimationDemand(lastTransitionTime ?? 0));
+        || effectEntries.some((entry) => isParticleEntry(entry) && entry.emitter.hasAnimationDemand(lastTransitionTime ?? 0));
     },
     async prewarm() {
       await Promise.all([
@@ -776,38 +855,43 @@ export function createSceneExecutor(
           const entry = createEffectEntry(transition.layerId, transition.effect, true);
           return entry ? [entry] : [];
         });
-        await Promise.all(nextEntries.flatMap((entry) => [
-          ...(entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
-          ...(plan.showEditorGrid ? [entry.guide, entry.handles]
-            .filter((item): item is Draw => item !== undefined)
-            .map((item) => item.compile(signature(compositeTarget))) : []),
-        ]));
-        await gpu.settled();
+        try {
+          await Promise.all(nextEntries.flatMap((entry) => [
+            ...(entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
+            ...(plan.showEditorGrid ? [entry.guide, entry.handles]
+              .filter((item): item is Draw => item !== undefined)
+              .map((item) => item.compile(signature(compositeTarget))) : []),
+          ]));
+          await gpu.settled();
+        } catch (error) {
+          nextEntries.forEach(disposeEffectEntry);
+          throw error;
+        }
         const previousEntries = effectEntries;
         effectEntries = nextEntries;
         effectTransitions = nextTransitions;
         effectsSceneId = nextSnapshot.scene.id;
         snapshot = nextSnapshot;
-        previousEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
-        previousEntries.forEach((entry) => entry.polygonStorage.destroy());
-        previousEntries.forEach((entry) => entry.contextStorage?.destroy());
-        previousEntries.forEach((entry) => entry.emitter.dispose());
+        previousEntries.forEach(disposeEffectEntry);
         return;
       }
       const nextTransitions = reconcileEffectTransitions(effectTransitions, nextSnapshot.scene);
       const replacedEntries: EffectDrawEntry[] = [];
       const nextEntries = nextTransitions.entries.flatMap((transition) => {
-        const definition = particleEffectDefinition(transition.effect);
-        const density = Math.min(Math.max(transition.effect.density, 0), definition.maxDensity) * plan.particleDensityScale;
         const geometryKey = JSON.stringify([transition.effect.kind, transition.effect.vertices, transition.effect.seed]);
         const existing = effectEntries.find((entry) =>
           entry.layerId === transition.layerId && entry.effectId === transition.effect.id && entry.geometryKey === geometryKey
         );
         if (existing) {
-          const emitterGeometry = effectEmitterGeometry(transition.effect);
-          const visibleFraction = emitterGeometry.boundsArea > 0 ? emitterGeometry.polygonArea / emitterGeometry.boundsArea : 0;
-          existing.emissionRate = visibleFraction > 0 ? density * emitterGeometry.polygonArea / visibleFraction : 0;
-          existing.particleLifetime = definition.particleLifetime(transition.effect.speed);
+          if (isParticleEntry(existing) && isParticleEffect(transition.effect)) {
+            const definition = effectRendererDefinition(transition.effect);
+            if (definition.family !== "particle") throw new Error(`Effect '${transition.effect.kind}' does not match its renderer definition`);
+            const density = Math.min(Math.max(transition.effect.density, 0), definition.maxDensity) * plan.particleDensityScale;
+            const emitterGeometry = effectEmitterGeometry(transition.effect);
+            const visibleFraction = emitterGeometry.boundsArea > 0 ? emitterGeometry.polygonArea / emitterGeometry.boundsArea : 0;
+            existing.emissionRate = visibleFraction > 0 ? density * emitterGeometry.polygonArea / visibleFraction : 0;
+            existing.particleLifetime = definition.particleLifetime(transition.effect.speed);
+          }
           return [existing];
         }
         if (transition.progress <= 0 && transition.target <= 0) return [];
@@ -816,28 +900,30 @@ export function createSceneExecutor(
         replacedEntries.push(created);
         return [created];
       });
-      await Promise.all(replacedEntries.flatMap((entry) => [
-        ...(entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
-        ...(plan.showEditorGrid ? [entry.guide, entry.handles]
-          .filter((item): item is Draw => item !== undefined)
-          .map((item) => item.compile(signature(compositeTarget))) : []),
-      ]));
-      await gpu.settled();
+      try {
+        await Promise.all(replacedEntries.flatMap((entry) => [
+          ...(entry.drawable ? [entry.drawable.compile(signature(sceneA))] : []),
+          ...(plan.showEditorGrid ? [entry.guide, entry.handles]
+            .filter((item): item is Draw => item !== undefined)
+            .map((item) => item.compile(signature(compositeTarget))) : []),
+        ]));
+        await gpu.settled();
+      } catch (error) {
+        replacedEntries.forEach(disposeEffectEntry);
+        throw error;
+      }
       const previousEntries = effectEntries;
       effectEntries = nextEntries;
       effectTransitions = nextTransitions;
       snapshot = nextSnapshot;
       const replaced = previousEntries.filter((entry) => !nextEntries.includes(entry));
-      replaced.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
-      replaced.forEach((entry) => entry.polygonStorage.destroy());
-      replaced.forEach((entry) => entry.contextStorage?.destroy());
-      replaced.forEach((entry) => entry.emitter.dispose());
+      replaced.forEach(disposeEffectEntry);
     },
     async render(time) {
       const previousTransitions = effectTransitions;
       const delta = lastTransitionTime === undefined ? 0 : Math.max(0, time - lastTransitionTime);
       lastTransitionTime = time;
-      for (const entry of effectEntries) {
+      for (const entry of effectEntries.filter(isParticleEntry)) {
         const transition = effectTransitions.entries.find((candidate) => candidate.layerId === entry.layerId && candidate.effect.id === entry.effectId);
         const targetRate = transition?.target === 1 ? entry.emissionRate : 0;
         if (entry.steadyStatePending) {
@@ -864,13 +950,13 @@ export function createSceneExecutor(
         }
       }
       const retainedEmitterKeys = new Set(effectEntries
-        .filter((entry) => entry.emitter.hasAnimationDemand(time))
+        .filter((entry): entry is ParticleEffectDrawEntry => isParticleEntry(entry) && entry.emitter.hasAnimationDemand(time))
         .map((entry) => `${entry.layerId}\0${entry.effectId}`));
       effectTransitions = advanceEffectTransitions(effectTransitions, delta, retainedEmitterKeys);
       const activeTransitionKeys = new Set(effectTransitions.entries
         .filter((transition) => {
           const entry = effectEntries.find((candidate) => candidate.layerId === transition.layerId && candidate.effectId === transition.effect.id);
-          return transition.target > 0 || Boolean(entry?.emitter.hasAnimationDemand(time));
+          return transition.target > 0 || transition.progress > 0 || Boolean(entry && isParticleEntry(entry) && entry.emitter.hasAnimationDemand(time));
         })
         .map((entry) => `${entry.layerId}\0${entry.effect.id}`));
       const retiringEntries = effectEntries.filter((entry) => !activeTransitionKeys.has(`${entry.layerId}\0${entry.effectId}`));
@@ -932,7 +1018,7 @@ export function createSceneExecutor(
         const transitions = effectTransitions.entries.filter((transition) => {
           if (transition.layerId !== layerId) return false;
           const entry = effectEntries.find((candidate) => candidate.layerId === layerId && candidate.effectId === transition.effect.id);
-          return transition.target > 0 || Boolean(entry?.emitter.hasAnimationDemand(time));
+          return transition.target > 0 || transition.progress > 0 || Boolean(entry && isParticleEntry(entry) && entry.emitter.hasAnimationDemand(time));
         });
         if (current?.type !== "effects" && current) {
           operations.push(current);
@@ -970,13 +1056,24 @@ export function createSceneExecutor(
                 if (!transition) continue;
                 const entry = effectEntries.find((candidate) => candidate.layerId === operation.layerId && candidate.effectId === effectId);
                 if (!entry?.drawable) continue;
-                entry.drawable.set({ params: particleEffectParams(
-                  transition.effect,
-                  time,
-                  entry.emitterMin,
-                  entry.emitterMax,
-                  entry.polygonVertexCount,
-                ) });
+                if (entry.family === "particle" && isParticleEffect(transition.effect)) {
+                  entry.drawable.set({ params: particleEffectParams(
+                    transition.effect,
+                    time,
+                    entry.emitterMin,
+                    entry.emitterMax,
+                    entry.polygonVertexCount,
+                  ) });
+                } else if (entry.family === "procedural-cloud" && transition.effect.kind === "cloud") {
+                  entry.drawable.set({ params: cloudEffectParams(
+                    transition.effect,
+                    time,
+                    effectTransitionIntensity(transition.progress),
+                    entry.polygonVertexCount,
+                  ) });
+                } else {
+                  continue;
+                }
                 pass.draw(entry.drawable);
               }
             });
@@ -1089,10 +1186,7 @@ export function createSceneExecutor(
       }
       if (previousTransitions !== effectTransitions && retiringEntries.length > 0) {
         effectEntries = effectEntries.filter((entry) => !retiringEntries.includes(entry));
-        retiringEntries.flatMap((entry) => entry.geometries).forEach((item) => item.destroy());
-        retiringEntries.forEach((entry) => entry.polygonStorage.destroy());
-        retiringEntries.forEach((entry) => entry.contextStorage?.destroy());
-        retiringEntries.forEach((entry) => entry.emitter.dispose());
+        retiringEntries.forEach(disposeEffectEntry);
       }
     },
     resize(nextSize) {
